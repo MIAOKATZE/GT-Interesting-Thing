@@ -27,6 +27,7 @@ import com.miaokatze.gtit.reincarnation.handler.HardcoreEnforcer;
 import com.miaokatze.gtit.reincarnation.handler.ReincarnationHandler;
 import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
 import com.miaokatze.gtit.testutil.SimpleAssert;
+import com.miaokatze.gtit.testutil.SymlinkFixture;
 import com.miaokatze.gtit.testutil.TestRunner;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
@@ -42,7 +43,12 @@ public final class ReincarnationSessionRegressionTest {
         cases.put("replacementCancelsQueuedConfirmation", () -> checked(() -> queuedConfirmation(false)));
         cases.put("foreignPlayerCannotUseContainer", () -> checked(() -> foreignPlayerCannotUseContainer()));
         cases.put("serverStopClearsSessionState", () -> checked(() -> serverStopClearsSessionState()));
-        cases.put("deletionCallbackDoesNotFollowLinks", () -> checked(() -> deletionCallbackDoesNotFollowLinks()));
+        cases.put("deletionCallbackRemovesNestedFiles", () -> checked(() -> deletionCallbackDoesNotFollowLinks(false)));
+        if (SymlinkFixture.available("deletionCallbackDoesNotFollowLinks")) {
+            cases.put(
+                "deletionCallbackDoesNotFollowLinks",
+                () -> checked(() -> deletionCallbackDoesNotFollowLinks(true)));
+        }
         cases.put("completionCheckpointsEverySuffixItem", () -> checked(() -> completionCheckpointsEverySuffixItem()));
         TestRunner.run(ReincarnationSessionRegressionTest.class, cases);
     }
@@ -108,16 +114,19 @@ public final class ReincarnationSessionRegressionTest {
         return player;
     }
 
-    private static void deletionCallbackDoesNotFollowLinks() throws Exception {
+    private static void deletionCallbackDoesNotFollowLinks(boolean links) throws Exception {
         Path base = Files.createTempDirectory("gtit-delete-callback-");
         try {
             Path outside = Files.createDirectories(base.resolve("other-save"));
             Path sentinel = Files.write(outside.resolve("level.dat"), new byte[] { 42 });
-            Path selected = Files.createDirectories(base.resolve("selected-save"));
-            Files.createSymbolicLink(selected.resolve("linked-save"), outside);
+            Path region = Files.createDirectories(base.resolve("selected-save/region"));
+            Files.write(region.resolve("r.0.0.mca"), new byte[] { 1 });
+            Path selected = region.getParent();
+            if (links) Files.createSymbolicLink(selected.resolve("linked-save"), outside);
             Method delete = HardcoreEnforcer.class.getDeclaredMethod("deleteRecursively", java.io.File.class);
             delete.setAccessible(true);
             SimpleAssert.eq(true, delete.invoke(null, selected.toFile()), "selected save deletion succeeds");
+            SimpleAssert.that(!Files.exists(selected), "actual deletion callback removes nested files");
             SimpleAssert.that(Files.exists(sentinel), "actual deletion callback does not destroy linked save");
         } finally {
             ReincarnationWorldDeletion.deleteTree(base);

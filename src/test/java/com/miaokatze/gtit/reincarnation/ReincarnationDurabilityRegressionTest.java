@@ -1,6 +1,7 @@
 package com.miaokatze.gtit.reincarnation;
 
 import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,6 +24,7 @@ import com.miaokatze.gtit.reincarnation.core.ReincarnationWorldDeletion;
 import com.miaokatze.gtit.reincarnation.storage.ReincarnationMigration;
 import com.miaokatze.gtit.reincarnation.storage.ReincarnationWorldData;
 import com.miaokatze.gtit.testutil.SimpleAssert;
+import com.miaokatze.gtit.testutil.SymlinkFixture;
 import com.miaokatze.gtit.testutil.TestRunner;
 
 /** Real Minecraft MapStorage, SaveHandler and compressed NBT; only the live world is allocated without ticking. */
@@ -30,7 +32,7 @@ public final class ReincarnationDurabilityRegressionTest {
 
     static final String ID = "11111111-2222-3333-4444-555555555555";
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         Map<String, Runnable> cases = new LinkedHashMap<>();
         cases.put("nativeMapStorageSwallowsIoAndClearsDirty", () -> checked(() -> nativeFailure()));
         cases.put("immediateFailureThrowsAndRetainsDirty", () -> checked(() -> immediateFailure()));
@@ -45,7 +47,9 @@ public final class ReincarnationDurabilityRegressionTest {
             "reservationWithoutReceiptCannotReplayIntoOtherWorld",
             () -> checked(() -> interruptedReceiver(false)));
         cases.put("failedReceiptCanRetryInSameSession", () -> checked(() -> sameSessionReceiptRetry()));
-        cases.put("temporarySymlinkCannotRedirectCheckpoint", () -> checked(() -> temporarySymlink()));
+        if (SymlinkFixture.available("temporarySymlinkCannotRedirectCheckpoint")) {
+            cases.put("temporarySymlinkCannotRedirectCheckpoint", () -> checked(() -> temporarySymlink()));
+        }
         TestRunner.run(ReincarnationDurabilityRegressionTest.class, cases);
     }
 
