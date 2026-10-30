@@ -17,7 +17,7 @@ import com.cleanroommc.modularui.widgets.slot.SlotGroup;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplay;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
-import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
+import com.miaokatze.gtit.testutil.NativeAeTestBootstrap;
 import com.miaokatze.gtit.trade.TeamDataProvider;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 import com.miaokatze.gtit.trade.v2.NekoHistoryManager;
@@ -36,17 +36,19 @@ public final class VendingConcurrencyTest {
     }
 
     public static void main(String[] args) throws Exception {
-        if (!MinecraftTestBootstrap.enter(VendingConcurrencyTest.class, args)) return;
-        Field named = cpw.mods.fml.common.Loader.class.getDeclaredField("namedMods");
-        named.setAccessible(true);
-        named.set(cpw.mods.fml.common.Loader.instance(), new java.util.HashMap<>());
+        if (!NativeAeTestBootstrap.enter(VendingConcurrencyTest.class, args)) return;
         cpw.mods.fml.server.FMLServerHandler.instance();
+        runCases();
+    }
+
+    private static void runCases() throws Exception {
         Thread.currentThread()
             .setName("Server thread");
         field(TeamDataProvider.class, "available").set(null, Boolean.FALSE);
         field(com.miaokatze.gtit.trade.NekoWalletManager.class, "acceptingWallets")
             .setBoolean(com.miaokatze.gtit.trade.NekoWalletManager.INSTANCE, true);
-        java.io.File historyDirectory = java.nio.file.Files.createTempDirectory("gtit-vending-history-").toFile();
+        java.io.File historyDirectory = java.nio.file.Files.createTempDirectory("gtit-vending-history-")
+            .toFile();
         Method bindHistory = NekoHistoryManager.class.getDeclaredMethod("bindSaveDirectory", java.io.File.class);
         bindHistory.setAccessible(true);
         bindHistory.invoke(NekoHistoryManager.INSTANCE, historyDirectory);
@@ -143,15 +145,17 @@ public final class VendingConcurrencyTest {
         Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
         Field singleton = unsafeClass.getDeclaredField("theUnsafe");
         singleton.setAccessible(true);
-        Object hatch = unsafeClass.getMethod("allocateInstance", Class.class).invoke(
-            singleton.get(null), com.cubefury.vendingmachine.blocks.MTEVendingUplinkHatch.class);
         Field liveHatch = field(machine.getClass(), "uplinkHatch");
+        // Resolve the actual production field type without coupling test compilation to a dev-only dependency.
+        Object hatch = unsafeClass.getMethod("allocateInstance", Class.class)
+            .invoke(singleton.get(null), liveHatch.getType());
         liveHatch.set(machine, hatch);
         com.miaokatze.gtit.trade.v2.NekoTradeExecutor.InputSlotAccessor input = machine.createInputSlotAccessor();
         liveHatch.set(machine, null);
         ItemStack receipt = new ItemStack(Items.iron_ingot, 129);
         receipt.setTagCompound(new NBTTagCompound());
-        receipt.getTagCompound().setString("owner", "extracted-before-disconnect");
+        receipt.getTagCompound()
+            .setString("owner", "extracted-before-disconnect");
         input.refundME(receipt);
         check(machine.getOutputBufferSize() == 3, "disconnected ME receipt becomes three durable physical stacks");
         java.util.Queue<?> queue = (java.util.Queue<?>) field(machine.getClass(), "outputBuffer").get(machine);

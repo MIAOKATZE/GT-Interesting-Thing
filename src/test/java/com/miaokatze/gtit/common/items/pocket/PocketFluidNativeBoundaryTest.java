@@ -4,7 +4,7 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.fluids.FluidStack;
 
-import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
+import com.miaokatze.gtit.testutil.NativeAeTestBootstrap;
 
 import appeng.api.storage.data.IAEFluidStack;
 import appeng.util.item.AEFluidStack;
@@ -17,7 +17,7 @@ public final class PocketFluidNativeBoundaryTest {
     }
 
     public static void main(String[] args) throws Exception {
-        if (!MinecraftTestBootstrap.enter(PocketFluidNativeBoundaryTest.class, args)) return;
+        if (!NativeAeTestBootstrap.enter(PocketFluidNativeBoundaryTest.class, args)) return;
         run();
     }
 
@@ -32,7 +32,8 @@ public final class PocketFluidNativeBoundaryTest {
         IAEFluidStack nativeResult = AEFluidStack.create(tagged);
         IAEFluidStack guarded = PocketAeFluidStacks.createExact(tagged);
         boolean nativeExact = nativeResult != null && tagged.isFluidEqual(nativeResult.getFluidStack());
-        check(nativeExact ? guarded != null && tagged.isFluidEqual(guarded.getFluidStack()) : guarded == null,
+        check(
+            nativeExact ? guarded != null && tagged.isFluidEqual(guarded.getFluidStack()) : guarded == null,
             "lossy native conversion must be refused, while tag-capable native implementations remain supported");
         check(tagged.amount == 1000 && "A".equals(tagged.tag.getString("variant")), "caller fluid remains untouched");
         check(PocketAeFluidStacks.createExact(null) == null, "absent fluid has no request");

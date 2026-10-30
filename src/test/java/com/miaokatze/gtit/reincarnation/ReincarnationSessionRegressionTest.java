@@ -16,6 +16,7 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.IChatComponent;
 
 import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationStore;
@@ -24,6 +25,7 @@ import com.miaokatze.gtit.reincarnation.gui.ReincarnationContainer;
 import com.miaokatze.gtit.reincarnation.gui.ReincarnationLayout;
 import com.miaokatze.gtit.reincarnation.handler.HardcoreEnforcer;
 import com.miaokatze.gtit.reincarnation.handler.ReincarnationHandler;
+import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
 import com.miaokatze.gtit.testutil.SimpleAssert;
 import com.miaokatze.gtit.testutil.TestRunner;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
@@ -33,7 +35,8 @@ import cpw.mods.fml.common.gameevent.TickEvent;
 /** Exercises actual container callbacks without constructing a server, world, or client. */
 public final class ReincarnationSessionRegressionTest {
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
+        if (!MinecraftTestBootstrap.enter(ReincarnationSessionRegressionTest.class, args)) return;
         Map<String, Runnable> cases = new LinkedHashMap<>();
         cases.put("closeCancelsQueuedConfirmation", () -> checked(() -> queuedConfirmation(true)));
         cases.put("replacementCancelsQueuedConfirmation", () -> checked(() -> queuedConfirmation(false)));
@@ -89,12 +92,14 @@ public final class ReincarnationSessionRegressionTest {
         rolls.put(UUID.randomUUID(), new Object());
         field(ReincarnationHandler.class, "ascensionPlayer").set(handler, player());
         field(ReincarnationHandler.class, "ascensionPollTicksLeft").setInt(handler, 600);
-        ReincarnationHandler.class.getMethod("onServerStopping").invoke(null);
+        ReincarnationHandler.class.getMethod("onServerStopping")
+            .invoke(null);
         SimpleAssert.that(actions.isEmpty(), "stopped server retains no scheduled actions");
         SimpleAssert.that(rolls.isEmpty(), "stopped server retains no roll sessions");
         SimpleAssert.eq(null, field(ReincarnationHandler.class, "ascensionPlayer").get(handler), "player released");
         SimpleAssert.eq(0, field(ReincarnationHandler.class, "ascensionPollTicksLeft").getInt(handler), "poll reset");
-        ReincarnationHandler.class.getMethod("onServerStopping").invoke(null);
+        ReincarnationHandler.class.getMethod("onServerStopping")
+            .invoke(null);
     }
 
     private static EntityPlayerMP player() throws Exception {
@@ -125,12 +130,15 @@ public final class ReincarnationSessionRegressionTest {
         Field storeField = field(ReincarnationHandler.class, "store");
         Object previousStore = storeField.get(handler);
         try {
-            Item.itemRegistry.addObject(31001, "gtit:reincarnation_regression_item", new Item());
+            Item.itemRegistry.addObject(31001, "minecraft:gtit_reincarnation_regression_item", new Item());
+            SimpleAssert.that(
+                Item.itemRegistry.getObject("minecraft:gtit_reincarnation_regression_item") != null,
+                "native fixture registry ID resolves");
             ReincarnationStore store = new ReincarnationStore(base.toFile());
             storeField.set(handler, store);
             List<ReincarnationCycle.ItemRef> items = new ArrayList<>();
             for (int i = 0; i < 10; i++) {
-                items.add(new ReincarnationCycle.ItemRef("gtit:reincarnation_regression_item", 0));
+                items.add(new ReincarnationCycle.ItemRef("minecraft:gtit_reincarnation_regression_item", 0));
             }
             ReincarnationCycle cycle = new ReincarnationCycle(GrantPlayer.ID.toString());
             cycle.deposit(items);
@@ -143,7 +151,8 @@ public final class ReincarnationSessionRegressionTest {
             Class<?> context = Class.forName(ReincarnationHandler.class.getName() + "$GrantShowContext");
             Constructor<?> constructor = context.getDeclaredConstructor(int.class);
             constructor.setAccessible(true);
-            Method complete = ReincarnationHandler.class.getDeclaredMethod("completeGrant", EntityPlayerMP.class, context);
+            Method complete = ReincarnationHandler.class
+                .getDeclaredMethod("completeGrant", EntityPlayerMP.class, context);
             complete.setAccessible(true);
             complete.invoke(handler, player, constructor.newInstance(7));
             SimpleAssert.eq(1, inventory.deliveries, "first suffix item delivered before injected failure");
@@ -152,7 +161,10 @@ public final class ReincarnationSessionRegressionTest {
             inventory.failOn = -1;
             complete.invoke(handler, player, constructor.newInstance(delivered));
             SimpleAssert.eq(3, inventory.deliveries, "resume delivers the three suffix items exactly once");
-            SimpleAssert.that(!store.load(GrantPlayer.ID.toString()).canClaimGrant(), "successful resume clears mailbox");
+            SimpleAssert.that(
+                !store.load(GrantPlayer.ID.toString())
+                    .canClaimGrant(),
+                "successful resume clears mailbox");
         } finally {
             storeField.set(handler, previousStore);
             ReincarnationWorldDeletion.deleteTree(base);
@@ -196,6 +208,9 @@ public final class ReincarnationSessionRegressionTest {
         public String getCommandSenderName() {
             return "reincarnation-regression";
         }
+
+        @Override
+        public void addChatMessage(IChatComponent component) {}
     }
 
     private static ReincarnationContainer container(EntityPlayerMP player) throws Exception {
@@ -218,7 +233,9 @@ public final class ReincarnationSessionRegressionTest {
     private static <T> T allocate(Class<T> type) throws Exception {
         Class<?> unsafe = Class.forName("sun.misc.Unsafe");
         Object instance = field(unsafe, "theUnsafe").get(null);
-        return type.cast(unsafe.getMethod("allocateInstance", Class.class).invoke(instance, type));
+        return type.cast(
+            unsafe.getMethod("allocateInstance", Class.class)
+                .invoke(instance, type));
     }
 
     private static void checked(Checked action) {
@@ -230,6 +247,7 @@ public final class ReincarnationSessionRegressionTest {
     }
 
     private interface Checked {
+
         void run() throws Exception;
     }
 }

@@ -189,7 +189,8 @@ public final class ReincarnationHandler {
                 if (!(player.openContainer instanceof ReincarnationContainer)) continue;
                 try {
                     ((ReincarnationContainer) player.openContainer).flushAcceptedInventoryChanges();
-                    ReincarnationWorldData.get(server.getEntityWorld()).saveImmediately(server.getEntityWorld());
+                    ReincarnationWorldData.get(server.getEntityWorld())
+                        .saveImmediately(server.getEntityWorld());
                 } catch (Throwable failure) {
                     GTInterestingThing.LOG.error("[reincarnation] Shutdown inventory checkpoint failed", failure);
                 }
@@ -204,7 +205,7 @@ public final class ReincarnationHandler {
     }
 
     /**
-     * 安装服务端编排器（幂等）：FML 总线（登录/登出事件 + server tick）+
+     * 安装服务端编排器（幂等）：FML 总线（登录/登出/重生事件 + server tick）+
      * 注入确认轮回钩子。自包含——调用方仅需一行接线，无需再注册任何监听。
      * <p>
      * 仅物理客户端门控路径调用（CommonProxy.init 的 reincarnation 门控块内）。
@@ -377,15 +378,18 @@ public final class ReincarnationHandler {
         data.saveImmediately(world);
         // Replacing an entity/login attempt must not leave an older grant context
         // scheduled for the same player alongside the resumed context.
-        scheduledActions.removeIf(action -> action.player.getUniqueID().equals(player.getUniqueID()));
+        scheduledActions.removeIf(
+            action -> action.player.getUniqueID()
+                .equals(player.getUniqueID()));
         scheduledActions.add(new ScheduledAction(player, GRANT_DELAY_TICKS, () -> executeGrant(player)));
     }
 
     /** Respawn resumes an existing commitment, but never creates fresh zero-stat eligibility. */
     @SubscribeEvent
-    public void onPlayerRespawned(PlayerEvent.PlayerRespawnedEvent event) {
+    public void onPlayerRespawned(PlayerEvent.PlayerRespawnEvent event) {
         if (!(event.player instanceof EntityPlayerMP) || event.player.worldObj == null
-            || event.player.worldObj.isRemote || !isStrictSinglePlayer()) {
+            || event.player.worldObj.isRemote
+            || !isStrictSinglePlayer()) {
             return;
         }
         EntityPlayerMP player = (EntityPlayerMP) event.player;
@@ -394,7 +398,9 @@ public final class ReincarnationHandler {
             if (data == null || !data.isGrantStarted() || data.isGrantClaimed()) {
                 return;
             }
-            ReincarnationCycle cycle = loadMerged(player.getUniqueID().toString());
+            ReincarnationCycle cycle = loadMerged(
+                player.getUniqueID()
+                    .toString());
             if (cycle.canClaimGrant()
                 && !cycle.hasFingerprint(ReincarnationFingerprints.fingerprintOf(player.worldObj.getSeed()))) {
                 scheduleAdmittedGrant(player, data);
@@ -856,7 +862,8 @@ public final class ReincarnationHandler {
             }
             // Dismounting at ascent height would replace the explicit kill with lethal
             // fall damage. Never teleport an entity into a different world/session.
-            if (carrier != null && !player.isDead && player.worldObj == originWorld
+            if (carrier != null && !player.isDead
+                && player.worldObj == originWorld
                 && validAscensionOrigin(originWorld)) {
                 player.setPositionAndUpdate(ascensionOriginX, ascensionOriginY, ascensionOriginZ);
                 player.fallDistance = 0;
@@ -870,9 +877,12 @@ public final class ReincarnationHandler {
     }
 
     private boolean validAscensionOrigin(World world) {
-        return world != null && Double.isFinite(ascensionOriginX) && Double.isFinite(ascensionOriginY)
-            && Double.isFinite(ascensionOriginZ) && Math.abs(ascensionOriginX) <= 30_000_000
-            && Math.abs(ascensionOriginZ) <= 30_000_000 && ascensionOriginY >= 0
+        return world != null && Double.isFinite(ascensionOriginX)
+            && Double.isFinite(ascensionOriginY)
+            && Double.isFinite(ascensionOriginZ)
+            && Math.abs(ascensionOriginX) <= 30_000_000
+            && Math.abs(ascensionOriginZ) <= 30_000_000
+            && ascensionOriginY >= 0
             && ascensionOriginY < world.getHeight();
     }
 
@@ -946,7 +956,10 @@ public final class ReincarnationHandler {
                     player.getUniqueID()
                         .toString()),
                 pendingItems.size());
-            cycleStore.checkpointGrantDelivered(player.getUniqueID().toString(), deliveredBase);
+            cycleStore.checkpointGrantDelivered(
+                player.getUniqueID()
+                    .toString(),
+                deliveredBase);
             GrantShowContext showContext = new GrantShowContext(deliveredBase);
             // ③ 起演出（演出包只驱动客户端展示；只发剩余后缀——已交付前缀不再演出）
             List<GrantEffectPacket.ItemRef> fxItems = new ArrayList<>();
@@ -1006,17 +1019,17 @@ public final class ReincarnationHandler {
                 String id = ref.getId() + ":" + ref.getMeta();
                 showContext.droppedIds.add(id);
                 GTInterestingThing.LOG.warn(
-                    "[reincarnation] 奖励物品无法解析 registry id，审计隔离（收束统一清账）：player="
-                        + player.getCommandSenderName()
+                    "[reincarnation] 奖励物品无法解析 registry id，审计隔离（收束统一清账）：player=" + player.getCommandSenderName()
                         + ", item="
                         + id);
             } else if (!player.inventory.addItemStackToInventory(stack)) {
                 player.dropPlayerItemWithRandomChoice(stack, false);
             }
-        }, delivered -> store().checkpointGrantDelivered(
-            player.getUniqueID()
-                .toString(),
-            delivered));
+        },
+            delivered -> store().checkpointGrantDelivered(
+                player.getUniqueID()
+                    .toString(),
+                delivered));
     }
 
     /**
@@ -1041,7 +1054,8 @@ public final class ReincarnationHandler {
             // ⑥ 清扫发放：已交付前缀之外的剩余件一次性入库（背包满则随机掉落——
             // 发放不丢账，落地即视同交付）
             List<ReincarnationCycle.ItemRef> pendingItems = cycle.getPendingItems();
-            for (int i = Math.min(showContext.progress.getDelivered(), pendingItems.size()); i < pendingItems.size(); i++) {
+            for (int i = Math.min(showContext.progress.getDelivered(), pendingItems.size()); i
+                < pendingItems.size(); i++) {
                 grantShowItem(player, showContext, i, pendingItems.get(i));
                 if (showContext.progress.getDelivered() != i + 1) {
                     return; // Do not clear a mailbox whose handoff did not complete.

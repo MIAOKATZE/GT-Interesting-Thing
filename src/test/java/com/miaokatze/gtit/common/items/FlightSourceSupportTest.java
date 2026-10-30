@@ -1,6 +1,5 @@
 package com.miaokatze.gtit.common.items;
 
-import java.lang.reflect.Field;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -12,8 +11,6 @@ import net.minecraft.item.ItemStack;
 import com.miaokatze.gtit.common.items.rings.RingWindrider;
 import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
 import com.miaokatze.gtit.testutil.TestRunner;
-
-import sun.misc.Unsafe;
 
 /** Mixed-source availability must not spend resources or assume an unrelated item grants flight. */
 public final class FlightSourceSupportTest {
@@ -32,11 +29,17 @@ public final class FlightSourceSupportTest {
     }
 
     private static void ring() {
-        ItemStack food = stack(FloatCore.class), electric = stack(ElectricFloatCore.class), ring = stack(RingWindrider.class);
-        require(FlightSourceSupport.hasAvailableFlight(slots(food, electric, ring), false, s -> false), "last ring ignored");
-        require(FlightSourceSupport.hasAvailableFlight(slots(ring, electric, food), false, s -> {
-            throw new AssertionError("ring should short-circuit energy probing");
-        }), "first ring ignored");
+        ItemStack food = stack(FloatCore.class), electric = stack(ElectricFloatCore.class),
+            ring = stack(RingWindrider.class);
+        require(
+            FlightSourceSupport.hasAvailableFlight(slots(food, electric, ring), false, s -> false),
+            "last ring ignored");
+        require(
+            FlightSourceSupport.hasAvailableFlight(
+                slots(ring, electric, food),
+                false,
+                s -> { throw new AssertionError("ring should short-circuit energy probing"); }),
+            "first ring ignored");
     }
 
     private static void powered() {
@@ -52,10 +55,14 @@ public final class FlightSourceSupportTest {
 
     private static void food() {
         for (Class<? extends Item> type : java.util.Arrays.asList(FloatCore.class, ElectricFloatCore.class)) {
-            require(FlightSourceSupport.hasAvailableFlight(slots(stack(type)), true, s -> {
-                throw new AssertionError("food fallback does not require an energy probe");
-            }), "food fallback lost");
-            require(!FlightSourceSupport.hasAvailableFlight(slots(stack(type)), false, s -> false),
+            require(
+                FlightSourceSupport.hasAvailableFlight(
+                    slots(stack(type)),
+                    true,
+                    s -> { throw new AssertionError("food fallback does not require an energy probe"); }),
+                "food fallback lost");
+            require(
+                !FlightSourceSupport.hasAvailableFlight(slots(stack(type)), false, s -> false),
                 "depleted sole source must not retain flight");
         }
     }
@@ -63,7 +70,8 @@ public final class FlightSourceSupportTest {
     private static void empty() {
         ItemStack removed = stack(RingWindrider.class);
         removed.stackSize = 0;
-        require(!FlightSourceSupport.hasAvailableFlight(slots(removed, stack(Item.class)), true, s -> true),
+        require(
+            !FlightSourceSupport.hasAvailableFlight(slots(removed, stack(Item.class)), true, s -> true),
             "empty/third-party items must not be classified as active GTIT flight sources");
         require(!FlightSourceSupport.hasAvailableFlight(null, true, s -> true), "absent inventory must be empty");
     }
@@ -71,13 +79,17 @@ public final class FlightSourceSupportTest {
     private static void departing() {
         ItemStack leaving = stack(RingWindrider.class);
         ItemStack identical = new ItemStack(leaving.getItem());
-        require(!FlightSourceSupport.hasAvailableFlight(slots(leaving), true, s -> true, leaving),
+        require(
+            !FlightSourceSupport.hasAvailableFlight(slots(leaving), true, s -> true, leaving),
             "pre-clear callback counted the departing source itself");
-        require(FlightSourceSupport.hasAvailableFlight(slots(leaving, identical), false, s -> false, leaving),
+        require(
+            FlightSourceSupport.hasAvailableFlight(slots(leaving, identical), false, s -> false, leaving),
             "another identical item is not the departing stack");
-        require(FlightSourceSupport.hasAvailableFlight(slots(identical), false, s -> false, leaving),
+        require(
+            FlightSourceSupport.hasAvailableFlight(slots(identical), false, s -> false, leaving),
             "post-clear callback must not subtract another remaining source");
-        require(!FlightSourceSupport.hasAvailableFlight(slots(leaving, stack(FloatCore.class)), false, s -> false, leaving),
+        require(
+            !FlightSourceSupport.hasAvailableFlight(slots(leaving, stack(FloatCore.class)), false, s -> false, leaving),
             "an unavailable remaining core cannot sustain flight");
     }
 
@@ -89,10 +101,13 @@ public final class FlightSourceSupportTest {
 
     private static ItemStack stack(Class<? extends Item> type) {
         try {
-            // Type identity is sufficient; avoid registering items/configuration during a model test.
-            Field field = Unsafe.class.getDeclaredField("theUnsafe");
-            field.setAccessible(true);
-            return new ItemStack((Item) ((Unsafe) field.get(null)).allocateInstance(type));
+            // Forge ItemStack resolves through Item.delegate, initialized by the real constructor.
+            // These constructors configure metadata only; no global item registration is needed.
+            Item item = type.getDeclaredConstructor()
+                .newInstance();
+            ItemStack stack = new ItemStack(item);
+            require(stack.getItem() == item, "native ItemStack must retain its flight source item");
+            return stack;
         } catch (Exception e) {
             throw new AssertionError(e);
         }

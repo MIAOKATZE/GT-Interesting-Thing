@@ -96,7 +96,7 @@ public class ReincarnationEntities {
             player.posY,
             player.posZ);
         carrier.setDurationTicks(durationTicks);
-        player.worldObj.spawnEntityInWorld(carrier);
+        if (!player.worldObj.spawnEntityInWorld(carrier)) return null;
         player.mountEntity(carrier);
         GTInterestingThing.LOG.info(
             "[reincarnation] 飞升载具已生成并绑定玩家：" + player.getCommandSenderName()
