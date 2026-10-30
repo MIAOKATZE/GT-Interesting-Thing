@@ -133,7 +133,8 @@ public class NekoPocketContainer extends ModularContainer {
         }
         if (slotId == -999 && mode == 0 && (mouseButton == 0 || mouseButton == 1)) {
             if (!panel.persistBeforeCursorDrop(player)) {
-                panel.syncManager().setCursorItem(player.inventory.getItemStack());
+                panel.syncManager()
+                    .setCursorItem(player.inventory.getItemStack());
                 return null;
             }
         }

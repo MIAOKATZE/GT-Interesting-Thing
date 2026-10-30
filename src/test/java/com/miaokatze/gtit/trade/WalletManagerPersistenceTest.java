@@ -2,16 +2,16 @@ package com.miaokatze.gtit.trade;
 
 import java.io.File;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.math.BigInteger;
 import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -34,14 +34,30 @@ public final class WalletManagerPersistenceTest {
 
     public static void run() {
         Map<String, Runnable> cases = new LinkedHashMap<>();
-        cases.put("logoutRetainsLateRefundOwner", () -> isolated(WalletManagerPersistenceTest::logoutRetainsLateRefundOwner));
-        cases.put("failedSaveIsRetainedForRetry", () -> isolated(WalletManagerPersistenceTest::failedSaveIsRetainedForRetry));
-        cases.put("corruptFileCannotBeOverwritten", () -> isolated(WalletManagerPersistenceTest::corruptFileCannotBeOverwritten));
-        cases.put("concurrentLookupHasOneLedger", () -> isolated(WalletManagerPersistenceTest::concurrentLookupHasOneLedger));
-        cases.put("newerMutationKeepsDirtyMark", () -> isolated(WalletManagerPersistenceTest::newerMutationKeepsDirtyMark));
-        cases.put("atomicWritePreservesOldFileOnFailure", () -> isolated(WalletManagerPersistenceTest::atomicWritePreservesOldFileOnFailure));
-        cases.put("invalidBalanceTypePreservesFile", () -> isolated(WalletManagerPersistenceTest::invalidBalanceTypePreservesFile));
-        cases.put("failedOldWorldSaveCannotContaminateNewWorld", () -> isolated(WalletManagerPersistenceTest::failedOldWorldSaveCannotContaminateNewWorld));
+        cases.put(
+            "logoutRetainsLateRefundOwner",
+            () -> isolated(WalletManagerPersistenceTest::logoutRetainsLateRefundOwner));
+        cases.put(
+            "failedSaveIsRetainedForRetry",
+            () -> isolated(WalletManagerPersistenceTest::failedSaveIsRetainedForRetry));
+        cases.put(
+            "corruptFileCannotBeOverwritten",
+            () -> isolated(WalletManagerPersistenceTest::corruptFileCannotBeOverwritten));
+        cases.put(
+            "concurrentLookupHasOneLedger",
+            () -> isolated(WalletManagerPersistenceTest::concurrentLookupHasOneLedger));
+        cases.put(
+            "newerMutationKeepsDirtyMark",
+            () -> isolated(WalletManagerPersistenceTest::newerMutationKeepsDirtyMark));
+        cases.put(
+            "atomicWritePreservesOldFileOnFailure",
+            () -> isolated(WalletManagerPersistenceTest::atomicWritePreservesOldFileOnFailure));
+        cases.put(
+            "invalidBalanceTypePreservesFile",
+            () -> isolated(WalletManagerPersistenceTest::invalidBalanceTypePreservesFile));
+        cases.put(
+            "failedOldWorldSaveCannotContaminateNewWorld",
+            () -> isolated(WalletManagerPersistenceTest::failedOldWorldSaveCannotContaminateNewWorld));
         TestRunner.run(WalletManagerPersistenceTest.class, cases);
     }
 
@@ -50,6 +66,7 @@ public final class WalletManagerPersistenceTest {
     }
 
     private interface Case {
+
         void run(NekoWalletManager manager, UUID id, File directory) throws Exception;
     }
 
@@ -74,7 +91,8 @@ public final class WalletManagerPersistenceTest {
             ((Set<String>) field("dirtyBalanceKeys").get(manager)).clear();
             previousReady = field("acceptingWallets").getBoolean(manager);
             field("acceptingWallets").setBoolean(manager, true);
-            directory = Files.createTempDirectory("gtit-wallet-regression-").toFile();
+            directory = Files.createTempDirectory("gtit-wallet-regression-")
+                .toFile();
             path.set(manager, directory);
             test.run(manager, id, directory);
         } catch (Exception error) {
@@ -113,11 +131,14 @@ public final class WalletManagerPersistenceTest {
 
     private static NekoWallet disk(UUID id, File directory) throws Exception {
         NekoWallet result = new NekoWallet();
-        result.readFromNBT(CompressedStreamTools.read(new File(directory, id + ".dat")).getCompoundTag("wallet"));
+        result.readFromNBT(
+            CompressedStreamTools.read(new File(directory, id + ".dat"))
+                .getCompoundTag("wallet"));
         return result;
     }
 
-    private static void logoutRetainsLateRefundOwner(NekoWalletManager manager, UUID id, File directory) throws Exception {
+    private static void logoutRetainsLateRefundOwner(NekoWalletManager manager, UUID id, File directory)
+        throws Exception {
         NekoWallet wallet = manager.getWallet(id);
         wallet.addCount(COIN, Integer.MAX_VALUE);
         wallet.tryDeduct(COIN, 7);
@@ -125,11 +146,15 @@ public final class WalletManagerPersistenceTest {
         SimpleAssert.that(wallet == manager.getWallet(id), "logout never creates a second canonical ledger");
         wallet.addCount(COIN, 19);
         manager.saveDirtyWallets();
-        SimpleAssert.eq(BigInteger.valueOf(Integer.MAX_VALUE).add(BigInteger.valueOf(12)), disk(id, directory).getExactCount(COIN),
+        SimpleAssert.eq(
+            BigInteger.valueOf(Integer.MAX_VALUE)
+                .add(BigInteger.valueOf(12)),
+            disk(id, directory).getExactCount(COIN),
             "late refund and overflow persist after logout");
     }
 
-    private static void failedSaveIsRetainedForRetry(NekoWalletManager manager, UUID id, File directory) throws Exception {
+    private static void failedSaveIsRetainedForRetry(NekoWalletManager manager, UUID id, File directory)
+        throws Exception {
         NekoWallet wallet = manager.getWallet(id);
         wallet.addCount(COIN, 83);
         File notDirectory = new File(directory, "not-a-directory");
@@ -142,7 +167,8 @@ public final class WalletManagerPersistenceTest {
         SimpleAssert.eq(83, disk(id, directory).getCount(COIN), "retry writes original ledger");
     }
 
-    private static void corruptFileCannotBeOverwritten(NekoWalletManager manager, UUID id, File directory) throws Exception {
+    private static void corruptFileCannotBeOverwritten(NekoWalletManager manager, UUID id, File directory)
+        throws Exception {
         File file = new File(directory, id + ".dat");
         byte[] original = { 31, 2, 11, 99, 0, 7 };
         Files.write(file.toPath(), original);
@@ -154,7 +180,9 @@ public final class WalletManagerPersistenceTest {
         }
         SimpleAssert.that(rejected, "existing corrupt file fails closed");
         manager.unloadWallet(id);
-        SimpleAssert.that(Arrays.equals(original, Files.readAllBytes(file.toPath())), "logout preserves original corrupt bytes");
+        SimpleAssert.that(
+            Arrays.equals(original, Files.readAllBytes(file.toPath())),
+            "logout preserves original corrupt bytes");
     }
 
     private static void invalidBalanceTypePreservesFile(NekoWalletManager manager, UUID id, File directory)
@@ -166,17 +194,23 @@ public final class WalletManagerPersistenceTest {
         com.miaokatze.gtit.util.AtomicNbtFile.write(root, file);
         byte[] original = Files.readAllBytes(file.toPath());
         boolean rejected = false;
-        try { manager.getWallet(id); } catch (IllegalStateException expected) { rejected = true; }
+        try {
+            manager.getWallet(id);
+        } catch (IllegalStateException expected) {
+            rejected = true;
+        }
         SimpleAssert.that(rejected, "invalid legacy balance type fails closed");
         manager.unloadWallet(id);
-        SimpleAssert.that(Arrays.equals(original, Files.readAllBytes(file.toPath())), "invalid balance file bytes unchanged");
+        SimpleAssert
+            .that(Arrays.equals(original, Files.readAllBytes(file.toPath())), "invalid balance file bytes unchanged");
     }
 
     private static void bind(NekoWalletManager manager, File directory) throws Exception {
         Method method = NekoWalletManager.class.getDeclaredMethod("bindSaveDirectory", File.class);
         method.setAccessible(true);
-        try { method.invoke(manager, directory); }
-        catch (InvocationTargetException failure) {
+        try {
+            method.invoke(manager, directory);
+        } catch (InvocationTargetException failure) {
             if (failure.getCause() instanceof RuntimeException) throw (RuntimeException) failure.getCause();
             throw failure;
         }
@@ -193,20 +227,37 @@ public final class WalletManagerPersistenceTest {
         manager.unloadAll();
         SimpleAssert.that(!field("acceptingWallets").getBoolean(manager), "world stop disables further wallet lookups");
         boolean blocked = false;
-        try { bind(manager, b); } catch (IllegalStateException expected) { blocked = true; }
+        try {
+            bind(manager, b);
+        } catch (IllegalStateException expected) {
+            blocked = true;
+        }
         SimpleAssert.that(blocked, "new world cannot bind while previous ledger remains unsaved");
         blocked = false;
-        try { manager.getWallet(id); } catch (IllegalStateException expected) { blocked = true; }
+        try {
+            manager.getWallet(id);
+        } catch (IllegalStateException expected) {
+            blocked = true;
+        }
         SimpleAssert.that(blocked, "continuing server cannot serve old balances as new-world data");
         manager.saveWallet(id);
         SimpleAssert.that(!b.exists(), "blocked transition never creates/writes the new wallet directory");
         Files.delete(a.toPath());
         Files.createDirectory(a.toPath());
         bind(manager, a); // Recover the old bound data before allowing a new session.
-        SimpleAssert.eq(29, manager.getWallet(id).getCount(COIN), "old world recovered without losing pending funds");
+        SimpleAssert.eq(
+            29,
+            manager.getWallet(id)
+                .getCount(COIN),
+            "old world recovered without losing pending funds");
         bind(manager, b);
-        SimpleAssert.eq(0, manager.getWallet(id).getCount(COIN), "new world starts from its own file, not old cache");
-        manager.getWallet(id).addCount(COIN, 11);
+        SimpleAssert.eq(
+            0,
+            manager.getWallet(id)
+                .getCount(COIN),
+            "new world starts from its own file, not old cache");
+        manager.getWallet(id)
+            .addCount(COIN, 11);
         manager.saveWallet(id);
         SimpleAssert.eq(29, disk(id, a).getCount(COIN), "world A remains unchanged by B writes");
         SimpleAssert.eq(11, disk(id, b).getCount(COIN), "world B owns only its new funds");
@@ -228,11 +279,13 @@ public final class WalletManagerPersistenceTest {
             failed = true;
         }
         SimpleAssert.that(failed, "serialization failure is reported");
-        SimpleAssert.that(Arrays.equals(saved, Files.readAllBytes(file.toPath())), "failed replacement preserves old bytes");
+        SimpleAssert
+            .that(Arrays.equals(saved, Files.readAllBytes(file.toPath())), "failed replacement preserves old bytes");
         SimpleAssert.eq(1, directory.listFiles().length, "failed write removes only its own temporary file");
     }
 
-    private static void concurrentLookupHasOneLedger(NekoWalletManager manager, UUID id, File directory) throws Exception {
+    private static void concurrentLookupHasOneLedger(NekoWalletManager manager, UUID id, File directory)
+        throws Exception {
         Set<NekoWallet> identities = Collections.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>()));
         CountDownLatch start = new CountDownLatch(1), done = new CountDownLatch(8);
         AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -256,14 +309,21 @@ public final class WalletManagerPersistenceTest {
         SimpleAssert.that(done.await(10, TimeUnit.SECONDS), "lookup workers finish");
         SimpleAssert.eq(null, failure.get(), "lookup workers succeed");
         SimpleAssert.eq(1, identities.size(), "only one ledger is published");
-        SimpleAssert.eq(88, manager.getWallet(id).getCount(COIN), "all concurrent credits retained");
+        SimpleAssert.eq(
+            88,
+            manager.getWallet(id)
+                .getCount(COIN),
+            "all concurrent credits retained");
     }
 
     @SuppressWarnings("unchecked")
-    private static void newerMutationKeepsDirtyMark(NekoWalletManager manager, UUID id, File directory) throws Exception {
-        CountDownLatch snapshot = new CountDownLatch(1), release = new CountDownLatch(1), creditStarted = new CountDownLatch(1);
+    private static void newerMutationKeepsDirtyMark(NekoWalletManager manager, UUID id, File directory)
+        throws Exception {
+        CountDownLatch snapshot = new CountDownLatch(1), release = new CountDownLatch(1),
+            creditStarted = new CountDownLatch(1);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         NekoWallet wallet = new NekoWallet() {
+
             private boolean first = true;
 
             @Override
@@ -275,7 +335,8 @@ public final class WalletManagerPersistenceTest {
                     try {
                         if (!release.await(5, TimeUnit.SECONDS)) throw new AssertionError("save release timeout");
                     } catch (InterruptedException error) {
-                        Thread.currentThread().interrupt();
+                        Thread.currentThread()
+                            .interrupt();
                         throw new AssertionError(error);
                     }
                 }
@@ -286,11 +347,19 @@ public final class WalletManagerPersistenceTest {
         wallet.addCount(COIN, 5);
         ((Map<UUID, NekoWallet>) field("personalWallets").get(manager)).put(id, wallet);
         Thread saver = new Thread(() -> {
-            try { manager.saveWallet(id); } catch (Throwable error) { failure.set(error); }
+            try {
+                manager.saveWallet(id);
+            } catch (Throwable error) {
+                failure.set(error);
+            }
         }, "Server thread");
         Thread creditor = new Thread(() -> {
             creditStarted.countDown();
-            try { wallet.addCount(COIN, 7); } catch (Throwable error) { failure.set(error); }
+            try {
+                wallet.addCount(COIN, 7);
+            } catch (Throwable error) {
+                failure.set(error);
+            }
         }, "Server thread");
         saver.setDaemon(true);
         creditor.setDaemon(true);

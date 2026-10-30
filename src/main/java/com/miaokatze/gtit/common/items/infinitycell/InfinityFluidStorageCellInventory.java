@@ -65,7 +65,8 @@ public class InfinityFluidStorageCellInventory implements ITFluidCellInventory {
         if (this.cellType.isBlackListed(this.cellItem, input)) {
             return input;
         }
-        if (this.getCellFluids().findPrecise(input) == null && !this.canHoldNewFluid()) {
+        if (this.getCellFluids()
+            .findPrecise(input) == null && !this.canHoldNewFluid()) {
             return input;
         }
         return InfinityCellTransfer.inject(this.getCellFluids(), input, mode, Long.MAX_VALUE, this::saveChanges);

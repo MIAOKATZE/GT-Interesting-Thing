@@ -8,8 +8,6 @@ import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.inventory.Slot;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
-
-import com.miaokatze.gtit.common.items.pocket.PocketCarrierIdentity;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.fluids.FluidStack;
@@ -17,6 +15,7 @@ import net.minecraftforge.fluids.FluidStack;
 import com.cleanroommc.modularui.factory.PlayerInventoryGuiData;
 import com.cleanroommc.modularui.factory.inventory.InventoryType;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
+import com.miaokatze.gtit.common.items.pocket.PocketCarrierIdentity;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
 import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
 
@@ -24,29 +23,54 @@ import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
 public final class PocketCarrierRelocationTest {
 
     private static final InventoryType MAIN = new InventoryType("gtit_carrier_relocation_test") {
-        public ItemStack getStackInSlot(EntityPlayer player, int slot) { return player.inventory.mainInventory[slot]; }
-        public void setStackInSlot(EntityPlayer player, int slot, ItemStack stack) { player.inventory.mainInventory[slot] = stack; }
-        public int getSlotCount(EntityPlayer player) { return player.inventory.mainInventory.length; }
+
+        public ItemStack getStackInSlot(EntityPlayer player, int slot) {
+            return player.inventory.mainInventory[slot];
+        }
+
+        public void setStackInSlot(EntityPlayer player, int slot, ItemStack stack) {
+            player.inventory.mainInventory[slot] = stack;
+        }
+
+        public int getSlotCount(EntityPlayer player) {
+            return player.inventory.mainInventory.length;
+        }
     };
 
     private static final class Player extends EntityPlayerMP {
-        private Player() { super(null, null, null, null); }
+
+        private Player() {
+            super(null, null, null, null);
+        }
     }
 
     private static final class Sync extends PanelSyncManager {
-        private Sync() { super(null, false); }
-        @Override public boolean isClient() { return false; }
+
+        private Sync() {
+            super(null, false);
+        }
+
+        @Override
+        public boolean isClient() {
+            return false;
+        }
     }
 
     /** Real vanilla pickup/placement, not a fabricated replacement in the test. */
     private static final class Vanilla extends net.minecraft.inventory.Container {
+
         Vanilla(EntityPlayer player) {
             for (int index = 0; index < 2; index++) addSlotToContainer(new Slot(player.inventory, index, 0, 0));
         }
-        @Override public boolean canInteractWith(EntityPlayer player) { return true; }
+
+        @Override
+        public boolean canInteractWith(EntityPlayer player) {
+            return true;
+        }
     }
 
     private static final class Fixture {
+
         final Player player = allocate(Player.class);
         final NekoPocketPanel panel = allocate(NekoPocketPanel.class);
         final PocketInventory inventory = PocketInventory.readFrom(new NBTTagCompound());
@@ -81,7 +105,8 @@ public final class PocketCarrierRelocationTest {
             container.slotClick(0, 0, 0, player);
             container.slotClick(1, 0, 0, player);
             ItemStack moved = player.inventory.mainInventory[1];
-            check(moved != original && original.stackSize == 0 && moved.stackSize == 1,
+            check(
+                moved != original && original.stackSize == 0 && moved.stackSize == 1,
                 "native placement must split a new carrier reference");
             return moved;
         }
@@ -107,22 +132,29 @@ public final class PocketCarrierRelocationTest {
         moved.inventory.drainOwnTank(0, 400); // Already accepted; never restore these 400 mB on movement.
         ItemStack live = moved.move();
         check(moved.panel.carrierStack() == live, "closed session must resolve before driver's identity guard");
-        check(moved.panel.carrierTag() == live.getTagCompound() && moved.panel.isHeldByOwner(),
+        check(
+            moved.panel.carrierTag() == live.getTagCompound() && moved.panel.isHeldByOwner(),
             "carrier tag and orphan predicate must use the same live carrier");
         moved.panel.persistFinal();
-        check(PocketInventory.readFrom(live.getTagCompound()).tankTruthAt(0) == 600,
+        check(
+            PocketInventory.readFrom(live.getTagCompound())
+                .tankTruthAt(0) == 600,
             "accepted state persists into the moved carrier");
 
         Fixture foreign = new Fixture();
         foreign.move();
         foreign.player.inventory.mainInventory[1] = new ItemStack(foreign.original.getItem(), 1);
-        check(foreign.panel.carrierStack() == null && foreign.panel.carrierTag() == null && !foreign.panel.isHeldByOwner(),
+        check(
+            foreign.panel.carrierStack() == null && foreign.panel.carrierTag() == null
+                && !foreign.panel.isHeldByOwner(),
             "same-type foreign carrier cannot keep a closed session alive");
 
         Fixture ambiguous = new Fixture();
         ItemStack one = ambiguous.move();
         ambiguous.player.inventory.mainInventory[2] = one.copy();
-        check(ambiguous.panel.carrierStack() == null && ambiguous.panel.carrierTag() == null && !ambiguous.panel.isHeldByOwner(),
+        check(
+            ambiguous.panel.carrierStack() == null && ambiguous.panel.carrierTag() == null
+                && !ambiguous.panel.isHeldByOwner(),
             "duplicate token remains ambiguous instead of choosing a carrier");
 
         Fixture reopened = new Fixture();
@@ -131,8 +163,11 @@ public final class PocketCarrierRelocationTest {
         reopened.inventory.drainOwnTank(0, 400);
         check(reopened.panel.carrierStack() == null, "reopening revokes the old session's live carrier access");
         reopened.panel.persistFinal();
-        check(PocketInventory.readFrom(current.getTagCompound()).tankTruthAt(0) == 1000,
+        check(
+            PocketInventory.readFrom(current.getTagCompound())
+                .tankTruthAt(0) == 1000,
             "stale retained session cannot overwrite the reopened carrier");
-        System.out.println("PocketCarrierRelocationTest: PASS (native copies, accepted state, foreign, ambiguity, stale reopen)");
+        System.out.println(
+            "PocketCarrierRelocationTest: PASS (native copies, accepted state, foreign, ambiguity, stale reopen)");
     }
 }

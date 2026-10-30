@@ -193,8 +193,8 @@ public class Mail {
                 if (itemTag.hasKey("gtitMailCount", 3)) stack.stackSize = itemTag.getInteger("gtitMailCount");
                 if (stack.stackSize <= 0) throw new IllegalArgumentException("Invalid saved mail attachment count");
                 mail.attachments.add(stack);
-                int remaining = itemTag.hasKey("gtitMailRemaining", 3)
-                    ? itemTag.getInteger("gtitMailRemaining") : stack.stackSize;
+                int remaining = itemTag.hasKey("gtitMailRemaining", 3) ? itemTag.getInteger("gtitMailRemaining")
+                    : stack.stackSize;
                 if (remaining < 0 || remaining > stack.stackSize)
                     throw new IllegalArgumentException("Invalid saved mail attachment remainder");
                 mail.remainingAmounts.add(remaining);
@@ -235,7 +235,8 @@ public class Mail {
         for (int i = 0; i < attachments.size(); i++) {
             int before = remainingAmount(i);
             if (before <= 0) continue;
-            ItemStack remainder = attachments.get(i).copy();
+            ItemStack remainder = attachments.get(i)
+                .copy();
             remainder.stackSize = before;
             try {
                 delivery.accept(remainder);
@@ -246,7 +247,8 @@ public class Mail {
             }
             if (remainder.stackSize < before) granted++;
         }
-        attachmentClaimed = remainingAmounts.stream().allMatch(amount -> amount == 0);
+        attachmentClaimed = remainingAmounts.stream()
+            .allMatch(amount -> amount == 0);
         return granted;
     }
 

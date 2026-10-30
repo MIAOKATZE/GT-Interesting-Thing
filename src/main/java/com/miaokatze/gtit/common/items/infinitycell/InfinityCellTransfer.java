@@ -16,7 +16,8 @@ final class InfinityCellTransfer {
         }
         final T stored = contents.findPrecise(input);
         final long current = stored == null ? 0L : Math.max(0L, stored.getStackSize());
-        final long accepted = Math.min(input.getStackSize(), Math.min(Math.max(0L, capacity), Long.MAX_VALUE - current));
+        final long accepted = Math
+            .min(input.getStackSize(), Math.min(Math.max(0L, capacity), Long.MAX_VALUE - current));
         if (accepted <= 0) {
             return input;
         }

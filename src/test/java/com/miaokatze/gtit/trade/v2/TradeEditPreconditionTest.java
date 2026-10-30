@@ -18,12 +18,16 @@ public final class TradeEditPreconditionTest {
         if (!MinecraftTestBootstrap.enter(TradeEditPreconditionTest.class, args)) return;
         checkRoundTrip(false);
         checkRoundTrip(true);
-        System.out.println("TradeEditPreconditionTest: normal/default sync roundtrip, metadata, NBT and stale/missing tokens passed");
+        System.out.println(
+            "TradeEditPreconditionTest: normal/default sync roundtrip, metadata, NBT and stale/missing tokens passed");
     }
 
     private static void checkRoundTrip(boolean defaults) {
         NekoTradeEntry entry = new NekoTradeEntry();
-        entry.setId(defaults ? "MIAO77" : UUID.randomUUID().toString());
+        entry.setId(
+            defaults ? "MIAO77"
+                : UUID.randomUUID()
+                    .toString());
         entry.setDefaultEntry(defaults);
         entry.setTabId(3);
         entry.setOrderId(11);
@@ -44,11 +48,13 @@ public final class TradeEditPreconditionTest {
         NekoTradeGroup copy = NekoTradeDatabase.INSTANCE.getTradeGroup(id);
         check(copy != null && copy.isDefaultEntry() == defaults, "source flag survives actual config sync");
         check(NekoTradeDefinition.matchesEdit(id, 0, expected), "valid copied draft accepted " + defaults);
-        check(!NekoTradeDefinition.matchesEdit(id, -1, expected)
-            && !NekoTradeDefinition.matchesEdit(id, 1, expected), "invalid index rejected");
-        check(!NekoTradeDefinition.matchesEdit(id, 0, null)
-            && !NekoTradeDefinition.matchesEdit(id, 0, "")
-            && !NekoTradeDefinition.matchesEdit(id, 0, "not-a-fingerprint"), "old/malformed context rejected");
+        check(
+            !NekoTradeDefinition.matchesEdit(id, -1, expected) && !NekoTradeDefinition.matchesEdit(id, 1, expected),
+            "invalid index rejected");
+        check(
+            !NekoTradeDefinition.matchesEdit(id, 0, null) && !NekoTradeDefinition.matchesEdit(id, 0, "")
+                && !NekoTradeDefinition.matchesEdit(id, 0, "not-a-fingerprint"),
+            "old/malformed context rejected");
         copy.setOrderId(12);
         check(!NekoTradeDefinition.matchesEdit(id, 0, expected), "reordered entry rejected");
         copy.setOrderId(11);
@@ -58,7 +64,13 @@ public final class TradeEditPreconditionTest {
         copy.setDefaultEntry(!defaults);
         check(!NekoTradeDefinition.matchesEdit(id, 0, expected), "changed source rejected");
         copy.setDefaultEntry(defaults);
-        copy.getTrades().get(0).getToItems().get(0).getBaseStack().getTagCompound().setString("label", "changed");
+        copy.getTrades()
+            .get(0)
+            .getToItems()
+            .get(0)
+            .getBaseStack()
+            .getTagCompound()
+            .setString("label", "changed");
         check(!NekoTradeDefinition.matchesEdit(id, 0, expected), "changed item NBT rejected");
         NekoTradeDatabase.INSTANCE.removeTradeGroup(id);
         check(!NekoTradeDefinition.matchesEdit(id, 0, expected), "deleted entry rejected");

@@ -94,7 +94,8 @@ public class WalletBalancePacket implements IMessage {
             Minecraft mc = Minecraft.getMinecraft();
             mc.func_152344_a(() -> {
                 // UUIDs survive reconnects; only the exact receiving connection may update this cache.
-                if (connection == null || mc.getNetHandler() != connection || mc.theWorld == null
+                if (connection == null || mc.getNetHandler() != connection
+                    || mc.theWorld == null
                     || mc.thePlayer == null) return;
                 NekoClientBalances.updateBalances(message.parseBalances());
             });

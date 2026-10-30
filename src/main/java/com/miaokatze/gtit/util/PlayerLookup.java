@@ -26,7 +26,8 @@ public final class PlayerLookup {
 
     /** Admission guard for queued requests, not for already-committed deliveries. */
     public static boolean isCurrentSession(EntityPlayerMP player) {
-        return player != null && !player.isDead && player.isEntityAlive()
+        return player != null && !player.isDead
+            && player.isEntityAlive()
             && player.playerNetServerHandler != null
             && player.playerNetServerHandler.playerEntity == player
             && player.playerNetServerHandler.netManager != null

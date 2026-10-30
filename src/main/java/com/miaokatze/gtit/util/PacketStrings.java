@@ -21,8 +21,8 @@ public final class PacketStrings {
 
     public static String read(ByteBuf buf, int maxCharacters) {
         int length = ByteBufUtils.readVarInt(buf, 2);
-        if (length < 0 || length > Math.min(MAX_UTF8_BYTES, (long) maxCharacters * 3)
-            || length > buf.readableBytes()) throw new IllegalArgumentException("Invalid UTF-8 field length");
+        if (length < 0 || length > Math.min(MAX_UTF8_BYTES, (long) maxCharacters * 3) || length > buf.readableBytes())
+            throw new IllegalArgumentException("Invalid UTF-8 field length");
         final String value;
         try {
             value = StandardCharsets.UTF_8.newDecoder()

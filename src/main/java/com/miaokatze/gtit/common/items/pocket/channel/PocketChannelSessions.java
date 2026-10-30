@@ -9,9 +9,8 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fluids.FluidStack;
 
-import com.miaokatze.gtit.common.items.pocket.PocketCellBindings;
 import com.miaokatze.gtit.common.items.pocket.PocketCarrierIdentity;
-import com.miaokatze.gtit.common.items.pocket.PocketWornTapHandler;
+import com.miaokatze.gtit.common.items.pocket.PocketCellBindings;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
@@ -20,6 +19,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketSessions;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgrades;
+import com.miaokatze.gtit.common.items.pocket.PocketWornTapHandler;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
@@ -152,7 +152,10 @@ public final class PocketChannelSessions {
 
         private PocketCarrierIdentity.Resolution resolveCarrier() {
             if (player == null || player.inventory == null) return carrierIdentity.locate(null, null, null, null);
-            return carrierIdentity.locate(null, player.inventory.getItemStack(), player.inventory.mainInventory,
+            return carrierIdentity.locate(
+                null,
+                player.inventory.getItemStack(),
+                player.inventory.mainInventory,
                 PocketWornTapHandler.safeBaubles(player));
         }
 
@@ -171,8 +174,8 @@ public final class PocketChannelSessions {
         @Override
         public boolean isHeldByOwner() {
             if (player == null || player.inventory == null) return false;
-            return PocketCarrierIdentity.isHeld(carrierStack(), player.inventory.mainInventory,
-                PocketWornTapHandler.safeBaubles(player));
+            return PocketCarrierIdentity
+                .isHeld(carrierStack(), player.inventory.mainInventory, PocketWornTapHandler.safeBaubles(player));
         }
 
         @Override

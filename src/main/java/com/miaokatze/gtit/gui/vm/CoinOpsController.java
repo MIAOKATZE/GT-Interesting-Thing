@@ -705,8 +705,11 @@ public final class CoinOpsController {
                 IntSyncValue meSync = meCoinAmountSyncs.get(currencyId);
                 if (meSync != null) meSync.notifyUpdate();
                 markTradeableStatusDirtyAndNotify.run();
-                tradeResultNotifier.accept("从 ME 导入 " + extracted + " 个"
-                    + NekoCurrencyRegistrar.getDisplayName(currencyId) + "，其余货币保留在 ME 网络");
+                tradeResultNotifier.accept(
+                    "从 ME 导入 " + extracted
+                        + " 个"
+                        + NekoCurrencyRegistrar.getDisplayName(currencyId)
+                        + "，其余货币保留在 ME 网络");
             } else {
                 tradeResultNotifier.accept("ME 提取失败");
             }

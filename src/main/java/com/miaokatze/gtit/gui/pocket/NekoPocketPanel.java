@@ -8,8 +8,6 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
-
-import com.miaokatze.gtit.common.items.pocket.PocketCarrierIdentity;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.StatCollector;
 import net.minecraftforge.fluids.Fluid;
@@ -30,6 +28,7 @@ import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.slot.SlotGroup;
 import com.miaokatze.gtit.common.items.pocket.ItemNekoDimensionPocket;
 import com.miaokatze.gtit.common.items.pocket.PocketAeChannelOps;
+import com.miaokatze.gtit.common.items.pocket.PocketCarrierIdentity;
 import com.miaokatze.gtit.common.items.pocket.PocketCellBindings;
 import com.miaokatze.gtit.common.items.pocket.PocketCellProbe;
 import com.miaokatze.gtit.common.items.pocket.PocketChannelManager;
@@ -3656,8 +3655,8 @@ public final class NekoPocketPanel implements PocketSession {
             return null;
         }
         final IInventory baubles = PocketWornTapHandler.safeBaubles(target);
-        final PocketCarrierIdentity.Resolution found = carrierIdentity.locate(
-            data.getUsedItemStack(), target.inventory.getItemStack(), target.inventory.mainInventory, baubles);
+        final PocketCarrierIdentity.Resolution found = carrierIdentity
+            .locate(data.getUsedItemStack(), target.inventory.getItemStack(), target.inventory.mainInventory, baubles);
         carrierLookupAmbiguous = found.ambiguous;
         if (found.carrier != null) {
             pocket = found.carrier;

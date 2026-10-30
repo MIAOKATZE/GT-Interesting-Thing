@@ -104,7 +104,9 @@ public class RewardItem {
         if (!json.has(key)) return fallback;
         int value;
         try {
-            value = json.get(key).getAsBigDecimal().intValueExact();
+            value = json.get(key)
+                .getAsBigDecimal()
+                .intValueExact();
         } catch (RuntimeException invalid) {
             throw new IllegalArgumentException("Reward " + key + " must be an exact nonnegative int", invalid);
         }

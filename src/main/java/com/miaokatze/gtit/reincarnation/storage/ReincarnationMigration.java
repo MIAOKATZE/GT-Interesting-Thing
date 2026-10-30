@@ -72,7 +72,8 @@ public final class ReincarnationMigration {
             return; // No durable receiver: never reserve or consume the source.
         }
         if (data.isMigrated()) {
-            if (data.getMigrationId().isEmpty()) {
+            if (data.getMigrationId()
+                .isEmpty()) {
                 // Older builds left no ownership evidence. Do not guess which world's
                 // unrelated Migrated flag authorizes destruction of a still-v1 source.
                 throw new IllegalStateException("Legacy migration receipt lacks a world identity");

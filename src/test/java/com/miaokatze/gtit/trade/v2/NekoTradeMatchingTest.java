@@ -392,205 +392,214 @@ public final class NekoTradeMatchingTest {
         home.setAccessible(true);
         home.set(null, new java.io.File("."));
         Bootstrap.func_151354_b();
-        java.lang.reflect.Field teamAvailability = com.miaokatze.gtit.trade.TeamDataProvider.class.getDeclaredField("available");
+        java.lang.reflect.Field teamAvailability = com.miaokatze.gtit.trade.TeamDataProvider.class
+            .getDeclaredField("available");
         teamAvailability.setAccessible(true);
         Object previousTeamAvailability = teamAvailability.get(null);
         teamAvailability.set(null, Boolean.FALSE);
-        java.io.File ledgerDirectory = java.nio.file.Files.createTempDirectory("gtit-matching-ledgers-").toFile();
-        java.lang.reflect.Method bindHistory = NekoHistoryManager.class.getDeclaredMethod("bindSaveDirectory", java.io.File.class);
+        java.io.File ledgerDirectory = java.nio.file.Files.createTempDirectory("gtit-matching-ledgers-")
+            .toFile();
+        java.lang.reflect.Method bindHistory = NekoHistoryManager.class
+            .getDeclaredMethod("bindSaveDirectory", java.io.File.class);
         bindHistory.setAccessible(true);
         bindHistory.invoke(NekoHistoryManager.INSTANCE, new java.io.File(ledgerDirectory, "histories"));
         java.lang.reflect.Method bindWallet = com.miaokatze.gtit.trade.NekoWalletManager.class
             .getDeclaredMethod("bindSaveDirectory", java.io.File.class);
         bindWallet.setAccessible(true);
-        bindWallet.invoke(com.miaokatze.gtit.trade.NekoWalletManager.INSTANCE, new java.io.File(ledgerDirectory, "wallets"));
+        bindWallet
+            .invoke(com.miaokatze.gtit.trade.NekoWalletManager.INSTANCE, new java.io.File(ledgerDirectory, "wallets"));
         try {
-        OreDictionary.registerOre("gtitTestMetal", new ItemStack(Items.iron_ingot));
-        OreDictionary.registerOre("gtitTestMetal", new ItemStack(Items.gold_ingot));
-        NekoTrade trade = new NekoTrade();
-        NekoBigItemStack broad = new NekoBigItemStack(1, "gtitTestMetal", new ItemStack(Items.diamond));
-        trade.getFromItems()
-            .add(broad);
-        trade.getFromItems()
-            .add(iron(1));
-        Input input = new Input(new ItemStack(Items.iron_ingot), new ItemStack(Items.gold_ingot));
-        check(NekoTradeMatcher.plan(trade, null, input) != null, "overlap must reroute broad requirement");
-        check(input.slots[0].stackSize == 1 && input.slots[1].stackSize == 1, "plan must be read only");
-        NekoTrade legacyLarge = new NekoTrade();
-        for (int i = 0; i < 17; i++) legacyLarge.getFromItems()
-            .add(iron(1));
-        check(
-            NekoTradeMatcher.plan(legacyLarge, null, new Input(new ItemStack(Items.iron_ingot, 17))) != null,
-            "legacy fixed trades retain more than sixteen requirements");
-        check(
-            NekoTradeMatcher.plan(trade, null, new Input(new ItemStack(Items.iron_ingot))) == null,
-            "shared stock cannot be counted twice");
-        trade.getFromItems()
-            .clear();
-        NekoBigItemStack choice = iron(2);
-        choice.getAlternatives()
-            .add(gold(3));
-        trade.getFromItems()
-            .add(choice);
-        check(
-            NekoTradeMatcher
-                .plan(trade, null, new Input(new ItemStack(Items.iron_ingot, 1), new ItemStack(Items.gold_ingot, 2)))
-                == null,
-            "alternatives cannot mix partial quantities");
-        check(
-            NekoTradeMatcher.plan(trade, null, new Input(new ItemStack(Items.gold_ingot, 3))) != null,
-            "complete secondary option uses its own quantity");
-        NBTTagCompound tag = new NBTTagCompound();
-        tag.setString("quality", "a");
-        choice.getBaseStack()
-            .setTagCompound(tag);
-        trade.setRecordNBT(true);
-        check(
-            NekoTradeMatcher.plan(trade, null, new Input(new ItemStack(Items.iron_ingot, 2))) == null,
-            "strict NBT needs actual candidate tag");
-        trade.setRecordNBT(false);
-        check(
-            NekoTradeMatcher.plan(trade, null, new Input(new ItemStack(Items.iron_ingot, 2))) != null,
-            "relaxed NBT accepts different tag");
-        Input me = new Input();
-        me.me.add(new ItemStack(Items.gold_ingot, 3));
-        for (int i = 0; i < 5000; i++) me.me.add(new ItemStack(Items.diamond));
-        NekoTradeMatcher.Plan mePlan = NekoTradeMatcher.plan(trade, null, me);
-        check(mePlan != null && mePlan.supplies.size() == 1, "irrelevant ME stock is filtered");
-        NekoTrade hugeME = new NekoTrade();
-        hugeME.getFromItems()
-            .add(iron(Integer.MAX_VALUE));
-        Input hugeStock = new Input();
-        hugeStock.me.add(new ItemStack(Items.iron_ingot, Integer.MAX_VALUE));
-        check(
-            !NekoTradeExecutor.meCompensationFits(NekoTradeMatcher.plan(hugeME, null, hugeStock)),
-            "huge ME deduction is rejected before it can require millions of refund stacks");
-        check(
-            NekoTradeExecutor.meCompensationFits(
-                NekoTradeMatcher.plan(hugeME, null, new Input(new ItemStack(Items.iron_ingot, Integer.MAX_VALUE)))),
-            "large purely local deduction does not require ME compensation storage");
-        NekoBigItemStack restored = NekoBigItemStack.loadFromNBT(choice.writeToNBT());
-        check(
-            restored.getAlternatives()
-                .size() == 1
-                && restored.getAlternatives()
-                    .get(0)
-                    .getStackSize() == 3,
-            "NBT alternatives round trip");
-        check(ItemStack.areItemStackTagsEqual(choice.getBaseStack(), restored.getBaseStack()), "NBT tags round trip");
-        broad.getAlternatives()
-            .add(gold(3));
-        ItemEntry entry = broad.toItemEntry(true);
-        Gson gson = new Gson();
-        ItemEntry json = gson.fromJson(gson.toJson(entry), ItemEntry.class);
-        NekoBigItemStack fromJson = NekoBigItemStack.fromItemEntry(json);
-        check(
-            fromJson != null && fromJson.getOreDict()
-                .equals("gtitTestMetal")
-                && fromJson.getAlternatives()
-                    .get(0)
-                    .getStackSize() == 3,
-            "JSON semantics round trip");
-        ItemEntry missingIcon = new ItemEntry("missing:item", 0, 4);
-        missingIcon.setOreDict("gtitTestMetal");
-        check(NekoBigItemStack.fromItemEntry(missingIcon) != null, "ore semantics survive missing icon");
-        NekoTrade mixedOre = new NekoTrade();
-        mixedOre.getFromItems()
-            .add(new NekoBigItemStack(3, "gtitTestMetal", new ItemStack(Items.diamond)));
-        check(
-            NekoTradeMatcher
-                .plan(mixedOre, null, new Input(new ItemStack(Items.iron_ingot, 1), new ItemStack(Items.gold_ingot, 2)))
-                != null,
-            "one ore option can combine concrete stacks");
-        trade.setRecordNBT(true);
-        Input strictME = new Input();
-        strictME.me.add(new ItemStack(Items.iron_ingot, 2));
-        check(NekoTradeMatcher.plan(trade, null, strictME) == null, "ME strict NBT uses actual stack tag");
-        strictME.me.get(0)
-            .setTagCompound((NBTTagCompound) tag.copy());
-        check(NekoTradeMatcher.plan(trade, null, strictME) != null, "ME exact NBT is accepted");
-        NekoTrade output = new NekoTrade();
-        output.getToItems()
-            .add(choice);
-        Random random = new Random(123);
-        boolean sawIron = false, sawGold = false;
-        for (int i = 0; i < 50; i++) {
+            OreDictionary.registerOre("gtitTestMetal", new ItemStack(Items.iron_ingot));
+            OreDictionary.registerOre("gtitTestMetal", new ItemStack(Items.gold_ingot));
+            NekoTrade trade = new NekoTrade();
+            NekoBigItemStack broad = new NekoBigItemStack(1, "gtitTestMetal", new ItemStack(Items.diamond));
+            trade.getFromItems()
+                .add(broad);
+            trade.getFromItems()
+                .add(iron(1));
+            Input input = new Input(new ItemStack(Items.iron_ingot), new ItemStack(Items.gold_ingot));
+            check(NekoTradeMatcher.plan(trade, null, input) != null, "overlap must reroute broad requirement");
+            check(input.slots[0].stackSize == 1 && input.slots[1].stackSize == 1, "plan must be read only");
+            NekoTrade legacyLarge = new NekoTrade();
+            for (int i = 0; i < 17; i++) legacyLarge.getFromItems()
+                .add(iron(1));
+            check(
+                NekoTradeMatcher.plan(legacyLarge, null, new Input(new ItemStack(Items.iron_ingot, 17))) != null,
+                "legacy fixed trades retain more than sixteen requirements");
+            check(
+                NekoTradeMatcher.plan(trade, null, new Input(new ItemStack(Items.iron_ingot))) == null,
+                "shared stock cannot be counted twice");
+            trade.getFromItems()
+                .clear();
+            NekoBigItemStack choice = iron(2);
+            choice.getAlternatives()
+                .add(gold(3));
+            trade.getFromItems()
+                .add(choice);
+            check(
+                NekoTradeMatcher.plan(
+                    trade,
+                    null,
+                    new Input(new ItemStack(Items.iron_ingot, 1), new ItemStack(Items.gold_ingot, 2))) == null,
+                "alternatives cannot mix partial quantities");
+            check(
+                NekoTradeMatcher.plan(trade, null, new Input(new ItemStack(Items.gold_ingot, 3))) != null,
+                "complete secondary option uses its own quantity");
+            NBTTagCompound tag = new NBTTagCompound();
+            tag.setString("quality", "a");
+            choice.getBaseStack()
+                .setTagCompound(tag);
+            trade.setRecordNBT(true);
+            check(
+                NekoTradeMatcher.plan(trade, null, new Input(new ItemStack(Items.iron_ingot, 2))) == null,
+                "strict NBT needs actual candidate tag");
+            trade.setRecordNBT(false);
+            check(
+                NekoTradeMatcher.plan(trade, null, new Input(new ItemStack(Items.iron_ingot, 2))) != null,
+                "relaxed NBT accepts different tag");
+            Input me = new Input();
+            me.me.add(new ItemStack(Items.gold_ingot, 3));
+            for (int i = 0; i < 5000; i++) me.me.add(new ItemStack(Items.diamond));
+            NekoTradeMatcher.Plan mePlan = NekoTradeMatcher.plan(trade, null, me);
+            check(mePlan != null && mePlan.supplies.size() == 1, "irrelevant ME stock is filtered");
+            NekoTrade hugeME = new NekoTrade();
+            hugeME.getFromItems()
+                .add(iron(Integer.MAX_VALUE));
+            Input hugeStock = new Input();
+            hugeStock.me.add(new ItemStack(Items.iron_ingot, Integer.MAX_VALUE));
+            check(
+                !NekoTradeExecutor.meCompensationFits(NekoTradeMatcher.plan(hugeME, null, hugeStock)),
+                "huge ME deduction is rejected before it can require millions of refund stacks");
+            check(
+                NekoTradeExecutor.meCompensationFits(
+                    NekoTradeMatcher.plan(hugeME, null, new Input(new ItemStack(Items.iron_ingot, Integer.MAX_VALUE)))),
+                "large purely local deduction does not require ME compensation storage");
+            NekoBigItemStack restored = NekoBigItemStack.loadFromNBT(choice.writeToNBT());
+            check(
+                restored.getAlternatives()
+                    .size() == 1
+                    && restored.getAlternatives()
+                        .get(0)
+                        .getStackSize() == 3,
+                "NBT alternatives round trip");
+            check(
+                ItemStack.areItemStackTagsEqual(choice.getBaseStack(), restored.getBaseStack()),
+                "NBT tags round trip");
+            broad.getAlternatives()
+                .add(gold(3));
+            ItemEntry entry = broad.toItemEntry(true);
+            Gson gson = new Gson();
+            ItemEntry json = gson.fromJson(gson.toJson(entry), ItemEntry.class);
+            NekoBigItemStack fromJson = NekoBigItemStack.fromItemEntry(json);
+            check(
+                fromJson != null && fromJson.getOreDict()
+                    .equals("gtitTestMetal")
+                    && fromJson.getAlternatives()
+                        .get(0)
+                        .getStackSize() == 3,
+                "JSON semantics round trip");
+            ItemEntry missingIcon = new ItemEntry("missing:item", 0, 4);
+            missingIcon.setOreDict("gtitTestMetal");
+            check(NekoBigItemStack.fromItemEntry(missingIcon) != null, "ore semantics survive missing icon");
+            NekoTrade mixedOre = new NekoTrade();
+            mixedOre.getFromItems()
+                .add(new NekoBigItemStack(3, "gtitTestMetal", new ItemStack(Items.diamond)));
+            check(
+                NekoTradeMatcher.plan(
+                    mixedOre,
+                    null,
+                    new Input(new ItemStack(Items.iron_ingot, 1), new ItemStack(Items.gold_ingot, 2))) != null,
+                "one ore option can combine concrete stacks");
+            trade.setRecordNBT(true);
+            Input strictME = new Input();
+            strictME.me.add(new ItemStack(Items.iron_ingot, 2));
+            check(NekoTradeMatcher.plan(trade, null, strictME) == null, "ME strict NBT uses actual stack tag");
+            strictME.me.get(0)
+                .setTagCompound((NBTTagCompound) tag.copy());
+            check(NekoTradeMatcher.plan(trade, null, strictME) != null, "ME exact NBT is accepted");
+            NekoTrade output = new NekoTrade();
+            output.getToItems()
+                .add(choice);
+            Random random = new Random(123);
+            boolean sawIron = false, sawGold = false;
+            for (int i = 0; i < 50; i++) {
+                NekoBigItemStack rolled = NekoTradeMatcher.rollOutputs(output, random)
+                    .get(0);
+                if (rolled.getBaseStack()
+                    .getItem() == Items.iron_ingot) {
+                    sawIron = true;
+                    check(rolled.getStackSize() == 2, "iron amount");
+                } else {
+                    sawGold = true;
+                    check(rolled.getStackSize() == 3, "gold amount");
+                }
+            }
+            check(sawIron && sawGold, "both outputs rolled");
+            check(
+                !NekoTradeExecutor.outputsFit(java.util.Collections.singletonList(iron(Integer.MAX_VALUE)), 16),
+                "huge rolled output fails before stack expansion");
+            check(
+                !NekoTradeExecutor
+                    .outputsFit(java.util.Collections.singletonList(iron(Integer.MAX_VALUE)), Integer.MAX_VALUE),
+                "default unbounded accessor still cannot allocate millions of outputs");
+            check(
+                NekoTradeExecutor.outputsFit(java.util.Collections.singletonList(iron(1)), 1),
+                "small rolled alternative uses its actual capacity");
+            output.getToItems()
+                .clear();
+            output.getToItems()
+                .add(broad);
+            List<NekoBigItemStack> candidates = NekoTradeMatcher.outputCandidates(broad);
+            check(
+                candidates.get(0)
+                    .getBaseStack()
+                    .getItem() != Items.diamond,
+                "ore icon is never a candidate");
+            output.getToItems()
+                .clear();
+            output.getToItems()
+                .add(new NekoBigItemStack(5, "gtitTestNoSuchOre", new ItemStack(Items.diamond)));
+            check(NekoTradeMatcher.rollOutputs(output, random) == null, "empty ore rejects before charging");
+            OreDictionary.registerOre("gtitTestWildcard", new ItemStack(Items.coal, 1, OreDictionary.WILDCARD_VALUE));
+            output.getToItems()
+                .clear();
+            output.getToItems()
+                .add(new NekoBigItemStack(5, "gtitTestWildcard", new ItemStack(Items.diamond)));
             NekoBigItemStack rolled = NekoTradeMatcher.rollOutputs(output, random)
                 .get(0);
-            if (rolled.getBaseStack()
-                .getItem() == Items.iron_ingot) {
-                sawIron = true;
-                check(rolled.getStackSize() == 2, "iron amount");
-            } else {
-                sawGold = true;
-                check(rolled.getStackSize() == 3, "gold amount");
+            check(
+                rolled.getBaseStack()
+                    .getItemDamage() == 0 && rolled.getStackSize() == 5,
+                "wildcard outputs concrete meta zero");
+            NekoTradePhysicalOutputTest.run();
+            executeAndCompensate();
+            oneTimeCooldown();
+            parserAndWallet();
+            com.miaokatze.gtit.trade.NekoTradeJson.validateDepth("{\"trades\":[{\"alternatives\":[{\"amount\":1}]}]}");
+            StringBuilder deep = new StringBuilder();
+            for (int i = 0; i < 10000; i++) deep.append("{\"alternatives\":[");
+            deep.append("{}");
+            for (int i = 0; i < 10000; i++) deep.append("]}");
+            boolean depthRejected = false;
+            try {
+                com.miaokatze.gtit.trade.NekoTradeJson.validateDepth(deep.toString());
+            } catch (com.google.gson.JsonParseException expected) {
+                depthRejected = true;
             }
-        }
-        check(sawIron && sawGold, "both outputs rolled");
-        check(
-            !NekoTradeExecutor.outputsFit(java.util.Collections.singletonList(iron(Integer.MAX_VALUE)), 16),
-            "huge rolled output fails before stack expansion");
-        check(
-            !NekoTradeExecutor
-                .outputsFit(java.util.Collections.singletonList(iron(Integer.MAX_VALUE)), Integer.MAX_VALUE),
-            "default unbounded accessor still cannot allocate millions of outputs");
-        check(
-            NekoTradeExecutor.outputsFit(java.util.Collections.singletonList(iron(1)), 1),
-            "small rolled alternative uses its actual capacity");
-        output.getToItems()
-            .clear();
-        output.getToItems()
-            .add(broad);
-        List<NekoBigItemStack> candidates = NekoTradeMatcher.outputCandidates(broad);
-        check(
-            candidates.get(0)
-                .getBaseStack()
-                .getItem() != Items.diamond,
-            "ore icon is never a candidate");
-        output.getToItems()
-            .clear();
-        output.getToItems()
-            .add(new NekoBigItemStack(5, "gtitTestNoSuchOre", new ItemStack(Items.diamond)));
-        check(NekoTradeMatcher.rollOutputs(output, random) == null, "empty ore rejects before charging");
-        OreDictionary.registerOre("gtitTestWildcard", new ItemStack(Items.coal, 1, OreDictionary.WILDCARD_VALUE));
-        output.getToItems()
-            .clear();
-        output.getToItems()
-            .add(new NekoBigItemStack(5, "gtitTestWildcard", new ItemStack(Items.diamond)));
-        NekoBigItemStack rolled = NekoTradeMatcher.rollOutputs(output, random)
-            .get(0);
-        check(
-            rolled.getBaseStack()
-                .getItemDamage() == 0 && rolled.getStackSize() == 5,
-            "wildcard outputs concrete meta zero");
-        NekoTradePhysicalOutputTest.run();
-        executeAndCompensate();
-        oneTimeCooldown();
-        parserAndWallet();
-        com.miaokatze.gtit.trade.NekoTradeJson.validateDepth("{\"trades\":[{\"alternatives\":[{\"amount\":1}]}]}");
-        StringBuilder deep = new StringBuilder();
-        for (int i = 0; i < 10000; i++) deep.append("{\"alternatives\":[");
-        deep.append("{}");
-        for (int i = 0; i < 10000; i++) deep.append("]}");
-        boolean depthRejected = false;
-        try {
-            com.miaokatze.gtit.trade.NekoTradeJson.validateDepth(deep.toString());
-        } catch (com.google.gson.JsonParseException expected) {
-            depthRejected = true;
-        }
-        check(depthRejected, "deep JSON is rejected iteratively before Gson recursion");
-        NBTTagCompound nested = iron(1).writeToNBT();
-        net.minecraft.nbt.NBTTagList nestedOptions = new net.minecraft.nbt.NBTTagList();
-        nestedOptions.appendTag(choice.writeToNBT());
-        nested.setTag("Alternatives", nestedOptions);
-        check(NekoBigItemStack.loadFromNBT(nested) == null, "nested NBT alternatives fail closed before recursion");
-        System.out.println(
-            "NekoTradeMatchingTest: PASS (overlap, OR quantities, NBT, JSON, ME, random, empty and wildcard ore)");
+            check(depthRejected, "deep JSON is rejected iteratively before Gson recursion");
+            NBTTagCompound nested = iron(1).writeToNBT();
+            net.minecraft.nbt.NBTTagList nestedOptions = new net.minecraft.nbt.NBTTagList();
+            nestedOptions.appendTag(choice.writeToNBT());
+            nested.setTag("Alternatives", nestedOptions);
+            check(NekoBigItemStack.loadFromNBT(nested) == null, "nested NBT alternatives fail closed before recursion");
+            System.out.println(
+                "NekoTradeMatchingTest: PASS (overlap, OR quantities, NBT, JSON, ME, random, empty and wildcard ore)");
         } finally {
             NekoHistoryManager.INSTANCE.unloadAll();
             com.miaokatze.gtit.trade.NekoWalletManager.INSTANCE.unloadAll();
             teamAvailability.set(null, previousTeamAvailability);
-            try (java.util.stream.Stream<java.nio.file.Path> paths = java.nio.file.Files.walk(ledgerDirectory.toPath())) {
+            try (java.util.stream.Stream<java.nio.file.Path> paths = java.nio.file.Files
+                .walk(ledgerDirectory.toPath())) {
                 for (java.nio.file.Path path : paths.sorted(java.util.Comparator.reverseOrder())
                     .collect(java.util.stream.Collectors.toList())) java.nio.file.Files.delete(path);
             }

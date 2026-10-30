@@ -383,8 +383,7 @@ public final class PocketFluidTransfer {
             return;
         }
         // fillFluidContainer 是纯查询（返回注册表里那份满容器的克隆），不消耗入参 ⇒ 可以先拿它探形状
-        final ItemStack product = FluidContainerRegistry
-            .fillFluidContainer(sizedFluid(bar, perUnit), unit);
+        final ItemStack product = FluidContainerRegistry.fillFluidContainer(sizedFluid(bar, perUnit), unit);
         if (product == null) {
             // 注册表里没有"该流体 + 该空容器"这一对 ⇒ 换一种流体或换容器
             cells.abandoned(sourceIndex, KEY_UNSUPPORTED_CONTAINER);

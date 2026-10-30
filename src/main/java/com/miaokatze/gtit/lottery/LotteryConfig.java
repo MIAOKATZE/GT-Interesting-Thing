@@ -90,7 +90,8 @@ public class LotteryConfig {
             }
             return obj;
         })
-        .registerTypeAdapter(NekoBigItemStack.class,
+        .registerTypeAdapter(
+            NekoBigItemStack.class,
             (JsonDeserializer<NekoBigItemStack>) (json, typeOfT, context) -> parseCostItem(json))
         .create();
 
@@ -98,21 +99,24 @@ public class LotteryConfig {
     public static NekoBigItemStack parseCostItem(JsonElement json) {
         if (json == null || !json.isJsonObject()) throw new JsonParseException("Invalid lottery cost entry");
         JsonObject obj = json.getAsJsonObject();
-        String itemId = obj.has("item") ? obj.get("item").getAsString().trim() : "";
+        String itemId = obj.has("item") ? obj.get("item")
+            .getAsString()
+            .trim() : "";
         int meta = exactInt(obj, "meta", 0);
         int amount = exactInt(obj, "amount", 1);
         if (meta < 0 || meta > 32767 || amount <= 0)
             throw new JsonParseException("Invalid lottery cost quantity or metadata: " + itemId);
-        String oreDict = obj.has("oreDict") ? obj.get("oreDict").getAsString() : "";
+        String oreDict = obj.has("oreDict") ? obj.get("oreDict")
+            .getAsString() : "";
         String[] parts = itemId.split(":", 2);
         Item item = parts.length == 2 ? GameRegistry.findItem(parts[0], parts[1]) : null;
         if (item == null) throw new JsonParseException("Unavailable lottery cost item: " + itemId);
         ItemStack stack = new ItemStack(item, 1, meta);
         if (obj.has("nbtBase64")) {
-            String encoded = obj.get("nbtBase64").getAsString();
+            String encoded = obj.get("nbtBase64")
+                .getAsString();
             NBTTagCompound nbt = NbtBase64Util.nbtFromBase64(encoded);
-            if (!encoded.isEmpty() && nbt == null)
-                throw new JsonParseException("Invalid lottery cost NBT: " + itemId);
+            if (!encoded.isEmpty() && nbt == null) throw new JsonParseException("Invalid lottery cost NBT: " + itemId);
             if (nbt != null) stack.setTagCompound(nbt);
         }
         return new NekoBigItemStack(amount, oreDict, stack);
@@ -121,7 +125,9 @@ public class LotteryConfig {
     private static int exactInt(JsonObject obj, String key, int fallback) {
         if (!obj.has(key)) return fallback;
         try {
-            return obj.get(key).getAsBigDecimal().intValueExact();
+            return obj.get(key)
+                .getAsBigDecimal()
+                .intValueExact();
         } catch (RuntimeException invalid) {
             throw new JsonParseException("Lottery cost " + key + " must be an exact int", invalid);
         }
@@ -148,16 +154,20 @@ public class LotteryConfig {
 
     private static LotteryConfigData parseConfig(String json) {
         JsonElement root = new JsonParser().parse(json);
-        if (!root.isJsonObject() || !root.getAsJsonObject().has("pools")
-            || !root.getAsJsonObject().get("pools").isJsonArray())
+        if (!root.isJsonObject() || !root.getAsJsonObject()
+            .has("pools")
+            || !root.getAsJsonObject()
+                .get("pools")
+                .isJsonArray())
             throw new JsonParseException("Lottery configuration requires a pools array");
-        for (JsonElement element : root.getAsJsonObject().getAsJsonArray("pools")) {
+        for (JsonElement element : root.getAsJsonObject()
+            .getAsJsonArray("pools")) {
             if (!element.isJsonObject()) continue;
             JsonObject pool = element.getAsJsonObject();
             if (exactInt(pool, "costPerDraw", 0) < 0)
                 throw new JsonParseException("Invalid legacy lottery payment amount");
-            if (pool.has("costItems") && !pool.get("costItems").isJsonArray())
-                throw new JsonParseException("Lottery costs must be an array");
+            if (pool.has("costItems") && !pool.get("costItems")
+                .isJsonArray()) throw new JsonParseException("Lottery costs must be an array");
         }
         return GSON.fromJson(root, LotteryConfigData.class);
     }
@@ -251,7 +261,8 @@ public class LotteryConfig {
      */
     public static void save(LotteryConfigData data) {
         if (data == null) return;
-        if (data.isLoadFailed()) throw new IllegalStateException("Repair the existing lottery configuration before editing");
+        if (data.isLoadFailed())
+            throw new IllegalStateException("Repair the existing lottery configuration before editing");
         try {
             // v1.7.7 G3②：保存前再次截断，防御运行期条目被动态追加到超过上限
             if (data.pools != null) {

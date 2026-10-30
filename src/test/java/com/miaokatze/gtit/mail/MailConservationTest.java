@@ -11,7 +11,6 @@ import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 
-
 /** Actual mail models/manager and NBT; no server, network, player or Forge drop event required. */
 public class MailConservationTest {
 
@@ -23,19 +22,19 @@ public class MailConservationTest {
             ready.setAccessible(true);
             ready.setBoolean(MailManager.INSTANCE, false);
         } catch (NoSuchFieldException legacyBaseline) { /* Pre-fence baseline comparison. */ }
-        String[] cases = {
-            "largeAttachmentCountsAndTagsSurviveNbt", "legacyByteCountRemainsReadable",
+        String[] cases = { "largeAttachmentCountsAndTagsSurviveNbt", "legacyByteCountRemainsReadable",
             "fullMailboxNeverEvictsExistingAttachments", "fullMailboxDefersFirstAndOnceRewardsWithoutConsumingReceipts",
             "rejectedAndPartialDeliverySurviveReloadWithoutReplay", "completedRowsDoNotReplayWhenLaterRowIsRejected",
             "managerRetainsRejectedDropAfterPartialInsertion", "managerSplitsAcceptedDropsIntoLegalStacks",
             "failedWritesRetainSourceAndRemoveUncommittedMail", "corruptExistingMailboxNeverBecomesAnEmptyMailbox",
-            "worldInitializationSavesOldMailboxAndLoadsOnlyNewWorld", "failedWorldSwitchNeverServesOldMailAsNewWorld"
-        };
+            "worldInitializationSavesOldMailboxAndLoadsOnlyNewWorld", "failedWorldSwitchNeverServesOldMailAsNewWorld" };
         int failed = 0;
         for (String name : cases) {
-            if (args.length > 0 && "baseline".equals(args[0]) && (name.startsWith("rejected") || name.startsWith("completed"))) continue;
+            if (args.length > 0 && "baseline".equals(args[0])
+                && (name.startsWith("rejected") || name.startsWith("completed"))) continue;
             try {
-                MailConservationTest.class.getMethod(name).invoke(null);
+                MailConservationTest.class.getMethod(name)
+                    .invoke(null);
                 System.out.println("PASS " + name);
             } catch (ReflectiveOperationException failure) {
                 failed++;
@@ -45,17 +44,31 @@ public class MailConservationTest {
         if (failed != 0) throw new AssertionError(failed + " mail conservation regressions failed");
     }
 
-    private static void assertTrue(boolean value) { if (!value) throw new AssertionError("Expected true"); }
-    private static void assertFalse(boolean value) { if (value) throw new AssertionError("Expected false"); }
-    private static void assertSame(Object expected, Object actual) { if (expected != actual) throw new AssertionError("Identity changed"); }
-    private static void assertEquals(Object expected, Object actual) {
-        if (!java.util.Objects.equals(expected, actual)) throw new AssertionError("Expected " + expected + ", got " + actual);
+    private static void assertTrue(boolean value) {
+        if (!value) throw new AssertionError("Expected true");
     }
-    private static void fail(String message) { throw new AssertionError(message); }
+
+    private static void assertFalse(boolean value) {
+        if (value) throw new AssertionError("Expected false");
+    }
+
+    private static void assertSame(Object expected, Object actual) {
+        if (expected != actual) throw new AssertionError("Identity changed");
+    }
+
+    private static void assertEquals(Object expected, Object actual) {
+        if (!java.util.Objects.equals(expected, actual))
+            throw new AssertionError("Expected " + expected + ", got " + actual);
+    }
+
+    private static void fail(String message) {
+        throw new AssertionError(message);
+    }
 
     private static int deliver(Mail mail, java.util.function.Consumer<ItemStack> delivery) {
         try {
-            java.lang.reflect.Method method = Mail.class.getDeclaredMethod("deliverAttachments", java.util.function.Consumer.class);
+            java.lang.reflect.Method method = Mail.class
+                .getDeclaredMethod("deliverAttachments", java.util.function.Consumer.class);
             method.setAccessible(true);
             return (Integer) method.invoke(mail, delivery);
         } catch (ReflectiveOperationException failure) {
@@ -75,17 +88,31 @@ public class MailConservationTest {
         for (int amount : new int[] { 1, 16, 64, 127, 128, 255, 256, 4096, Integer.MAX_VALUE }) {
             Mail saved = reward(amount);
             Mail loaded = Mail.fromNBT(saved.writeToNBT());
-            assertEquals(amount, loaded.getAttachments().get(0).stackSize);
-            assertEquals(saved.getAttachments().get(0).getTagCompound(), loaded.getAttachments().get(0).getTagCompound());
+            assertEquals(
+                amount,
+                loaded.getAttachments()
+                    .get(0).stackSize);
+            assertEquals(
+                saved.getAttachments()
+                    .get(0)
+                    .getTagCompound(),
+                loaded.getAttachments()
+                    .get(0)
+                    .getTagCompound());
         }
     }
 
     public static void legacyByteCountRemainsReadable() {
         NBTTagCompound nbt = reward(16).writeToNBT();
-        NBTTagCompound item = nbt.getTagList("attachments", 10).getCompoundTagAt(0);
+        NBTTagCompound item = nbt.getTagList("attachments", 10)
+            .getCompoundTagAt(0);
         item.removeTag("gtitMailCount");
         item.removeTag("gtitMailRemaining");
-        assertEquals(16, Mail.fromNBT(nbt).getAttachments().get(0).stackSize);
+        assertEquals(
+            16,
+            Mail.fromNBT(nbt)
+                .getAttachments()
+                .get(0).stackSize);
     }
 
     public static void fullMailboxNeverEvictsExistingAttachments() {
@@ -95,7 +122,10 @@ public class MailConservationTest {
         for (int i = 1; i < MailManager.MAX_MAILS; i++) assertTrue(data.addMail(reward(64)));
         data.addMailForced(reward(256));
         assertSame(first, data.findMail(first.getId()));
-        assertEquals(MailManager.MAX_MAILS, data.getMails().size());
+        assertEquals(
+            MailManager.MAX_MAILS,
+            data.getMails()
+                .size());
     }
 
     public static void fullMailboxDefersFirstAndOnceRewardsWithoutConsumingReceipts() throws Exception {
@@ -103,7 +133,10 @@ public class MailConservationTest {
         Field dir = MailManager.class.getDeclaredField("saveDir");
         dir.setAccessible(true);
         Object originalDir = dir.get(manager);
-        dir.set(manager, Files.createTempDirectory("gtit-mail-conservation-").toFile());
+        dir.set(
+            manager,
+            Files.createTempDirectory("gtit-mail-conservation-")
+                .toFile());
         UUID player = UUID.randomUUID();
         MailData data = manager.getMailData(player);
         Mail old = reward(16);
@@ -125,7 +158,12 @@ public class MailConservationTest {
             assertTrue(manager.deliverPendingRewards(player));
             assertTrue(data.isFirstRewardReceived());
             assertFalse(data.hasReceivedOnce(id));
-            data.removeMail(data.getMails().get(data.getMails().size() - 1).getId());
+            data.removeMail(
+                data.getMails()
+                    .get(
+                        data.getMails()
+                            .size() - 1)
+                    .getId());
             assertTrue(manager.deliverPendingRewards(player));
             assertTrue(data.hasReceivedOnce(id));
             assertFalse(manager.deliverPendingRewards(player));
@@ -133,7 +171,12 @@ public class MailConservationTest {
             reload.readFromNBT(data.writeToNBT());
             assertTrue(reload.isFirstRewardReceived());
             assertTrue(reload.hasReceivedOnce(id));
-            assertEquals(128, reload.getMails().get(0).getAttachments().get(0).stackSize);
+            assertEquals(
+                128,
+                reload.getMails()
+                    .get(0)
+                    .getAttachments()
+                    .get(0).stackSize);
         } finally {
             rewards.remove(id);
             first.set(manager, oldFirst);
@@ -152,22 +195,34 @@ public class MailConservationTest {
         final int[] delivered = { 16 };
         assertEquals(1, deliver(reload, remainder -> {
             assertEquals(240, remainder.stackSize);
-            assertEquals("exact-original-nbt", remainder.getTagCompound().getString("owner"));
+            assertEquals(
+                "exact-original-nbt",
+                remainder.getTagCompound()
+                    .getString("owner"));
             delivered[0] += remainder.stackSize;
             remainder.stackSize = 0;
         }));
         assertEquals(256, delivered[0]);
         assertFalse(reload.hasUnclaimedAttachments());
         assertEquals(0, deliver(reload, remainder -> fail("Completed attachment must not replay")));
-        assertEquals(256, reload.getAttachments().get(0).stackSize);
-        assertFalse(Mail.fromNBT(reload.writeToNBT()).hasUnclaimedAttachments());
+        assertEquals(
+            256,
+            reload.getAttachments()
+                .get(0).stackSize);
+        assertFalse(
+            Mail.fromNBT(reload.writeToNBT())
+                .hasUnclaimedAttachments());
     }
 
     public static void completedRowsDoNotReplayWhenLaterRowIsRejected() {
-        Mail mail = new Mail("mixed", "", "", Arrays.asList(new ItemStack(Items.iron_ingot, 16), new ItemStack(Items.gold_ingot, 32)));
-        assertEquals(1, deliver(mail, remainder -> {
-            if (remainder.getItem() == Items.iron_ingot) remainder.stackSize = 0;
-        }));
+        Mail mail = new Mail(
+            "mixed",
+            "",
+            "",
+            Arrays.asList(new ItemStack(Items.iron_ingot, 16), new ItemStack(Items.gold_ingot, 32)));
+        assertEquals(
+            1,
+            deliver(mail, remainder -> { if (remainder.getItem() == Items.iron_ingot) remainder.stackSize = 0; }));
         Mail reload = Mail.fromNBT(mail.writeToNBT());
         assertEquals(1, deliver(reload, remainder -> {
             assertSame(Items.gold_ingot, remainder.getItem());
@@ -176,14 +231,20 @@ public class MailConservationTest {
         }));
         assertFalse(reload.hasUnclaimedAttachments());
     }
+
     public static void managerRetainsRejectedDropAfterPartialInsertion() throws Exception {
         net.minecraft.entity.player.EntityPlayerMP player = player(false);
         for (int i = 0; i < player.inventory.mainInventory.length; i++)
-            player.inventory.mainInventory[i] = new ItemStack(net.minecraft.item.Item.getItemFromBlock(net.minecraft.init.Blocks.cobblestone), 64);
-        ItemStack merge = reward(63).getAttachments().get(0).copy();
+            player.inventory.mainInventory[i] = new ItemStack(
+                net.minecraft.item.Item.getItemFromBlock(net.minecraft.init.Blocks.cobblestone),
+                64);
+        ItemStack merge = reward(63).getAttachments()
+            .get(0)
+            .copy();
         player.inventory.mainInventory[0] = merge;
         Mail mail = reward(16);
-        MailManager.INSTANCE.getMailData(player.getUniqueID()).addMail(mail);
+        MailManager.INSTANCE.getMailData(player.getUniqueID())
+            .addMail(mail);
         try {
             assertEquals(1, MailManager.INSTANCE.claimAttachments(player.getUniqueID(), mail.getId(), player));
             assertEquals(64, player.inventory.mainInventory[0].stackSize);
@@ -201,9 +262,12 @@ public class MailConservationTest {
     public static void managerSplitsAcceptedDropsIntoLegalStacks() throws Exception {
         net.minecraft.entity.player.EntityPlayerMP player = player(true);
         for (int i = 0; i < player.inventory.mainInventory.length; i++)
-            player.inventory.mainInventory[i] = new ItemStack(net.minecraft.item.Item.getItemFromBlock(net.minecraft.init.Blocks.cobblestone), 64);
+            player.inventory.mainInventory[i] = new ItemStack(
+                net.minecraft.item.Item.getItemFromBlock(net.minecraft.init.Blocks.cobblestone),
+                64);
         Mail mail = reward(256);
-        MailManager.INSTANCE.getMailData(player.getUniqueID()).addMail(mail);
+        MailManager.INSTANCE.getMailData(player.getUniqueID())
+            .addMail(mail);
         try {
             assertEquals(1, MailManager.INSTANCE.claimAttachments(player.getUniqueID(), mail.getId(), player));
             assertEquals(256, ((DropWorld) player.worldObj).delivered);
@@ -227,14 +291,21 @@ public class MailConservationTest {
         directory.set(manager, root.toFile());
         Field cache = MailManager.class.getDeclaredField("mailDataMap");
         cache.setAccessible(true);
-        @SuppressWarnings("unchecked") Map<UUID, MailData> cached = (Map<UUID, MailData>) cache.get(manager);
+        @SuppressWarnings("unchecked")
+        Map<UUID, MailData> cached = (Map<UUID, MailData>) cache.get(manager);
         MailData data = new MailData();
         cached.put(id, data);
         try {
             boolean failed = false;
-            try { manager.sendMail(id, reward(16)); } catch (IllegalStateException expected) { failed = true; }
+            try {
+                manager.sendMail(id, reward(16));
+            } catch (IllegalStateException expected) {
+                failed = true;
+            }
             assertTrue(failed);
-            assertTrue(data.getMails().isEmpty());
+            assertTrue(
+                data.getMails()
+                    .isEmpty());
             assertTrue(Files.exists(blocked.resolve("keep")));
         } finally {
             cached.remove(id);
@@ -255,7 +326,11 @@ public class MailConservationTest {
         Files.write(path, original);
         try {
             boolean failed = false;
-            try { manager.getMailData(id); } catch (IllegalStateException expected) { failed = true; }
+            try {
+                manager.getMailData(id);
+            } catch (IllegalStateException expected) {
+                failed = true;
+            }
             assertTrue(failed);
             manager.saveMailData(id);
             assertTrue(java.util.Arrays.equals(original, Files.readAllBytes(path)));
@@ -273,21 +348,33 @@ public class MailConservationTest {
         directory.setAccessible(true);
         directory.set(manager, oldRoot.toFile());
         Mail old = reward(256);
-        manager.getMailData(id).addMail(old);
+        manager.getMailData(id)
+            .addMail(old);
         net.minecraft.world.World world = player(false).worldObj;
-        Object saveHandler = java.lang.reflect.Proxy.newProxyInstance(MailConservationTest.class.getClassLoader(),
-            new Class<?>[] { net.minecraft.world.storage.ISaveHandler.class }, (proxy, method, arguments) ->
-                method.getName().equals("getWorldDirectory") ? newRoot.toFile() : null);
+        Object saveHandler = java.lang.reflect.Proxy.newProxyInstance(
+            MailConservationTest.class.getClassLoader(),
+            new Class<?>[] { net.minecraft.world.storage.ISaveHandler.class },
+            (proxy, method, arguments) -> method.getName()
+                .equals("getWorldDirectory") ? newRoot.toFile() : null);
         Field handler = net.minecraft.world.World.class.getDeclaredField("saveHandler");
         handler.setAccessible(true);
         handler.set(world, saveHandler);
         manager.init(world);
         assertTrue(Files.exists(oldRoot.resolve(id + ".dat")));
-        assertTrue(manager.getMailData(id).getMails().isEmpty());
-        NBTTagCompound saved = net.minecraft.nbt.CompressedStreamTools.read(oldRoot.resolve(id + ".dat").toFile());
+        assertTrue(
+            manager.getMailData(id)
+                .getMails()
+                .isEmpty());
+        NBTTagCompound saved = net.minecraft.nbt.CompressedStreamTools.read(
+            oldRoot.resolve(id + ".dat")
+                .toFile());
         MailData oldData = new MailData();
         oldData.readFromNBT(saved.getCompoundTag("mail"));
-        assertEquals(256, oldData.findMail(old.getId()).getAttachments().get(0).stackSize);
+        assertEquals(
+            256,
+            oldData.findMail(old.getId())
+                .getAttachments()
+                .get(0).stackSize);
         manager.unloadMailData(id);
     }
 
@@ -299,23 +386,37 @@ public class MailConservationTest {
         Field directory = MailManager.class.getDeclaredField("saveDir");
         directory.setAccessible(true);
         directory.set(manager, oldRoot.toFile());
-        manager.getMailData(id).addMail(reward(16));
+        manager.getMailData(id)
+            .addMail(reward(16));
         java.nio.file.Path blocker = Files.createDirectory(oldRoot.resolve(id + ".dat"));
         Files.write(blocker.resolve("keep"), new byte[] { 1 });
         net.minecraft.world.World world = player(false).worldObj;
-        Object handler = java.lang.reflect.Proxy.newProxyInstance(MailConservationTest.class.getClassLoader(),
-            new Class<?>[] { net.minecraft.world.storage.ISaveHandler.class }, (proxy, method, arguments) ->
-                method.getName().equals("getWorldDirectory") ? newRoot.toFile() : null);
+        Object handler = java.lang.reflect.Proxy.newProxyInstance(
+            MailConservationTest.class.getClassLoader(),
+            new Class<?>[] { net.minecraft.world.storage.ISaveHandler.class },
+            (proxy, method, arguments) -> method.getName()
+                .equals("getWorldDirectory") ? newRoot.toFile() : null);
         Field save = net.minecraft.world.World.class.getDeclaredField("saveHandler");
         save.setAccessible(true);
         save.set(world, handler);
         boolean failed = false;
-        try { manager.init(world); } catch (IllegalStateException expected) { failed = true; }
+        try {
+            manager.init(world);
+        } catch (IllegalStateException expected) {
+            failed = true;
+        }
         assertTrue(failed);
         failed = false;
-        try { manager.getMailData(id); } catch (IllegalStateException expected) { failed = true; }
+        try {
+            manager.getMailData(id);
+        } catch (IllegalStateException expected) {
+            failed = true;
+        }
         assertTrue(failed);
-        assertFalse(Files.exists(newRoot.resolve("gtit_mail").resolve(id + ".dat")));
+        assertFalse(
+            Files.exists(
+                newRoot.resolve("gtit_mail")
+                    .resolve(id + ".dat")));
         assertTrue(Files.exists(blocker.resolve("keep")));
     }
 
@@ -328,8 +429,8 @@ public class MailConservationTest {
         provider.setAccessible(true);
         provider.set(world, new net.minecraft.world.WorldProviderSurface());
         world.accept = accept;
-        net.minecraft.entity.player.EntityPlayerMP player = (net.minecraft.entity.player.EntityPlayerMP)
-            unsafe.allocateInstance(net.minecraft.entity.player.EntityPlayerMP.class);
+        net.minecraft.entity.player.EntityPlayerMP player = (net.minecraft.entity.player.EntityPlayerMP) unsafe
+            .allocateInstance(net.minecraft.entity.player.EntityPlayerMP.class);
         Field id = net.minecraft.entity.Entity.class.getDeclaredField("entityUniqueID");
         id.setAccessible(true);
         id.set(player, UUID.randomUUID());
@@ -337,18 +438,28 @@ public class MailConservationTest {
         player.inventory = new net.minecraft.entity.player.InventoryPlayer(player);
         player.capabilities = new net.minecraft.entity.player.PlayerCapabilities();
         player.inventoryContainer = new net.minecraft.inventory.Container() {
-            @Override public boolean canInteractWith(net.minecraft.entity.player.EntityPlayer ignored) { return true; }
+
+            @Override
+            public boolean canInteractWith(net.minecraft.entity.player.EntityPlayer ignored) {
+                return true;
+            }
         };
         return player;
     }
 
     /** Only world acceptance is controlled; actual ItemStack, player inventory, EntityItem and manager execute. */
     private static final class DropWorld extends net.minecraft.world.WorldServer {
+
         boolean accept;
         int calls;
         int delivered;
-        private DropWorld() { super(null, null, "", 0, null, null); }
-        @Override public boolean spawnEntityInWorld(net.minecraft.entity.Entity entity) {
+
+        private DropWorld() {
+            super(null, null, "", 0, null, null);
+        }
+
+        @Override
+        public boolean spawnEntityInWorld(net.minecraft.entity.Entity entity) {
             calls++;
             ItemStack stack = ((net.minecraft.entity.item.EntityItem) entity).getEntityItem();
             if (accept) {

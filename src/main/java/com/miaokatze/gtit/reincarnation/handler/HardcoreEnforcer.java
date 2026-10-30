@@ -154,8 +154,7 @@ public final class HardcoreEnforcer {
 
     /** LAN publication revokes destructive enforcement, without changing its escrow/license. */
     public static void cancelForSharedSession() {
-        if (ReincarnationHandler.isStrictSinglePlayer()
-            || (!INSTANCE.active && INSTANCE.deleteCountdownTicks < 0)) {
+        if (ReincarnationHandler.isStrictSinglePlayer() || (!INSTANCE.active && INSTANCE.deleteCountdownTicks < 0)) {
             return;
         }
         EntityPlayerMP player = INSTANCE.enforcedPlayer;
@@ -166,7 +165,8 @@ public final class HardcoreEnforcer {
                     field.setBoolean(INSTANCE.originalWorldInfo, false);
                 }
             }
-            if (player != null && player.theItemInWorldManager != null && INSTANCE.gameModeOverridden
+            if (player != null && player.theItemInWorldManager != null
+                && INSTANCE.gameModeOverridden
                 && INSTANCE.originalGameType != null
                 && player.theItemInWorldManager.getGameType() == WorldSettings.GameType.SURVIVAL) {
                 player.theItemInWorldManager.setGameType(INSTANCE.originalGameType);

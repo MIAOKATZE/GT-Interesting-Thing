@@ -91,7 +91,8 @@ public final class WalletCreditCapacityTest {
             SimpleAssert.eq(1000L, total.get(), "total accepted equals original headroom");
             SimpleAssert.eq(Integer.MAX_VALUE, wallet.getCount(COIN), "shared wallet remains bounded");
         } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
+            Thread.currentThread()
+                .interrupt();
             throw new AssertionError("concurrent credit test interrupted", interrupted);
         } finally {
             start.countDown();

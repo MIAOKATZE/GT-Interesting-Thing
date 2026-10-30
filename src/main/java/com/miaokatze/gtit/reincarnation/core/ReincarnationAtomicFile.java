@@ -22,8 +22,11 @@ public final class ReincarnationAtomicFile {
         try {
             // A leftover temporary symlink must not redirect a checkpoint into another file.
             try (FileChannel channel = FileChannel.open(
-                temporary, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING,
-                StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS)) {
+                temporary,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE,
+                LinkOption.NOFOLLOW_LINKS)) {
                 opened = true;
                 ByteBuffer buffer = ByteBuffer.wrap(bytes);
                 while (buffer.hasRemaining()) {

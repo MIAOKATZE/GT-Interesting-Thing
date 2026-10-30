@@ -8,8 +8,6 @@ import java.util.UUID;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
-
-import com.miaokatze.gtit.common.items.pocket.PocketCarrierIdentity;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fluids.FluidStack;
@@ -19,6 +17,7 @@ import com.miaokatze.gtit.common.items.pocket.EssenceNativeChannels;
 import com.miaokatze.gtit.common.items.pocket.ItemNekoDimensionPocket;
 import com.miaokatze.gtit.common.items.pocket.PocketAeChannelOps;
 import com.miaokatze.gtit.common.items.pocket.PocketBindFlow;
+import com.miaokatze.gtit.common.items.pocket.PocketCarrierIdentity;
 import com.miaokatze.gtit.common.items.pocket.PocketCellBindings;
 import com.miaokatze.gtit.common.items.pocket.PocketCellProbe;
 import com.miaokatze.gtit.common.items.pocket.PocketChannelManager;
@@ -1138,7 +1137,9 @@ final class NekoPocketServerHandler {
         if (target == null || target.inventory == null || pocket == null) {
             return false;
         }
-        return PocketCarrierIdentity.isHeld(pocket, target.inventory.mainInventory,
+        return PocketCarrierIdentity.isHeld(
+            pocket,
+            target.inventory.mainInventory,
             com.miaokatze.gtit.common.items.pocket.PocketWornTapHandler.safeBaubles(target));
     }
 

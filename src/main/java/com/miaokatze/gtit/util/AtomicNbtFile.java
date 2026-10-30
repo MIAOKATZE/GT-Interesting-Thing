@@ -15,7 +15,8 @@ public final class AtomicNbtFile {
     private AtomicNbtFile() {}
 
     public static void write(NBTTagCompound value, File destination) throws IOException {
-        Path target = destination.toPath().toAbsolutePath();
+        Path target = destination.toPath()
+            .toAbsolutePath();
         Path temporary = Files.createTempFile(target.getParent(), destination.getName() + ".", ".tmp");
         boolean installed = false;
         try {

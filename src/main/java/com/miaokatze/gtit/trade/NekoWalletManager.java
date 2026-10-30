@@ -68,7 +68,11 @@ public class NekoWalletManager {
      * 在 CommonProxy.serverStarted 中调用（需要 World 对象）
      */
     public void init(World world) {
-        bindSaveDirectory(new File(world.getSaveHandler().getWorldDirectory(), "gtit_neko_wallets"));
+        bindSaveDirectory(
+            new File(
+                world.getSaveHandler()
+                    .getWorldDirectory(),
+                "gtit_neko_wallets"));
     }
 
     /** World-session boundary. A failed old-world save must never become a new-world ledger. */

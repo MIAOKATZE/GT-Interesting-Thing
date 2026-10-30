@@ -230,7 +230,8 @@ public class NekoTradeHistory {
             return;
         }
         for (String key : new String[] { "lastTradeTime", "tradeCount", "cooldownTradeCount" }) {
-            if (!nbt.hasKey(key, 3) && !nbt.hasKey(key, 4)) throw new IllegalArgumentException("Invalid history " + key);
+            if (!nbt.hasKey(key, 3) && !nbt.hasKey(key, 4))
+                throw new IllegalArgumentException("Invalid history " + key);
         }
         long time = nbt.getLong("lastTradeTime"), count = nbt.getLong("tradeCount");
         long cooldownCount = nbt.getLong("cooldownTradeCount");

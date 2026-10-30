@@ -274,7 +274,10 @@ public class NekoTradeExecutor {
                 return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_ITEMS);
             long minimum = Long.MAX_VALUE;
             for (NekoBigItemStack item : candidates) {
-                int maximum = Math.min(64, item.getBaseStack().getMaxStackSize());
+                int maximum = Math.min(
+                    64,
+                    item.getBaseStack()
+                        .getMaxStackSize());
                 if (maximum <= 0) return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_ITEMS);
                 long count = ((long) item.getStackSize() + maximum - 1) / maximum;
                 minimum = Math.min(minimum, count);
@@ -308,8 +311,8 @@ public class NekoTradeExecutor {
         return result;
     }
 
-    private NekoTradeResult executeTradeLocked(UUID playerId, UUID groupId, int tradeIndex, InputSlotAccessor inputSlots,
-        OutputSlotAccessor outputSlots) {
+    private NekoTradeResult executeTradeLocked(UUID playerId, UUID groupId, int tradeIndex,
+        InputSlotAccessor inputSlots, OutputSlotAccessor outputSlots) {
         NekoTradeGroup group = NekoTradeDatabase.INSTANCE.getTradeGroup(groupId);
         if (group == null || tradeIndex < 0
             || tradeIndex >= group.getTrades()
@@ -433,7 +436,10 @@ public class NekoTradeExecutor {
         long count = 0;
         long limit = Math.min(4096, availableSlots);
         for (NekoBigItemStack item : rolled) {
-            int maximum = Math.min(64, item.getBaseStack().getMaxStackSize());
+            int maximum = Math.min(
+                64,
+                item.getBaseStack()
+                    .getMaxStackSize());
             if (maximum <= 0 || item.getStackSize() <= 0) return false;
             count += ((long) item.getStackSize() + maximum - 1) / maximum;
             if (count > limit) return false;

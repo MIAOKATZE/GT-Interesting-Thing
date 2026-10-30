@@ -14,8 +14,8 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.annotations.SerializedName;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
-import com.miaokatze.gtit.util.RewardConfigFile;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.util.RewardConfigFile;
 
 /**
  * 每日在线时间奖励配置（v1.7.6 G2③；v1.7.7 G4 存储结构重构）
@@ -51,7 +51,8 @@ public class OnlineTimeConfig {
     private static boolean unavailable;
 
     private static void requireAvailable() {
-        if (unavailable) throw new IllegalStateException("Online-time reward configuration is unavailable; repair the file and reload");
+        if (unavailable) throw new IllegalStateException(
+            "Online-time reward configuration is unavailable; repair the file and reload");
     }
 
     /** 在线奖励档位列表（按 requiredSeconds 升序） */
@@ -105,8 +106,8 @@ public class OnlineTimeConfig {
             }
             if (Files.exists(path)) {
                 JsonObject root = RewardConfigFile.readObject(path);
-                if (root.has("tiers") && !root.get("tiers").isJsonArray())
-                    throw new IllegalArgumentException("Invalid online reward tiers");
+                if (root.has("tiers") && !root.get("tiers")
+                    .isJsonArray()) throw new IllegalArgumentException("Invalid online reward tiers");
                 ConfigData data = GSON.fromJson(root, ConfigData.class);
                 tiers = root.has("tiers") ? toTierList(data.tiers) : createDefaultTiers();
                 unavailable = false;
@@ -117,7 +118,9 @@ public class OnlineTimeConfig {
             }
         } catch (Exception failure) {
             unavailable = true;
-            throw new IllegalStateException("Unable to load online-time reward configuration; existing files are preserved", failure);
+            throw new IllegalStateException(
+                "Unable to load online-time reward configuration; existing files are preserved",
+                failure);
         }
     }
 

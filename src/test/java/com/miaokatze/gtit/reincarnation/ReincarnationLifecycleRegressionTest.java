@@ -54,7 +54,10 @@ public final class ReincarnationLifecycleRegressionTest {
                 openGui = disk;
             }
             store.save(openGui);
-            SimpleAssert.that(!store.load(UUID).canClaimGrant(), "closing old GUI cannot recreate claimed reward");
+            SimpleAssert.that(
+                !store.load(UUID)
+                    .canClaimGrant(),
+                "closing old GUI cannot recreate claimed reward");
         } finally {
             ReincarnationWorldDeletion.deleteTree(base);
         }
@@ -70,7 +73,8 @@ public final class ReincarnationLifecycleRegressionTest {
         ReincarnationGrantProgress progress = new ReincarnationGrantProgress(0);
         int[] checkpoint = { 0 };
         int[] deliveries = { 0 };
-        expectFailure(() -> progress.deliver(0, () -> { throw new IllegalStateException("handoff"); }, n -> checkpoint[0] = n));
+        expectFailure(
+            () -> progress.deliver(0, () -> { throw new IllegalStateException("handoff"); }, n -> checkpoint[0] = n));
         progress.deliver(1, () -> deliveries[0]++, n -> checkpoint[0] = n);
         SimpleAssert.eq(0, progress.getDelivered(), "later scheduled item cannot skip failed item");
         SimpleAssert.eq(0, deliveries[0], "out-of-order item not delivered");
@@ -85,13 +89,18 @@ public final class ReincarnationLifecycleRegressionTest {
     private static void failedCheckpointRetriesBeforeNextHandoff() {
         ReincarnationGrantProgress progress = new ReincarnationGrantProgress(0);
         int[] deliveries = { 0 };
-        expectFailure(() -> progress.deliver(0, () -> deliveries[0]++, n -> {
-            if (n > 0) throw new IllegalStateException("disk failure");
-        }));
-        SimpleAssert.eq(1, progress.getDelivered(), "successful handoff retained in session despite checkpoint failure");
-        expectFailure(() -> progress.deliver(1, () -> deliveries[0]++, n -> {
-            throw new IllegalStateException("disk still unavailable");
-        }));
+        expectFailure(
+            () -> progress.deliver(
+                0,
+                () -> deliveries[0]++,
+                n -> { if (n > 0) throw new IllegalStateException("disk failure"); }));
+        SimpleAssert
+            .eq(1, progress.getDelivered(), "successful handoff retained in session despite checkpoint failure");
+        expectFailure(
+            () -> progress.deliver(
+                1,
+                () -> deliveries[0]++,
+                n -> { throw new IllegalStateException("disk still unavailable"); }));
         SimpleAssert.eq(1, deliveries[0], "no further handoff before previous checkpoint is durable");
         int[] checkpoint = { 0 };
         progress.deliver(1, () -> {
@@ -107,7 +116,9 @@ public final class ReincarnationLifecycleRegressionTest {
         int[] checkpoint = { 7 };
         int[] deliveries = { 0 };
         progress.deliver(7, () -> deliveries[0]++, n -> checkpoint[0] = n);
-        expectFailure(() -> progress.deliver(8, () -> { throw new IllegalStateException("suffix failure"); }, n -> checkpoint[0] = n));
+        expectFailure(
+            () -> progress
+                .deliver(8, () -> { throw new IllegalStateException("suffix failure"); }, n -> checkpoint[0] = n));
         ReincarnationGrantProgress resumed = new ReincarnationGrantProgress(checkpoint[0]);
         SimpleAssert.eq(8, resumed.getDelivered(), "unanimated suffix success is checkpointed before failure");
         resumed.deliver(8, () -> deliveries[0]++, n -> checkpoint[0] = n);
@@ -128,7 +139,8 @@ public final class ReincarnationLifecycleRegressionTest {
             Files.createSymbolicLink(root.resolve("dangling"), base.resolve("missing"));
             ReincarnationWorldDeletion.deleteTree(root);
             SimpleAssert.that(!Files.exists(root), "selected save deleted including links and nested files");
-            SimpleAssert.eq("keep", new String(Files.readAllBytes(sentinel), StandardCharsets.UTF_8), "linked save unchanged");
+            SimpleAssert
+                .eq("keep", new String(Files.readAllBytes(sentinel), StandardCharsets.UTF_8), "linked save unchanged");
         } finally {
             ReincarnationWorldDeletion.deleteTree(base);
         }
@@ -165,6 +177,7 @@ public final class ReincarnationLifecycleRegressionTest {
     }
 
     private interface Checked {
+
         void run() throws Exception;
     }
 }

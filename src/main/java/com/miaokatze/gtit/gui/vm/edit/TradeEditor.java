@@ -105,10 +105,15 @@ public final class TradeEditor {
     public void beginEdit(NekoTradeItemDisplay display) {
         if (display == null) return;
         NekoTradeGroup source = NekoTradeDatabase.INSTANCE.getTradeGroup(display.getGroupId());
-        if (source == null || display.getTradeIndex() < 0 || display.getTradeIndex() >= source.getTrades().size()) return;
-        NekoTrade original = source.getTrades().get(display.getTradeIndex());
+        if (source == null || display.getTradeIndex() < 0
+            || display.getTradeIndex() >= source.getTrades()
+                .size())
+            return;
+        NekoTrade original = source.getTrades()
+            .get(display.getTradeIndex());
         // The displayed row can lag a hot reload; never combine its old metadata with the new item choices.
-        if (!display.getDefinitionFingerprint().equals(NekoTradeDefinition.fingerprint(source, original))) {
+        if (!display.getDefinitionFingerprint()
+            .equals(NekoTradeDefinition.fingerprint(source, original))) {
             requestMainPanelRefresh.run();
             return;
         }
@@ -354,7 +359,8 @@ public final class TradeEditor {
                 .onMouseTapped(mouse -> {
                     if (deleteConfirmDialog == null || deleteConfirmPanel == null || editingDisplay == null)
                         return true;
-                    String target = editingDisplay.getGroupId().toString();
+                    String target = editingDisplay.getGroupId()
+                        .toString();
                     int targetIndex = editingDisplay.getTradeIndex();
                     String expected = editingFingerprint;
                     deleteConfirmDialog.setButtonText("是", "否");
@@ -568,7 +574,8 @@ public final class TradeEditor {
             if (!com.miaokatze.gtit.util.PacketStrings.fits(payload, limit)) {
                 net.minecraft.client.Minecraft.getMinecraft().thePlayer.addChatMessage(
                     new net.minecraft.util.ChatComponentText(
-                        "§c保存失败：交易数据超过 " + limit + " 字符或 "
+                        "§c保存失败：交易数据超过 " + limit
+                            + " 字符或 "
                             + com.miaokatze.gtit.util.PacketStrings.MAX_UTF8_BYTES
                             + " UTF-8 字节上限；请减少候选或物品 NBT，草稿已保留"));
                 return false;

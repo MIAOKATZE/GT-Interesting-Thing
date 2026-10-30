@@ -56,7 +56,10 @@ public final class NekoTradeDefinition {
     public static String editFingerprint(NekoTradeGroup group) {
         if (group == null) return "";
         NBTTagCompound definition = new NBTTagCompound();
-        definition.setString("id", group.getId().toString());
+        definition.setString(
+            "id",
+            group.getId()
+                .toString());
         definition.setInteger("tabId", group.getTabId());
         definition.setInteger("orderId", group.getOrderId());
         definition.setBoolean("defaultEntry", group.isDefaultEntry());
@@ -71,7 +74,9 @@ public final class NekoTradeDefinition {
     public static boolean matchesEdit(UUID groupId, int index, String expected) {
         if (expected == null || expected.length() != 64) return false;
         NekoTradeGroup group = NekoTradeDatabase.INSTANCE.getTradeGroup(groupId);
-        return group != null && index >= 0 && index < group.getTrades().size()
+        return group != null && index >= 0
+            && index < group.getTrades()
+                .size()
             && expected.equals(editFingerprint(group));
     }
 

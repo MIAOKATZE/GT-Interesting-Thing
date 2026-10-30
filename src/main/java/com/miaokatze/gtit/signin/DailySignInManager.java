@@ -2,10 +2,10 @@ package com.miaokatze.gtit.signin;
 
 import java.io.File;
 import java.text.SimpleDateFormat;
-import java.util.Calendar;
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.Calendar;
 import java.util.Date;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -147,9 +147,20 @@ public class DailySignInManager {
             // Loading/validating the source account may fail; do it before consuming today's claim.
             wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
             if (wallet == null) throw new IllegalStateException("Reward wallet unavailable");
-            if (baseReward > 0 && !dayReward.getCurrencyId().isEmpty()) wallet.addCount(dayReward.getCurrencyId(), 0);
-            if (tier != null && tier.getReward().hasCurrency()) wallet.addCount(tier.getReward().getCurrencyId(), 0);
-            if (cumTier != null && cumTier.getReward().hasCurrency()) wallet.addCount(cumTier.getReward().getCurrencyId(), 0);
+            if (baseReward > 0 && !dayReward.getCurrencyId()
+                .isEmpty()) wallet.addCount(dayReward.getCurrencyId(), 0);
+            if (tier != null && tier.getReward()
+                .hasCurrency())
+                wallet.addCount(
+                    tier.getReward()
+                        .getCurrencyId(),
+                    0);
+            if (cumTier != null && cumTier.getReward()
+                .hasCurrency())
+                wallet.addCount(
+                    cumTier.getReward()
+                        .getCurrencyId(),
+                    0);
         } catch (RuntimeException failure) {
             LOG.error("签到奖励校验失败，领取状态未消耗: " + playerId, failure);
             return new SignInResult(SignInResult.Status.ERROR, 0, null, data.getConsecutiveDays());
@@ -157,7 +168,8 @@ public class DailySignInManager {
 
         data.recordSignIn(today, getYesterday(), newConsecutive);
         data.queueRewards(pending);
-        if (baseReward > 0 && !dayReward.getCurrencyId().isEmpty()) wallet.addCount(dayReward.getCurrencyId(), baseReward);
+        if (baseReward > 0 && !dayReward.getCurrencyId()
+            .isEmpty()) wallet.addCount(dayReward.getCurrencyId(), baseReward);
         SignInRewardTier grantedTier = tier;
         if (tier != null) {
             grantTierCurrency(wallet, tier);
@@ -205,10 +217,16 @@ public class DailySignInManager {
         if (tier == null) return;
         DailySignInData data = getSignInData(playerId);
         List<ItemStack> rewards = materializeRewardItems(tier.getReward());
-        if (data == null || !data.canQueueRewards(rewards.size())) throw new IllegalStateException("Reward queue unavailable");
+        if (data == null || !data.canQueueRewards(rewards.size()))
+            throw new IllegalStateException("Reward queue unavailable");
         NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
         if (wallet == null) throw new IllegalStateException("Reward wallet unavailable");
-        if (tier.getReward().hasCurrency()) wallet.addCount(tier.getReward().getCurrencyId(), 0);
+        if (tier.getReward()
+            .hasCurrency())
+            wallet.addCount(
+                tier.getReward()
+                    .getCurrencyId(),
+                0);
         data.queueRewards(rewards);
         grantTierCurrency(wallet, tier);
         saveSignInData(playerId);
@@ -248,11 +266,15 @@ public class DailySignInManager {
         requireSession();
         EntityPlayerMP player = getPlayerByUUID(playerId);
         DailySignInData data = signInDataMap.get(playerId);
-        if (player == null || data == null || data.pendingRewards().isEmpty()) return;
+        if (player == null || data == null
+            || data.pendingRewards()
+                .isEmpty())
+            return;
         boolean changed = false;
         int budget = 64;
         try {
-            Iterator<ItemStack> iterator = data.pendingRewards().iterator();
+            Iterator<ItemStack> iterator = data.pendingRewards()
+                .iterator();
             while (iterator.hasNext() && budget > 0) {
                 ItemStack pending = iterator.next();
                 while (pending.stackSize > 0 && budget-- > 0) {
@@ -262,7 +284,12 @@ public class DailySignInManager {
                     try {
                         player.inventory.addItemStackToInventory(part);
                         if (part.stackSize > 0) {
-                            EntityItem drop = new EntityItem(player.worldObj, player.posX, player.posY, player.posZ, part.copy());
+                            EntityItem drop = new EntityItem(
+                                player.worldObj,
+                                player.posX,
+                                player.posY,
+                                player.posZ,
+                                part.copy());
                             if (player.worldObj.spawnEntityInWorld(drop)) part.stackSize = 0;
                         }
                     } finally {
@@ -276,7 +303,8 @@ public class DailySignInManager {
             }
         } finally {
             if (changed) {
-                data.pendingRewards().removeIf(stack -> stack.stackSize <= 0);
+                data.pendingRewards()
+                    .removeIf(stack -> stack.stackSize <= 0);
                 saveSignInData(playerId);
                 player.inventory.markDirty();
                 player.inventoryContainer.detectAndSendChanges();
@@ -418,8 +446,12 @@ public class DailySignInManager {
         List<ItemStack> pending = new ArrayList<>();
         NekoWallet wallet;
         try {
-            if (tier.hasItemReward()) pending.add(materializeItem(tier.getItemRewardId(), tier.getItemRewardAmount(),
-                tier.getItemRewardMeta(), tier.getItemNbt()));
+            if (tier.hasItemReward()) pending.add(
+                materializeItem(
+                    tier.getItemRewardId(),
+                    tier.getItemRewardAmount(),
+                    tier.getItemRewardMeta(),
+                    tier.getItemNbt()));
             if (!data.canQueueRewards(pending.size())) return CLAIM_ONLINE_ERROR;
             wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
             if (wallet == null) return CLAIM_ONLINE_ERROR;

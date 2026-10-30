@@ -234,7 +234,8 @@ public class ReincarnationWorldData extends WorldSavedData {
 
     public String ensureMigrationId() {
         if (this.migrationId.isEmpty()) {
-            this.migrationId = UUID.randomUUID().toString();
+            this.migrationId = UUID.randomUUID()
+                .toString();
             markDirty();
         }
         return this.migrationId;
@@ -282,7 +283,8 @@ public class ReincarnationWorldData extends WorldSavedData {
         }
         markDirty();
         try {
-            java.io.File target = overworld.getSaveHandler().getMapFileFromName(this.mapName);
+            java.io.File target = overworld.getSaveHandler()
+                .getMapFileFromName(this.mapName);
             if (target == null) {
                 throw new IllegalStateException("WorldData save handler has no persistent map file");
             }

@@ -22,12 +22,21 @@ public final class RewardConfigFile {
     }
 
     public static void write(Path path, String json) throws IOException {
-        Path parent = path.toAbsolutePath().getParent();
+        Path parent = path.toAbsolutePath()
+            .getParent();
         Files.createDirectories(parent);
-        Path temporary = Files.createTempFile(parent, path.getFileName().toString(), ".tmp");
+        Path temporary = Files.createTempFile(
+            parent,
+            path.getFileName()
+                .toString(),
+            ".tmp");
         try {
             Files.write(temporary, json.getBytes(StandardCharsets.UTF_8));
-            Files.move(temporary, path.toAbsolutePath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            Files.move(
+                temporary,
+                path.toAbsolutePath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING);
         } finally {
             Files.deleteIfExists(temporary);
         }

@@ -62,7 +62,8 @@ final class NativeFixtures {
         Object[] managers = { NekoWalletManager.INSTANCE, DailySignInManager.INSTANCE, MailManager.INSTANCE,
             LotteryManager.INSTANCE, NekoHistoryManager.INSTANCE };
         String[][] keys = { { "personalWallets", "dirtyPersonalWallets", "dirtyBalanceKeys" }, { "signInDataMap" },
-            { "mailDataMap" }, { "pityCounters" }, { "histories", "legacyHistoryConsumed", "migrations", "pendingMigrationMarkers" } };
+            { "mailDataMap" }, { "pityCounters" },
+            { "histories", "legacyHistoryConsumed", "migrations", "pendingMigrationMarkers" } };
         for (int i = 0; i < managers.length; i++) {
             Object manager = managers[i];
             File directory = (File) field(manager, "saveDir");
@@ -91,7 +92,9 @@ final class NativeFixtures {
                                 persist.invoke(manager, intents);
                             } catch (ReflectiveOperationException failure) {
                                 intents.put(id, owned);
-                                throw new IllegalStateException("Cannot persist synthetic history migration cleanup " + id, failure);
+                                throw new IllegalStateException(
+                                    "Cannot persist synthetic history migration cleanup " + id,
+                                    failure);
                             }
                         }
                     });

@@ -154,7 +154,9 @@ public final class PocketBaubleKeybind {
             return;
         }
         final EntityPlayer player = Platform.getClientPlayer();
-        if (player == null || player.isDead || player.worldObj == null || Minecraft.getMinecraft().currentScreen != null) {
+        if (player == null || player.isDead
+            || player.worldObj == null
+            || Minecraft.getMinecraft().currentScreen != null) {
             return;
         }
         // ★饰品背包这一路只在 Baubles 在场时走：不在场时 MUI2 的 InventoryType 直接抛

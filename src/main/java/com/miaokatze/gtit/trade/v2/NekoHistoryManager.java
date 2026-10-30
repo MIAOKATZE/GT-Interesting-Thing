@@ -31,8 +31,7 @@ public class NekoHistoryManager {
     private static final String FORMAT_KEY = "historyFormatVersion";
     private static final String JOURNAL_NAME = "legacy-migrations.dat";
 
-    private final ConcurrentHashMap<UUID, ConcurrentHashMap<UUID, NekoTradeHistory>> histories =
-        new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<UUID, ConcurrentHashMap<UUID, NekoTradeHistory>> histories = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, Boolean> legacyHistoryConsumed = new ConcurrentHashMap<>();
     /** Durable, immutable migration intents, retained so a lagging team save can be replayed. */
     private final Map<UUID, LegacyMigration> migrations = new HashMap<>();
@@ -41,6 +40,7 @@ public class NekoHistoryManager {
     private boolean acceptingHistories;
 
     private static final class LegacyMigration {
+
         final UUID teamId;
         final Map<UUID, NekoTradeHistory> records;
 
@@ -54,13 +54,18 @@ public class NekoHistoryManager {
 
     public void init(World world) {
         if (world == null) throw new IllegalArgumentException("world");
-        bindSaveDirectory(new File(world.getSaveHandler().getWorldDirectory(), "gtit_neko_histories"));
+        bindSaveDirectory(
+            new File(
+                world.getSaveHandler()
+                    .getWorldDirectory(),
+                "gtit_neko_histories"));
     }
 
     private synchronized void bindSaveDirectory(File directory) {
         acceptingHistories = false;
         try {
-            if (!saveAllInternal()) throw new IllegalStateException("Previous world's histories remain unsaved: " + saveDir);
+            if (!saveAllInternal())
+                throw new IllegalStateException("Previous world's histories remain unsaved: " + saveDir);
             File target = directory.getCanonicalFile();
             Files.createDirectories(target.toPath());
             Map<UUID, LegacyMigration> loaded = readMigrations(new File(target, JOURNAL_NAME));
@@ -171,7 +176,10 @@ public class NekoHistoryManager {
      * Do not use the old team-wide migrated bit to skip new members or pending intents.
      */
     private void migrateLegacyHistory(Team team, NekoTeamData data) {
-        migrateLegacyHistory(team.getTeamId(), new HashSet<>(team.getMembers()), data,
+        migrateLegacyHistory(
+            team.getTeamId(),
+            new HashSet<>(team.getMembers()),
+            data,
             () -> TeamDataProvider.markTeamDirty(team));
     }
 
@@ -230,7 +238,10 @@ public class NekoHistoryManager {
     private Map<UUID, NekoTradeHistory> copyHistories(Map<UUID, NekoTradeHistory> source) {
         Map<UUID, NekoTradeHistory> result = new HashMap<>();
         if (source != null) for (Map.Entry<UUID, NekoTradeHistory> entry : source.entrySet()) {
-            result.put(entry.getKey(), entry.getValue().copy());
+            result.put(
+                entry.getKey(),
+                entry.getValue()
+                    .copy());
         }
         return result;
     }
@@ -265,7 +276,8 @@ public class NekoHistoryManager {
         }
         try {
             NBTTagCompound root = CompressedStreamTools.read(file);
-            if (root == null || !root.hasKey("histories", 9)) throw new IllegalArgumentException("Missing histories list");
+            if (root == null || !root.hasKey("histories", 9))
+                throw new IllegalArgumentException("Missing histories list");
             boolean versioned = root.hasKey(FORMAT_KEY);
             if (versioned && (!root.hasKey(FORMAT_KEY, 3) || root.getInteger(FORMAT_KEY) != 1)) {
                 throw new IllegalArgumentException("Unsupported history format");
@@ -291,8 +303,14 @@ public class NekoHistoryManager {
         NBTTagList list = new NBTTagList();
         for (Map.Entry<UUID, NekoTradeHistory> entry : source.entrySet()) {
             NBTTagCompound record = new NBTTagCompound();
-            record.setString("groupId", entry.getKey().toString());
-            record.setTag("history", entry.getValue().writeToNBT());
+            record.setString(
+                "groupId",
+                entry.getKey()
+                    .toString());
+            record.setTag(
+                "history",
+                entry.getValue()
+                    .writeToNBT());
             list.appendTag(record);
         }
         return list;
@@ -324,7 +342,10 @@ public class NekoHistoryManager {
         NBTTagList list = new NBTTagList();
         for (Map.Entry<UUID, LegacyMigration> entry : source.entrySet()) {
             NBTTagCompound record = new NBTTagCompound();
-            record.setString("playerId", entry.getKey().toString());
+            record.setString(
+                "playerId",
+                entry.getKey()
+                    .toString());
             record.setString("teamId", entry.getValue().teamId.toString());
             record.setTag("histories", writeHistoryList(entry.getValue().records));
             list.appendTag(record);
@@ -337,7 +358,8 @@ public class NekoHistoryManager {
         Map<UUID, LegacyMigration> result = new HashMap<>();
         if (Files.notExists(file.toPath())) return result;
         NBTTagCompound root = CompressedStreamTools.read(file);
-        if (root == null || !root.hasKey("version", 3) || root.getInteger("version") != 1
+        if (root == null || !root.hasKey("version", 3)
+            || root.getInteger("version") != 1
             || !root.hasKey("migrations", 9)) throw new IllegalArgumentException("Invalid legacy migration journal");
         NBTTagList raw = (NBTTagList) root.getTag("migrations"), list = root.getTagList("migrations", 10);
         if (raw.tagCount() != list.tagCount()) throw new IllegalArgumentException("Invalid migration list type");
@@ -345,8 +367,10 @@ public class NekoHistoryManager {
             NBTTagCompound record = list.getCompoundTagAt(i);
             UUID playerId = UUID.fromString(record.getString("playerId"));
             LegacyMigration migration = new LegacyMigration(
-                UUID.fromString(record.getString("teamId")), readHistoryList(record, "histories"));
-            if (result.put(playerId, migration) != null) throw new IllegalArgumentException("Duplicate migration identity");
+                UUID.fromString(record.getString("teamId")),
+                readHistoryList(record, "histories"));
+            if (result.put(playerId, migration) != null)
+                throw new IllegalArgumentException("Duplicate migration identity");
         }
         return result;
     }

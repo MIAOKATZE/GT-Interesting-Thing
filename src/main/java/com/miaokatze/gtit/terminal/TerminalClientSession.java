@@ -34,8 +34,10 @@ public final class TerminalClientSession {
         Minecraft mc = Minecraft.getMinecraft();
         mc.func_152344_a(() -> {
             // A reply queued before disconnect must not reopen a screen or populate the next world's cache.
-            if (generation.get() != expected || connection == null || mc.getNetHandler() != connection
-                || mc.theWorld == null || mc.thePlayer == null) return;
+            if (generation.get() != expected || connection == null
+                || mc.getNetHandler() != connection
+                || mc.theWorld == null
+                || mc.thePlayer == null) return;
             action.run();
         });
     }

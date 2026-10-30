@@ -3,7 +3,6 @@ package com.miaokatze.gtit.common.items.pocket;
 import java.util.UUID;
 
 import net.minecraft.inventory.IInventory;
-
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 
@@ -30,14 +29,16 @@ public final class PocketCarrierIdentity {
                 tag = new NBTTagCompound();
                 carrier.setTagCompound(tag);
             }
-            token = UUID.randomUUID().toString();
+            token = UUID.randomUUID()
+                .toString();
             tag.setString(KEY, token);
         }
         return new PocketCarrierIdentity(carrier, token);
     }
 
     public boolean matches(ItemStack candidate) {
-        if (original == null || candidate == null || candidate.stackSize <= 0
+        if (original == null || candidate == null
+            || candidate.stackSize <= 0
             || candidate.getItem() != original.getItem()) {
             return false;
         }
@@ -47,6 +48,7 @@ public final class PocketCarrierIdentity {
         final NBTTagCompound tag = candidate.getTagCompound();
         return tag != null && token.equals(tag.getString(KEY));
     }
+
     /** Null means absent or ambiguous; repeating the same physical reference is not ambiguity. */
     public Resolution locate(ItemStack direct, ItemStack cursor, ItemStack[] inventory, IInventory baubles) {
         final java.util.Set<ItemStack> matches = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
@@ -61,7 +63,10 @@ public final class PocketCarrierIdentity {
                 if (matches(stack)) matches.add(stack);
             }
         }
-        return new Resolution(matches.size() == 1 ? matches.iterator().next() : null, matches.size() > 1);
+        return new Resolution(
+            matches.size() == 1 ? matches.iterator()
+                .next() : null,
+            matches.size() > 1);
     }
 
     /** The server ticks both the main inventory and Baubles, but not a cursor-only carrier. */
@@ -79,6 +84,7 @@ public final class PocketCarrierIdentity {
     }
 
     public static final class Resolution {
+
         public final ItemStack carrier;
         public final boolean ambiguous;
 

@@ -30,39 +30,81 @@ public final class PocketTaggedFluidTest {
         FluidStack original = tagged("a", 2000);
         check(inventory.fillOwnTank(0, original) == 2000, "seed tagged fluid");
         inventory.markClean();
-        check(inventory.tankAt(0).fill(tagged("b", 1000), false) == 0, "simulation rejects different tags");
-        check(inventory.tankAt(0).fill(tagged("b", 1000), true) == 0, "commit rejects different tags");
+        check(
+            inventory.tankAt(0)
+                .fill(tagged("b", 1000), false) == 0,
+            "simulation rejects different tags");
+        check(
+            inventory.tankAt(0)
+                .fill(tagged("b", 1000), true) == 0,
+            "commit rejects different tags");
         check(inventory.fluidBarRoom(0, tagged("b", 1)) == 0, "int room probe includes tags");
         check(inventory.fluidBarRoomL(0, tagged("b", 1)) == 0, "long room probe includes tags");
-        check(inventory.fillOwnTankL(0, FluidRegistry.WATER, 1000) == 0, "untagged long fill cannot mix into tagged stock");
+        check(
+            inventory.fillOwnTankL(0, FluidRegistry.WATER, 1000) == 0,
+            "untagged long fill cannot mix into tagged stock");
         check(!inventory.isDirty() && inventory.tankTruthAt(0) == 2000, "rejected operations do not mutate");
-        FluidStack simulated = inventory.tankAt(0).drain(1000, false);
+        FluidStack simulated = inventory.tankAt(0)
+            .drain(1000, false);
         check(simulated.isFluidEqual(original) && simulated.amount == 1000, "simulated drain preserves tag");
         simulated.tag.setString("variant", "changed");
-        check(inventory.ownTankFluid(0).isFluidEqual(original), "simulation result owns its NBT copy");
+        check(
+            inventory.ownTankFluid(0)
+                .isFluidEqual(original),
+            "simulation result owns its NBT copy");
         check(!inventory.isDirty() && inventory.tankTruthAt(0) == 2000, "drain simulation is read-only");
-        FluidStack drained = inventory.tankAt(0).drain(1000, true);
+        FluidStack drained = inventory.tankAt(0)
+            .drain(1000, true);
         check(drained.isFluidEqual(original) && drained.amount == 1000, "committed drain preserves tag");
         NBTTagCompound saved = new NBTTagCompound();
         inventory.writeTo(saved);
         PocketInventory reopened = PocketInventory.readFrom(saved);
-        check(reopened.tankTruthAt(0) == 1000 && reopened.ownTankFluid(0).isFluidEqual(original),
+        check(
+            reopened.tankTruthAt(0) == 1000 && reopened.ownTankFluid(0)
+                .isFluidEqual(original),
             "NBT close/reopen preserves amount and tagged identity");
-        check(reopened.tankAt(0).drain(1000, true).isFluidEqual(original), "last drain preserves tag after head cleared");
+        check(
+            reopened.tankAt(0)
+                .drain(1000, true)
+                .isFluidEqual(original),
+            "last drain preserves tag after head cleared");
 
         // Isolate the container planner from PocketInventory's custom tank implementation.
         final FluidStack[] stock = { original.copy() };
         final FluidStackTank tank = new FluidStackTank(() -> stock[0], fluid -> stock[0] = fluid, 16000);
         final ItemStack[] cells = { new ItemStack(new Bottle(), 2), null };
         PocketFluidTransfer.Cells port = new PocketFluidTransfer.Cells() {
-            public FluidStackTank tank(int index) { return tank; }
-            public ItemStack cellStack(int index) { return cells[index]; }
-            public int outputCellOf(int index) { return 1; }
-            public int restCellOf(int index) { return 0; }
-            public boolean hasSlot(int index) { return index >= 0 && index < 2; }
-            public void abandoned(int index, String key, Object... values) { throw new AssertionError(key); }
-            public boolean memoryAllowsFluid(int index, FluidStack fluid) { return true; }
+
+            public FluidStackTank tank(int index) {
+                return tank;
+            }
+
+            public ItemStack cellStack(int index) {
+                return cells[index];
+            }
+
+            public int outputCellOf(int index) {
+                return 1;
+            }
+
+            public int restCellOf(int index) {
+                return 0;
+            }
+
+            public boolean hasSlot(int index) {
+                return index >= 0 && index < 2;
+            }
+
+            public void abandoned(int index, String key, Object... values) {
+                throw new AssertionError(key);
+            }
+
+            public boolean memoryAllowsFluid(int index, FluidStack fluid) {
+                return true;
+            }
+
             public void memoryDeclareFromIntake(int index, FluidStack fluid) {}
+
             public void placeProcessed(int index, ItemStack product, int moved, ItemStack unit, int rest) {
                 cells[1] = PocketFluidTransfer.sized(product, moved);
                 cells[0] = rest == 0 ? null : PocketFluidTransfer.sized(unit, rest);
@@ -76,14 +118,20 @@ public final class PocketTaggedFluidTest {
         check(product.isFluidEqual(original) && product.amount == 1000, "planned output preserves fluid tag");
         check(tank.getFluidAmount() == 0, "fluid plus filled containers conserved");
         com.miaokatze.gtit.gui.pocket.PocketCarrierIdentityTest.run();
-        System.out.println("PocketTaggedFluidTest: PASS (identity, simulation, copies, NBT, stacked container transfer)");
+        System.out
+            .println("PocketTaggedFluidTest: PASS (identity, simulation, copies, NBT, stacked container transfer)");
     }
 
     private static final class Bottle extends Item implements IFluidContainerItem {
+
         public FluidStack getFluid(ItemStack container) {
             return FluidStack.loadFluidStackFromNBT(container.getTagCompound());
         }
-        public int getCapacity(ItemStack container) { return 1000; }
+
+        public int getCapacity(ItemStack container) {
+            return 1000;
+        }
+
         public int fill(ItemStack container, FluidStack resource, boolean commit) {
             FluidStack current = getFluid(container);
             if (resource == null || current != null && !current.isFluidEqual(resource)) return 0;
@@ -95,6 +143,7 @@ public final class PocketTaggedFluidTest {
             }
             return accepted;
         }
+
         public FluidStack drain(ItemStack container, int amount, boolean commit) {
             FluidStack fluid = getFluid(container);
             if (fluid == null || amount <= 0) return null;

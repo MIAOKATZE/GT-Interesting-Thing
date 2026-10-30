@@ -137,7 +137,8 @@ public class LotteryResultPacket implements IMessage {
             Object connection = context.netHandler;
             Minecraft mc = Minecraft.getMinecraft();
             mc.func_152344_a(() -> {
-                if (connection == null || mc.getNetHandler() != connection || mc.theWorld == null
+                if (connection == null || mc.getNetHandler() != connection
+                    || mc.theWorld == null
                     || mc.thePlayer == null) return;
                 LotteryClientData.updateDrawResult(message.getPoolId(), message.getResults(), message.getResultCode());
             });

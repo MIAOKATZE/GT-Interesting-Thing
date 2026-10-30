@@ -32,13 +32,15 @@ public final class NekoTradePhysicalOutputTest {
         } finally {
             Items.iron_ingot.setMaxStackSize(previous);
         }
-        System.out.println("NekoTradePhysicalOutputTest: PASS (durable split, capacity, compensation, ordinary limits, invalid limit)");
+        System.out.println(
+            "NekoTradePhysicalOutputTest: PASS (durable split, capacity, compensation, ordinary limits, invalid limit)");
     }
 
     private static NekoBigItemStack output(int count) {
         ItemStack stack = new ItemStack(Items.iron_ingot, count);
         stack.setTagCompound(new NBTTagCompound());
-        stack.getTagCompound().setString("identity", "paid-output");
+        stack.getTagCompound()
+            .setString("identity", "paid-output");
         return new NekoBigItemStack(stack);
     }
 
@@ -72,11 +74,14 @@ public final class NekoTradePhysicalOutputTest {
     }
 
     private static final class Input implements NekoTradeExecutor.InputSlotAccessor {
+
         ItemStack[] slots = { new ItemStack(Items.gold_ingot) };
         int writes;
+
         public ItemStack[] getCopyOfInputs() {
             return new ItemStack[] { slots[0] == null ? null : slots[0].copy() };
         }
+
         public void setInputs(ItemStack[] inputs) {
             slots = inputs;
             writes++;
@@ -84,14 +89,26 @@ public final class NekoTradePhysicalOutputTest {
     }
 
     private static final class Output implements NekoTradeExecutor.OutputSlotAccessor {
+
         final int capacity;
         final List<ItemStack> items = new ArrayList<>();
+
         Output(int capacity) {
             this.capacity = capacity;
         }
-        public int getAvailableSlotCount() { return capacity - items.size(); }
-        public boolean hasSpaceFor(ItemStack stack) { return getAvailableSlotCount() > 0; }
-        public void insertItem(ItemStack stack) { items.add(stack.copy()); }
+
+        public int getAvailableSlotCount() {
+            return capacity - items.size();
+        }
+
+        public boolean hasSpaceFor(ItemStack stack) {
+            return getAvailableSlotCount() > 0;
+        }
+
+        public void insertItem(ItemStack stack) {
+            items.add(stack.copy());
+        }
+
         public void rollback(int count) {
             while (count-- > 0) items.remove(items.size() - 1);
         }
@@ -99,10 +116,13 @@ public final class NekoTradePhysicalOutputTest {
 
     private static NekoTradeGroup group(int count) {
         NekoTrade trade = new NekoTrade();
-        trade.getFromItems().add(new NekoBigItemStack(new ItemStack(Items.gold_ingot)));
-        trade.getToItems().add(output(count));
+        trade.getFromItems()
+            .add(new NekoBigItemStack(new ItemStack(Items.gold_ingot)));
+        trade.getToItems()
+            .add(output(count));
         NekoTradeGroup group = new NekoTradeGroup();
-        group.getTrades().add(trade);
+        group.getTrades()
+            .add(trade);
         NekoTradeDatabase.INSTANCE.addTradeGroup(group);
         return group;
     }
@@ -112,18 +132,30 @@ public final class NekoTradePhysicalOutputTest {
         try {
             Input input = new Input();
             Output full = new Output(1);
-            check(!NekoTradeExecutor.outputsFit(Collections.singletonList(output(128)), 1), "rolled output needs two slots");
-            check(NekoTradeExecutor.INSTANCE.checkTrade(TEST_PLAYER, group.getId(), 0, input, full).getStatus()
-                == NekoTradeResult.Status.OUTPUT_FULL, "preflight reports physical capacity before payment");
-            check(!NekoTradeExecutor.INSTANCE.executeTrade(TEST_PLAYER, group.getId(), 0, input, full).isSuccess(),
+            check(
+                !NekoTradeExecutor.outputsFit(Collections.singletonList(output(128)), 1),
+                "rolled output needs two slots");
+            check(
+                NekoTradeExecutor.INSTANCE.checkTrade(TEST_PLAYER, group.getId(), 0, input, full)
+                    .getStatus() == NekoTradeResult.Status.OUTPUT_FULL,
+                "preflight reports physical capacity before payment");
+            check(
+                !NekoTradeExecutor.INSTANCE.executeTrade(TEST_PLAYER, group.getId(), 0, input, full)
+                    .isSuccess(),
                 "one physical slot cannot accept 128 items");
-            check(input.writes == 0 && input.slots[0].stackSize == 1 && full.items.isEmpty(),
+            check(
+                input.writes == 0 && input.slots[0].stackSize == 1 && full.items.isEmpty(),
                 "failed physical capacity check is read-only");
             Output enough = new Output(2);
-            check(NekoTradeExecutor.INSTANCE.executeTrade(TEST_PLAYER, group.getId(), 0, input, enough).isSuccess(),
+            check(
+                NekoTradeExecutor.INSTANCE.executeTrade(TEST_PLAYER, group.getId(), 0, input, enough)
+                    .isSuccess(),
                 "two physical slots can accept the trade");
-            check(input.slots[0] == null && enough.items.size() == 2 && enough.items.get(0).stackSize == 64
-                && enough.items.get(1).stackSize == 64, "exact payment yields all items in legal stacks");
+            check(
+                input.slots[0] == null && enough.items.size() == 2
+                    && enough.items.get(0).stackSize == 64
+                    && enough.items.get(1).stackSize == 64,
+                "exact payment yields all items in legal stacks");
         } finally {
             NekoTradeDatabase.INSTANCE.removeTradeGroup(group.getId());
         }
@@ -131,11 +163,14 @@ public final class NekoTradePhysicalOutputTest {
 
     private static void compensationBound() {
         NekoTradeMatcher.Supply supply = new NekoTradeMatcher.Supply(new ItemStack(Items.iron_ingot), -1, null);
-        check(!NekoTradeExecutor.meCompensationFits(new NekoTradeMatcher.Plan(
-            Collections.singletonList(supply), new int[] { 4096 * 64 + 1 })),
+        check(
+            !NekoTradeExecutor.meCompensationFits(
+                new NekoTradeMatcher.Plan(Collections.singletonList(supply), new int[] { 4096 * 64 + 1 })),
             "ME refund bound counts actual physical stacks, not oversized item stacks");
-        check(NekoTradeExecutor.meCompensationFits(new NekoTradeMatcher.Plan(
-            Collections.singletonList(supply), new int[] { 4096 * 64 })), "exact compensation boundary remains valid");
+        check(
+            NekoTradeExecutor.meCompensationFits(
+                new NekoTradeMatcher.Plan(Collections.singletonList(supply), new int[] { 4096 * 64 })),
+            "exact compensation boundary remains valid");
     }
 
     private static void invalidLimitBeforePayment() {
@@ -143,9 +178,13 @@ public final class NekoTradePhysicalOutputTest {
         try {
             Input input = new Input();
             Output output = new Output(2);
-            check(!NekoTradeExecutor.INSTANCE.checkTrade(TEST_PLAYER, group.getId(), 0, input, output).isSuccess(),
+            check(
+                !NekoTradeExecutor.INSTANCE.checkTrade(TEST_PLAYER, group.getId(), 0, input, output)
+                    .isSuccess(),
                 "invalid mod item stack limit rejects cleanly instead of dividing by zero");
-            check(!NekoTradeExecutor.INSTANCE.executeTrade(TEST_PLAYER, group.getId(), 0, input, output).isSuccess(),
+            check(
+                !NekoTradeExecutor.INSTANCE.executeTrade(TEST_PLAYER, group.getId(), 0, input, output)
+                    .isSuccess(),
                 "invalid output cannot charge input");
             check(input.writes == 0 && input.slots[0].stackSize == 1, "invalid limit leaves input intact");
         } finally {

@@ -401,7 +401,10 @@ public class LotteryManager {
             .isAtLeast(guaranteedRarity);
 
         // 推进保底计数（本抽之后）—— 抽到保底品质及以上则清零，否则 +1
-        setPityCounter(teamKey, pool.getId(), highRarity ? 0 : (int) Math.min(Integer.MAX_VALUE, (long) currentCount + 1));
+        setPityCounter(
+            teamKey,
+            pool.getId(),
+            highRarity ? 0 : (int) Math.min(Integer.MAX_VALUE, (long) currentCount + 1));
 
         return new LotteryDrawResult(selected, isPity, highRarity, slotIndex, amount);
     }
@@ -541,7 +544,8 @@ public class LotteryManager {
      */
     public void saveTeamData(UUID teamKey) {
         if (teamKey == null || saveDir == null) return;
-        if (unreadableTeams.contains(teamKey)) throw new IllegalStateException("Unreadable lottery data cannot be overwritten");
+        if (unreadableTeams.contains(teamKey))
+            throw new IllegalStateException("Unreadable lottery data cannot be overwritten");
         // A logout may resolve a newly joined team that was never used in this session. No cache means
         // nothing is owned to save; writing an empty record would destroy that team's existing pity.
         if (!pityCounters.containsKey(teamKey)) return;

@@ -71,7 +71,9 @@ final class TeamWalletNativeScenario implements ProbeScenario {
             context.check(
                 "join-preserves-unsaved-personal-file",
                 personalFile != null && personalFile.isFile()
-                    && net.minecraft.nbt.CompressedStreamTools.read(personalFile).getCompoundTag("wallet").getInteger(coin) == 41,
+                    && net.minecraft.nbt.CompressedStreamTools.read(personalFile)
+                        .getCompoundTag("wallet")
+                        .getInteger(coin) == 41,
                 "Saving while team-routed also persists the frozen personal wallet's pending balance");
             shared.addCount(coin, 50);
             boolean first = manager.getWallet(owner)

@@ -107,7 +107,8 @@ public class NekoTradeSyncPacket implements IMessage {
             Object connection = context.netHandler;
             Minecraft mc = Minecraft.getMinecraft();
             mc.func_152344_a(() -> {
-                if (connection == null || mc.getNetHandler() != connection || mc.theWorld == null
+                if (connection == null || mc.getNetHandler() != connection
+                    || mc.theWorld == null
                     || mc.thePlayer == null) return;
 
                 // 单人存档：集成服务端与客户端共享静态注册表，

@@ -24,16 +24,12 @@ public final class CoinWithdrawalCapacityTest {
     private static void boundedHugeBalances() {
         SimpleAssert.eq(0, CoinWithdrawalPlan.amount(1_000_000_000, Integer.MAX_VALUE, 0, 64), "full output");
         SimpleAssert.eq(64, CoinWithdrawalPlan.amount(Integer.MAX_VALUE, Integer.MAX_VALUE, 1, 64), "one slot");
-        SimpleAssert.eq(
-            6400,
-            CoinWithdrawalPlan.amount(Integer.MAX_VALUE, Integer.MAX_VALUE, 100, 64),
-            "bounded batch");
+        SimpleAssert
+            .eq(6400, CoinWithdrawalPlan.amount(Integer.MAX_VALUE, Integer.MAX_VALUE, 100, 64), "bounded batch");
         SimpleAssert.eq(64, CoinWithdrawalPlan.amount(1_000_000_000, 64, 100, 64), "one-stack request");
         SimpleAssert.eq(17, CoinWithdrawalPlan.amount(17, 64, 100, 64), "balance bound");
-        SimpleAssert.eq(
-            100,
-            CoinWithdrawalPlan.amount(Integer.MAX_VALUE, Integer.MAX_VALUE, 100, 1),
-            "item stack limit");
+        SimpleAssert
+            .eq(100, CoinWithdrawalPlan.amount(Integer.MAX_VALUE, Integer.MAX_VALUE, 100, 1), "item stack limit");
     }
 
     private static void invalidAndOverflowBounds() {
@@ -47,10 +43,8 @@ public final class CoinWithdrawalCapacityTest {
             "capacity multiplication uses long arithmetic");
         SimpleAssert.eq(0, CoinWithdrawalPlan.slots(0, 64), "empty batch");
         SimpleAssert.eq(2, CoinWithdrawalPlan.slots(65, 64), "partial last stack");
-        SimpleAssert.eq(
-            33554432,
-            CoinWithdrawalPlan.slots(Integer.MAX_VALUE, 64),
-            "ceiling division does not overflow");
+        SimpleAssert
+            .eq(33554432, CoinWithdrawalPlan.slots(Integer.MAX_VALUE, 64), "ceiling division does not overflow");
         boolean rejected = false;
         try {
             CoinWithdrawalPlan.slots(1, 0);

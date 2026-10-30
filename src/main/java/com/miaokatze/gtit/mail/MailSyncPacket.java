@@ -64,7 +64,8 @@ public class MailSyncPacket implements IMessage {
             Object connection = context.netHandler;
             Minecraft mc = Minecraft.getMinecraft();
             mc.func_152344_a(() -> {
-                if (connection == null || mc.getNetHandler() != connection || mc.theWorld == null
+                if (connection == null || mc.getNetHandler() != connection
+                    || mc.theWorld == null
                     || mc.thePlayer == null) return;
 
                 MailData data = new MailData();

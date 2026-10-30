@@ -22,7 +22,8 @@ public final class FlightSourceSupport {
     private static boolean hasAvailableFlight(EntityPlayer player, ItemStack departing) {
         return hasAvailableFlight(
             BaublesApi.getBaubles(player),
-            player.getFoodStats().getFoodLevel() >= 6,
+            player.getFoodStats()
+                .getFoodLevel() >= 6,
             ElectricFloatCore::hasFlightPower,
             departing);
     }

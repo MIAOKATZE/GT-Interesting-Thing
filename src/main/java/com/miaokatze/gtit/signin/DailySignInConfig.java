@@ -20,8 +20,8 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.annotations.SerializedName;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
-import com.miaokatze.gtit.util.RewardConfigFile;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.util.RewardConfigFile;
 
 /**
  * 签到配置模型（v1.7.8 任务5+6：配置结构 v1→v2）
@@ -68,7 +68,8 @@ public class DailySignInConfig {
     private static boolean unavailable;
 
     private static void requireAvailable() {
-        if (unavailable) throw new IllegalStateException("Daily sign-in configuration is unavailable; repair the file and reload");
+        if (unavailable)
+            throw new IllegalStateException("Daily sign-in configuration is unavailable; repair the file and reload");
     }
 
     /** 连续签到阶梯列表（按 requiredDays 升序） */
@@ -143,13 +144,14 @@ public class DailySignInConfig {
             }
             if (Files.exists(path)) {
                 JsonObject root = RewardConfigFile.readObject(path);
-                int version = root.has("version") ? root.get("version").getAsInt() : 1;
+                int version = root.has("version") ? root.get("version")
+                    .getAsInt() : 1;
                 if (version < CONFIG_VERSION) {
                     migrateV1ToV2(path, root);
                 } else {
                     for (String key : new String[] { "tiers", "cumulative_tiers" }) {
-                        if (root.has(key) && !root.get(key).isJsonArray())
-                            throw new IllegalArgumentException("Invalid reward tiers: " + key);
+                        if (root.has(key) && !root.get(key)
+                            .isJsonArray()) throw new IllegalArgumentException("Invalid reward tiers: " + key);
                     }
                     ConfigData data = GSON.fromJson(root, ConfigData.class);
                     if (!root.has("tiers")) data.tiers = null;
@@ -164,7 +166,9 @@ public class DailySignInConfig {
             }
         } catch (Exception failure) {
             unavailable = true;
-            throw new IllegalStateException("Unable to load daily sign-in configuration; existing files are preserved", failure);
+            throw new IllegalStateException(
+                "Unable to load daily sign-in configuration; existing files are preserved",
+                failure);
         }
     }
 
@@ -202,7 +206,10 @@ public class DailySignInConfig {
      */
     private static void migrateFromLegacy(Path legacyPath, Path newPath) throws Exception {
         Files.createDirectories(newPath.getParent());
-        RewardConfigFile.write(newPath, RewardConfigFile.readObject(legacyPath).toString());
+        RewardConfigFile.write(
+            newPath,
+            RewardConfigFile.readObject(legacyPath)
+                .toString());
         ConfigMigrationUtil.retireLegacyAsBak(legacyPath, newPath, "签到奖励配置", "签到奖励配置文件");
     }
 

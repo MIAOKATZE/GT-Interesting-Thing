@@ -1,7 +1,7 @@
 package com.miaokatze.gtit.common.items.infinitycell;
 
-import java.util.Objects;
 import java.util.LinkedHashSet;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -322,12 +322,12 @@ public class InfinityItemStorageCellInventory implements ITCellInventory {
                 return input;
             }
         }
-        final IAEItemStack stored = this.getCellItems().findPrecise(input);
+        final IAEItemStack stored = this.getCellItems()
+            .findPrecise(input);
         if (stored == null && !this.canHoldNewItem(this.cellItem)) {
             return input;
         }
-        final long capacity = stored == null
-            ? Math.max(0L, this.getRemainingItemCount() - this.getBytesPerType() * 8L)
+        final long capacity = stored == null ? Math.max(0L, this.getRemainingItemCount() - this.getBytesPerType() * 8L)
             : this.getRemainingItemCount();
         return InfinityCellTransfer.inject(this.getCellItems(), input, mode, capacity, this::saveChanges);
     }

@@ -36,7 +36,10 @@ public final class BoundedRequestQueueTest {
         check(errors.get() == 1 && queue.offer(a, ran::incrementAndGet), "failed requests release admission");
         queue.start();
         Runnable[] recurse = new Runnable[1];
-        recurse[0] = () -> { ran.incrementAndGet(); queue.offer(a, recurse[0]); };
+        recurse[0] = () -> {
+            ran.incrementAndGet();
+            queue.offer(a, recurse[0]);
+        };
         queue.offer(a, recurse[0]);
         queue.drain(100, t -> { throw new AssertionError(t); });
         check(ran.get() == 4, "reentrant producer cannot extend tick snapshot");
@@ -48,7 +51,11 @@ public final class BoundedRequestQueueTest {
         for (int i = 0; i < threads.length; i++) {
             threads[i] = new Thread(() -> {
                 Object owner = new Object();
-                try { go.await(); } catch (InterruptedException failure) { throw new AssertionError(failure); }
+                try {
+                    go.await();
+                } catch (InterruptedException failure) {
+                    throw new AssertionError(failure);
+                }
                 for (int j = 0; j < 100; j++) if (concurrent.offer(owner, () -> {})) accepted.incrementAndGet();
             });
             threads[i].start();
@@ -56,7 +63,8 @@ public final class BoundedRequestQueueTest {
         go.countDown();
         for (Thread thread : threads) thread.join();
         check(accepted.get() == 32, "concurrent producers obey global bound");
-        System.out.println("BoundedRequestQueueTest: 13 admission, tick, failure, generation and concurrent cases passed");
+        System.out
+            .println("BoundedRequestQueueTest: 13 admission, tick, failure, generation and concurrent cases passed");
     }
 
     private static void check(boolean condition, String message) {

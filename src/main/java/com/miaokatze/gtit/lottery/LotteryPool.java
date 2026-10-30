@@ -182,7 +182,9 @@ public class LotteryPool {
         // positive legacy price must not look like an intentionally free empty cost list.
         if (costItems.isEmpty() && costPerDraw != 0) return false;
         for (NekoBigItemStack cost : costItems) {
-            if (cost == null || cost.getBaseStack() == null || cost.getBaseStack().getItem() == null
+            if (cost == null || cost.getBaseStack() == null
+                || cost.getBaseStack()
+                    .getItem() == null
                 || cost.getStackSize() <= 0) return false;
         }
         return true;

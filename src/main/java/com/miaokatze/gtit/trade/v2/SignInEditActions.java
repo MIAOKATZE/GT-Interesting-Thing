@@ -251,7 +251,8 @@ final class SignInEditActions {
      */
     private static SignInReward parseReward(JsonObject json, String key) {
         if (json == null || key == null || !json.has(key)) return null;
-        if (!json.get(key).isJsonObject()) throw new IllegalArgumentException("Invalid reward object: " + key);
+        if (!json.get(key)
+            .isJsonObject()) throw new IllegalArgumentException("Invalid reward object: " + key);
         return SignInReward.fromJson(json.getAsJsonObject(key));
     }
 }

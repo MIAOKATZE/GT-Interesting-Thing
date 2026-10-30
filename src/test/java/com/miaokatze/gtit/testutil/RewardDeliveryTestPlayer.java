@@ -4,8 +4,8 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.UUID;
 
-import net.minecraft.entity.Entity;
 import net.minecraft.entity.DataWatcher;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -58,7 +58,11 @@ public final class RewardDeliveryTestPlayer implements AutoCloseable {
         player.inventory = new InventoryPlayer(player);
         player.capabilities = new PlayerCapabilities();
         player.inventoryContainer = new Container() {
-            @Override public boolean canInteractWith(EntityPlayer ignored) { return true; }
+
+            @Override
+            public boolean canInteractWith(EntityPlayer ignored) {
+                return true;
+            }
         };
         connect();
     }
@@ -74,17 +78,21 @@ public final class RewardDeliveryTestPlayer implements AutoCloseable {
     }
 
     public void disconnectChannel() {
-        channel.close().syncUninterruptibly();
+        channel.close()
+            .syncUninterruptibly();
     }
 
     public void setWorldDirectory(java.nio.file.Path directory) throws Exception {
-        Object handler = java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),
-            new Class<?>[] { net.minecraft.world.storage.ISaveHandler.class }, (proxy, method, arguments) ->
-                method.getName().equals("getWorldDirectory") ? directory.toFile() : null);
+        Object handler = java.lang.reflect.Proxy.newProxyInstance(
+            getClass().getClassLoader(),
+            new Class<?>[] { net.minecraft.world.storage.ISaveHandler.class },
+            (proxy, method, arguments) -> method.getName()
+                .equals("getWorldDirectory") ? directory.toFile() : null);
         set(World.class, world, "saveHandler", handler);
     }
 
-    @Override public void close() throws Exception {
+    @Override
+    public void close() throws Exception {
         disconnectChannel();
         set(MinecraftServer.class, null, "mcServer", previous);
     }
@@ -103,11 +111,17 @@ public final class RewardDeliveryTestPlayer implements AutoCloseable {
     }
 
     public static final class DropWorld extends WorldServer {
+
         public boolean accept;
         public int calls;
         public int delivered;
-        private DropWorld() { super(null, null, "", 0, null, null); }
-        @Override public boolean spawnEntityInWorld(Entity entity) {
+
+        private DropWorld() {
+            super(null, null, "", 0, null, null);
+        }
+
+        @Override
+        public boolean spawnEntityInWorld(Entity entity) {
             calls++;
             ItemStack stack = ((EntityItem) entity).getEntityItem();
             if (accept && (stack.stackSize <= 0 || stack.stackSize > Math.min(64, stack.getMaxStackSize())))

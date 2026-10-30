@@ -234,7 +234,9 @@ public class MailManager {
 
         // 一次性奖励（逐条检查玩家未收的奖励 ID）
         for (Map.Entry<String, Mail> entry : onceRewards.entrySet()) {
-            if (!data.hasReceivedOnce(entry.getKey()) && data.addMail(entry.getValue().copyAsDelivered())) {
+            if (!data.hasReceivedOnce(entry.getKey()) && data.addMail(
+                entry.getValue()
+                    .copyAsDelivered())) {
                 data.markReceivedOnce(entry.getKey());
                 dirty = true;
             }
@@ -346,7 +348,10 @@ public class MailManager {
      */
     public int claimAttachments(UUID playerId, String mailId, EntityPlayerMP player) {
         MailData data = getMailData(playerId);
-        if (data == null || player == null || !player.getUniqueID().equals(playerId)) return -1;
+        if (data == null || player == null
+            || !player.getUniqueID()
+                .equals(playerId))
+            return -1;
         Mail mail = data.findMail(mailId);
         if (mail == null || !mail.hasUnclaimedAttachments()) return -1;
 
@@ -357,7 +362,8 @@ public class MailManager {
                 // Spawn may be rejected by the world or a Forge event. Only accepted stacks consume entitlement.
                 while (remainder.stackSize > 0 && dropBudget[0]-- > 0) {
                     ItemStack dropped = remainder.copy();
-                    dropped.stackSize = Math.min(remainder.stackSize, Math.max(1, Math.min(64, dropped.getMaxStackSize())));
+                    dropped.stackSize = Math
+                        .min(remainder.stackSize, Math.max(1, Math.min(64, dropped.getMaxStackSize())));
                     int droppedCount = dropped.stackSize;
                     EntityItem drop = new EntityItem(player.worldObj, player.posX, player.posY, player.posZ, dropped);
                     if (!player.worldObj.spawnEntityInWorld(drop)) break;
@@ -505,7 +511,8 @@ public class MailManager {
             NBTTagList onceList = RewardNbt.list(nbt, "onceRewards", 10);
             for (int i = 0; i < onceList.tagCount(); i++) {
                 NBTTagCompound entry = onceList.getCompoundTagAt(i);
-                if (!entry.hasKey("id", 8) || entry.getString("id").isEmpty() || !entry.hasKey("mail", 10))
+                if (!entry.hasKey("id", 8) || entry.getString("id")
+                    .isEmpty() || !entry.hasKey("mail", 10))
                     throw new IllegalArgumentException("Invalid saved once-only mail reward");
                 String rewardId = entry.getString("id");
                 Mail template = Mail.fromNBT(entry.getCompoundTag("mail"));
@@ -576,6 +583,7 @@ public class MailManager {
     public static EntityPlayerMP getPlayerByUUID(UUID playerId) {
         return PlayerLookup.getOnlinePlayerByUuid(playerId);
     }
+
     private void requireSession() {
         if (sessionUnavailable) throw new IllegalStateException("Mail world session is unavailable");
     }

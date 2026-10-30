@@ -106,7 +106,8 @@ public class SignInReward {
         int amount = RewardItem.exactNonnegativeInt(json, "amount", 0);
         List<RewardItem> items = new ArrayList<>();
         if (json.has("items")) {
-            if (!json.get("items").isJsonArray()) throw new IllegalArgumentException("Reward items must be an array");
+            if (!json.get("items")
+                .isJsonArray()) throw new IllegalArgumentException("Reward items must be an array");
             JsonArray arr = json.getAsJsonArray("items");
             for (JsonElement e : arr) {
                 if (e == null || !e.isJsonObject()) throw new IllegalArgumentException("Invalid reward item entry");

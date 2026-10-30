@@ -326,7 +326,9 @@ public final class ReincarnationStore {
         }
         if (owner.isEmpty()) {
             view.legacyPayload.addProperty(LEGACY_MIGRATION_OWNER, worldId);
-            writeEncrypted(view.legacyPayload.toString().getBytes(StandardCharsets.UTF_8));
+            writeEncrypted(
+                view.legacyPayload.toString()
+                    .getBytes(StandardCharsets.UTF_8));
         }
         return toLegacyRecord(view);
     }

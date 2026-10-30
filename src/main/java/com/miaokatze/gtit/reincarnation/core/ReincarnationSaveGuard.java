@@ -40,9 +40,8 @@ public final class ReincarnationSaveGuard {
         if (diskLicense.getCycleState() == CycleState.EXECUTED) {
             return memoryModel.getCycleState() != CycleState.EXECUTED;
         }
-        return memoryModel.getCycleState() == CycleState.EXECUTED
-            && !memoryModel.getExecutedFingerprints()
-                .isEmpty()
+        return memoryModel.getCycleState() == CycleState.EXECUTED && !memoryModel.getExecutedFingerprints()
+            .isEmpty()
             && diskLicense.getExecutedFingerprints()
                 .containsAll(memoryModel.getExecutedFingerprints());
     }

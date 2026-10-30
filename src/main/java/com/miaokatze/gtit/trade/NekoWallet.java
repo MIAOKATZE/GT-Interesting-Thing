@@ -48,7 +48,8 @@ public class NekoWallet {
 
     /** Bounded compatibility view, not the exact ledger total. Never use this to copy/merge a wallet. */
     public synchronized int getCount(String currencyId) {
-        return getExactCount(currencyId).min(INT_MAX).intValue();
+        return getExactCount(currencyId).min(INT_MAX)
+            .intValue();
     }
 
     public synchronized BigInteger getExactCount(String currencyId) {
@@ -64,7 +65,8 @@ public class NekoWallet {
         }
         if (currencyId == null) throw new IllegalArgumentException("currencyId");
         BigInteger current = getExactCount(currencyId);
-        BigInteger next = current.add(BigInteger.valueOf(amount)).max(BigInteger.ZERO);
+        BigInteger next = current.add(BigInteger.valueOf(amount))
+            .max(BigInteger.ZERO);
         if (next.equals(current)) return;
         balances.put(currencyId, next);
         notifyChanged();
@@ -76,7 +78,9 @@ public class NekoWallet {
      */
     public synchronized int getCreditCapacity(String currencyId) {
         if (successor != null) return successor.getCreditCapacity(currencyId);
-        return INT_MAX.subtract(getExactCount(currencyId)).max(BigInteger.ZERO).intValue();
+        return INT_MAX.subtract(getExactCount(currencyId))
+            .max(BigInteger.ZERO)
+            .intValue();
     }
 
     /** Credit at most available physical-import capacity; the caller retains every unaccepted coin. */
@@ -168,7 +172,10 @@ public class NekoWallet {
         for (Map.Entry<String, BigInteger> entry : balances.entrySet()) {
             BigInteger value = entry.getValue();
             boolean reservedKey = EXACT_TAG.equals(entry.getKey()) || VERSION_TAG.equals(entry.getKey());
-            if (!reservedKey) nbt.setInteger(entry.getKey(), value.min(INT_MAX).intValue());
+            if (!reservedKey) nbt.setInteger(
+                entry.getKey(),
+                value.min(INT_MAX)
+                    .intValue());
             if (reservedKey || value.compareTo(INT_MAX) > 0) {
                 exact.setString(entry.getKey(), value.toString());
                 overflow = true;
@@ -203,14 +210,16 @@ public class NekoWallet {
             for (String currencyId : currencyIds) {
                 boolean reservedKey = exactFormat && (EXACT_TAG.equals(currencyId) || VERSION_TAG.equals(currencyId));
                 if (!reservedKey && (!nbt.hasKey(currencyId, 1) && !nbt.hasKey(currencyId, 2)
-                    && !nbt.hasKey(currencyId, 3) && !nbt.hasKey(currencyId, 4))) {
+                    && !nbt.hasKey(currencyId, 3)
+                    && !nbt.hasKey(currencyId, 4))) {
                     throw new IllegalArgumentException("Invalid legacy wallet balance");
                 }
                 long legacy = reservedKey ? 0 : nbt.getLong(currencyId);
                 if (legacy < 0) throw new IllegalArgumentException("Negative wallet balance");
                 BigInteger value = BigInteger.valueOf(legacy);
                 if (exact.hasKey(currencyId)) {
-                    if (!exact.hasKey(currencyId, 8)) throw new IllegalArgumentException("Invalid exact wallet balance");
+                    if (!exact.hasKey(currencyId, 8))
+                        throw new IllegalArgumentException("Invalid exact wallet balance");
                     value = new BigInteger(exact.getString(currencyId));
                     if (value.signum() < 0 || (!reservedKey
                         && (value.compareTo(INT_MAX) <= 0 || nbt.getLong(currencyId) != Integer.MAX_VALUE))) {

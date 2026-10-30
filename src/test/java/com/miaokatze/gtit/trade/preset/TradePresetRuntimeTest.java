@@ -195,7 +195,8 @@ public final class TradePresetRuntimeTest {
         java.lang.reflect.Method bindHistory = com.miaokatze.gtit.trade.v2.NekoHistoryManager.class
             .getDeclaredMethod("bindSaveDirectory", java.io.File.class);
         bindHistory.setAccessible(true);
-        bindHistory.invoke(com.miaokatze.gtit.trade.v2.NekoHistoryManager.INSTANCE, new java.io.File("history-fixture"));
+        bindHistory
+            .invoke(com.miaokatze.gtit.trade.v2.NekoHistoryManager.INSTANCE, new java.io.File("history-fixture"));
         UUID statusPlayer = UUID.randomUUID();
         com.miaokatze.gtit.trade.v2.NekoTradeHistory oneTimeHistory = com.miaokatze.gtit.trade.v2.NekoHistoryManager.INSTANCE
             .getHistory(statusPlayer, oneTimeGroup.getId());

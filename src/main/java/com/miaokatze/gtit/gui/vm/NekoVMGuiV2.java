@@ -1024,8 +1024,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
     public void scheduleServerAction(Runnable action) {
         VendingServerActions.schedulePlayerRequest(
-            guiData != null && guiData.getPlayer() instanceof EntityPlayerMP
-                ? (EntityPlayerMP) guiData.getPlayer() : null,
+            guiData != null && guiData.getPlayer() instanceof EntityPlayerMP ? (EntityPlayerMP) guiData.getPlayer()
+                : null,
             VendingGuiSession.guard(guiData, syncManagerRef, baseMetaTileEntity, multiblock, () -> {
                 action.run();
                 multiblock.markTradeStateChanged();
@@ -1035,8 +1035,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     /** Completion only releases the volatile scene request latch, including pre-admission rejection. */
     public void scheduleServerAction(Runnable action, Runnable completion) {
         VendingServerActions.schedulePlayerRequest(
-            guiData != null && guiData.getPlayer() instanceof EntityPlayerMP
-                ? (EntityPlayerMP) guiData.getPlayer() : null,
+            guiData != null && guiData.getPlayer() instanceof EntityPlayerMP ? (EntityPlayerMP) guiData.getPlayer()
+                : null,
             VendingGuiSession.guard(guiData, syncManagerRef, baseMetaTileEntity, multiblock, () -> {
                 action.run();
                 multiblock.markTradeStateChanged();

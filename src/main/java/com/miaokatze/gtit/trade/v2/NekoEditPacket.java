@@ -99,9 +99,12 @@ public class NekoEditPacket implements IMessage {
     @Override
     public void toBytes(ByteBuf buf) {
         buf.writeInt(this.action);
-        PacketStrings.write(buf, this.targetId == null ? "" : this.targetId, NekoEditActionHandler.MAX_TARGET_ID_LENGTH);
+        PacketStrings
+            .write(buf, this.targetId == null ? "" : this.targetId, NekoEditActionHandler.MAX_TARGET_ID_LENGTH);
         buf.writeInt(this.targetIndex);
-        PacketStrings.write(buf, this.jsonPayload == null ? "" : this.jsonPayload,
+        PacketStrings.write(
+            buf,
+            this.jsonPayload == null ? "" : this.jsonPayload,
             NekoEditActionHandler.MAX_JSON_PAYLOAD_LENGTH);
     }
 

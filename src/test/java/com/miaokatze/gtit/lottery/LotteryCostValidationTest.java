@@ -27,18 +27,19 @@ public final class LotteryCostValidationTest {
     private static final String ENTRY = "\"entries\":[{\"id\":\"prize\",\"item\":\"minecraft:iron_ingot\",\"minAmount\":1,\"maxAmount\":1,\"weight\":1,\"rarity\":\"COMMON\"}]";
 
     public static void main(String[] args) throws Exception {
-        if (!Boolean.getBoolean("gtit.rewards.testScratch"))
-            throw new IllegalStateException("Run only in an isolated scratch working directory with -Dgtit.rewards.testScratch=true");
+        if (!Boolean.getBoolean("gtit.rewards.testScratch")) throw new IllegalStateException(
+            "Run only in an isolated scratch working directory with -Dgtit.rewards.testScratch=true");
         if (!MinecraftTestBootstrap.enter(LotteryCostValidationTest.class, args)) return;
         int failed = 0;
         for (String name : new String[] { "missingPaymentNeverBecomesFree", "missingPaymentNeverPartiallyDiscounts",
             "invalidNbtNeverBecomesPlainPayment", "amountNeverClampsOrWraps", "nullPaymentNeverDisappears",
             "missingLegacyCurrencyNeverBecomesFree", "legacyAmountNeverWraps", "freeAndLegacyPoolsRemainValid",
             "validTaggedPaymentRoundTrips", "editorRejectsAnyMalformedPayment", "runtimeMutationCannotSkipPayment",
-            "malformedExistingConfigIsPreserved", "editorCannotOverwriteUnreadableConfig", "missingPoolsIsNotEditableEmpty",
-            "unsynthesizedLegacyPaymentCannotDrawFree" }) {
+            "malformedExistingConfigIsPreserved", "editorCannotOverwriteUnreadableConfig",
+            "missingPoolsIsNotEditableEmpty", "unsynthesizedLegacyPaymentCannotDrawFree" }) {
             try {
-                LotteryCostValidationTest.class.getDeclaredMethod(name).invoke(null);
+                LotteryCostValidationTest.class.getDeclaredMethod(name)
+                    .invoke(null);
                 System.out.println("PASS " + name);
             } catch (ReflectiveOperationException failure) {
                 failed++;
@@ -50,7 +51,9 @@ public final class LotteryCostValidationTest {
 
     private static String config(String costs, String extra) {
         return "{\"pools\":[{\"id\":\"test\",\"name\":\"test\"," + ENTRY
-            + (costs == null ? "" : ",\"costItems\":" + costs) + extra + "}]}";
+            + (costs == null ? "" : ",\"costItems\":" + costs)
+            + extra
+            + "}]}";
     }
 
     private static void write(String json) throws Exception {
@@ -60,8 +63,12 @@ public final class LotteryCostValidationTest {
 
     private static void rejected(String json) throws Exception {
         write(json);
-        check(LotteryConfig.load().pools.isEmpty(), "Malformed payment must disable loading, not weaken its requirements");
-        check(json.equals(new String(Files.readAllBytes(CONFIG), StandardCharsets.UTF_8)), "Original config bytes retained");
+        check(
+            LotteryConfig.load().pools.isEmpty(),
+            "Malformed payment must disable loading, not weaken its requirements");
+        check(
+            json.equals(new String(Files.readAllBytes(CONFIG), StandardCharsets.UTF_8)),
+            "Original config bytes retained");
     }
 
     private static void missingPaymentNeverBecomesFree() throws Exception {
@@ -69,7 +76,10 @@ public final class LotteryCostValidationTest {
     }
 
     private static void missingPaymentNeverPartiallyDiscounts() throws Exception {
-        rejected(config("[{\"item\":\"minecraft:iron_ingot\",\"amount\":1},{\"item\":\"missingmod:expensive_ticket\",\"amount\":99}]", ""));
+        rejected(
+            config(
+                "[{\"item\":\"minecraft:iron_ingot\",\"amount\":1},{\"item\":\"missingmod:expensive_ticket\",\"amount\":99}]",
+                ""));
     }
 
     private static void invalidNbtNeverBecomesPlainPayment() throws Exception {
@@ -98,15 +108,28 @@ public final class LotteryCostValidationTest {
     private static void freeAndLegacyPoolsRemainValid() throws Exception {
         write(config("[]", ""));
         List<LotteryPool> free = LotteryConfig.load().pools;
-        check(free.size() == 1 && free.get(0).getCostItems().isEmpty() && free.get(0).validate(), "Intentional free pool remains usable");
+        check(
+            free.size() == 1 && free.get(0)
+                .getCostItems()
+                .isEmpty()
+                && free.get(0)
+                    .validate(),
+            "Intentional free pool remains usable");
         net.minecraft.item.Item previous = NekoCurrencyRegistrar.nekoCoinItem;
         try {
             // The headless bootstrap initializes vanilla registries, not GTIT's postInit coin binding.
             NekoCurrencyRegistrar.nekoCoinItem = Items.gold_nugget;
             write(config(null, ",\"nekoCurrencyId\":\"neko\",\"costPerDraw\":5"));
             List<LotteryPool> legacy = LotteryConfig.load().pools;
-            check(legacy.size() == 1 && legacy.get(0).getCostItems().size() == 1
-                && legacy.get(0).getCostItems().get(0).getStackSize() == 5, "Valid legacy payment is preserved");
+            check(
+                legacy.size() == 1 && legacy.get(0)
+                    .getCostItems()
+                    .size() == 1
+                    && legacy.get(0)
+                        .getCostItems()
+                        .get(0)
+                        .getStackSize() == 5,
+                "Valid legacy payment is preserved");
         } finally {
             NekoCurrencyRegistrar.nekoCoinItem = previous;
         }
@@ -119,11 +142,21 @@ public final class LotteryCostValidationTest {
         write(config("[{\"item\":\"minecraft:iron_ingot\",\"amount\":7,\"nbtBase64\":\"" + nbt + "\"}]", ""));
         LotteryConfig.LotteryConfigData loaded = LotteryConfig.load();
         LotteryConfig.save(loaded);
-        NekoBigItemStack cost = LotteryConfig.load().pools.get(0).getCostItems().get(0);
-        check(cost.getStackSize() == 7 && tag.equals(cost.getBaseStack().getTagCompound()), "Exact tagged payment survives save/reload");
+        NekoBigItemStack cost = LotteryConfig.load().pools.get(0)
+            .getCostItems()
+            .get(0);
+        check(
+            cost.getStackSize() == 7 && tag.equals(
+                cost.getBaseStack()
+                    .getTagCompound()),
+            "Exact tagged payment survives save/reload");
         check(parseEditor("[]").isEmpty(), "Editor can intentionally make pool free");
         cost = parseEditor("[{\"item\":\"minecraft:iron_ingot\",\"amount\":7,\"nbtBase64\":\"" + nbt + "\"}]").get(0);
-        check(cost.getStackSize() == 7 && tag.equals(cost.getBaseStack().getTagCompound()), "Editor uses exact same tagged payment");
+        check(
+            cost.getStackSize() == 7 && tag.equals(
+                cost.getBaseStack()
+                    .getTagCompound()),
+            "Editor uses exact same tagged payment");
     }
 
     @SuppressWarnings("unchecked")
@@ -131,7 +164,10 @@ public final class LotteryCostValidationTest {
         Class<?> editor = Class.forName("com.miaokatze.gtit.trade.v2.LotteryEditActions");
         Method parse = editor.getDeclaredMethod("parsePoolCostItems", JsonArray.class);
         parse.setAccessible(true);
-        return (List<NekoBigItemStack>) parse.invoke(null, new JsonParser().parse(json).getAsJsonArray());
+        return (List<NekoBigItemStack>) parse.invoke(
+            null,
+            new JsonParser().parse(json)
+                .getAsJsonArray());
     }
 
     private static void editorRejectsAnyMalformedPayment() throws Exception {
@@ -139,8 +175,11 @@ public final class LotteryCostValidationTest {
             "{\"item\":\"minecraft:iron_ingot\",\"nbtBase64\":\"%%%\"}",
             "{\"item\":\"minecraft:iron_ingot\",\"amount\":4294967297}", "null" }) {
             boolean failed = false;
-            try { parseEditor("[{\"item\":\"minecraft:iron_ingot\"}," + cost + "]"); }
-            catch (java.lang.reflect.InvocationTargetException expected) { failed = true; }
+            try {
+                parseEditor("[{\"item\":\"minecraft:iron_ingot\"}," + cost + "]");
+            } catch (java.lang.reflect.InvocationTargetException expected) {
+                failed = true;
+            }
             check(failed, "Editor must reject whole payment, not save discounted subset: " + cost);
         }
     }
@@ -150,10 +189,14 @@ public final class LotteryCostValidationTest {
         ready.setAccessible(true);
         ready.setBoolean(LotteryManager.INSTANCE, false);
         LotteryPool pool = new LotteryPool("test", "test", "", 0, PityConfig.createDefault());
-        pool.getEntries().add(LotteryEntry.createItemPrize("prize", "minecraft:iron_ingot", 0, 1, 1, 1, LotteryRarity.COMMON));
-        pool.getCostItems().add(null);
+        pool.getEntries()
+            .add(LotteryEntry.createItemPrize("prize", "minecraft:iron_ingot", 0, 1, 1, 1, LotteryRarity.COMMON));
+        pool.getCostItems()
+            .add(null);
         check(!pool.validate(), "Null runtime payment disables drawing");
-        check(!LotteryManager.INSTANCE.canAfford(UUID.randomUUID(), pool, 1, null), "Null runtime payment is not affordable for free");
+        check(
+            !LotteryManager.INSTANCE.canAfford(UUID.randomUUID(), pool, 1, null),
+            "Null runtime payment is not affordable for free");
         pool.setCostItems(Arrays.asList(new NekoBigItemStack(0, "", new ItemStack(Items.iron_ingot))));
         check(!pool.validate(), "Zero runtime payment must not be skipped");
         check(!LotteryManager.INSTANCE.canAfford(UUID.randomUUID(), pool, 1, null), "Zero runtime payment is not free");
@@ -165,7 +208,8 @@ public final class LotteryCostValidationTest {
 
     private static void unsynthesizedLegacyPaymentCannotDrawFree() {
         LotteryPool pool = new LotteryPool("legacy", "legacy", "missing_currency", 5, PityConfig.createDefault());
-        pool.getEntries().add(LotteryEntry.createItemPrize("prize", "minecraft:iron_ingot", 0, 1, 1, 1, LotteryRarity.COMMON));
+        pool.getEntries()
+            .add(LotteryEntry.createItemPrize("prize", "minecraft:iron_ingot", 0, 1, 1, 1, LotteryRarity.COMMON));
         check(!pool.validate(), "An unresolved legacy price is not an intentionally free first-run/programmatic pool");
     }
 
@@ -180,7 +224,8 @@ public final class LotteryCostValidationTest {
     private static void assertEditorPreserves(String broken) throws Exception {
         write(broken);
         Class<?> editor = Class.forName("com.miaokatze.gtit.trade.v2.LotteryEditActions");
-        Method create = editor.getDeclaredMethod("createLotteryPool", net.minecraft.entity.player.EntityPlayerMP.class, String.class);
+        Method create = editor
+            .getDeclaredMethod("createLotteryPool", net.minecraft.entity.player.EntityPlayerMP.class, String.class);
         create.setAccessible(true);
         try {
             create.invoke(null, null, "{\"id\":\"new_pool\",\"entryCount\":4,\"costItems\":[]}");
@@ -188,8 +233,12 @@ public final class LotteryCostValidationTest {
             // No live recipient is needed for this file boundary test; native feedback dereferences null.
             if (!(failure.getCause() instanceof NullPointerException)) throw failure;
         }
-        check(broken.equals(new String(Files.readAllBytes(CONFIG), StandardCharsets.UTF_8)), "Editor must not replace unreadable file with a new pool");
+        check(
+            broken.equals(new String(Files.readAllBytes(CONFIG), StandardCharsets.UTF_8)),
+            "Editor must not replace unreadable file with a new pool");
     }
 
-    private static void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
+    private static void check(boolean condition, String message) {
+        if (!condition) throw new AssertionError(message);
+    }
 }

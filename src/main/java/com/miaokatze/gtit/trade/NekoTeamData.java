@@ -2,8 +2,8 @@ package com.miaokatze.gtit.trade;
 
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Set;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import net.minecraft.nbt.NBTTagCompound;
@@ -54,7 +54,8 @@ public class NekoTeamData implements ITeamData {
             : successor.applyLegacyHistory(playerId, records);
         if (legacyHistoryReceipts.contains(playerId)) return false;
         for (Map.Entry<UUID, NekoTradeHistory> entry : records.entrySet()) {
-            if (consume) entry.getValue().transferAllTo(getTradeHistory(entry.getKey()));
+            if (consume) entry.getValue()
+                .transferAllTo(getTradeHistory(entry.getKey()));
             else mergeTradeHistory(entry.getKey(), entry.getValue());
         }
         legacyHistoryReceipts.add(playerId);
@@ -170,7 +171,8 @@ public class NekoTeamData implements ITeamData {
             }
         }
         if (tag != null && tag.hasKey("legacyHistoryReceipts")) {
-            if (!tag.hasKey("legacyHistoryReceipts", 10)) throw new IllegalArgumentException("Invalid migration receipts");
+            if (!tag.hasKey("legacyHistoryReceipts", 10))
+                throw new IllegalArgumentException("Invalid migration receipts");
             NBTTagCompound receiptTag = tag.getCompoundTag("legacyHistoryReceipts");
             for (String key : (Set<String>) receiptTag.func_150296_c()) {
                 if (!receiptTag.hasKey(key, 1) || !receiptTag.getBoolean(key)) {
@@ -205,7 +207,8 @@ public class NekoTeamData implements ITeamData {
                     if (target == this && surviving != null) target.wallet.setTeamId(surviving.getTeamId());
                     other.wallet.transferAllTo(target.wallet);
                     for (Map.Entry<UUID, NekoTradeHistory> entry : other.tradeHistories.entrySet()) {
-                        entry.getValue().transferAllTo(target.getTradeHistory(entry.getKey()));
+                        entry.getValue()
+                            .transferAllTo(target.getTradeHistory(entry.getKey()));
                     }
                     // The source was consumed; replaying the merge must not duplicate redemption history.
                     other.tradeHistories.clear();

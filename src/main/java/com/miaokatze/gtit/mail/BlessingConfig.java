@@ -17,8 +17,8 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.annotations.SerializedName;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
-import com.miaokatze.gtit.util.RewardConfigFile;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.util.RewardConfigFile;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 
@@ -71,7 +71,8 @@ public class BlessingConfig {
     private static boolean unavailable;
 
     private static void requireAvailable() {
-        if (unavailable) throw new IllegalStateException("Blessing reward configuration is unavailable; repair the file and reload");
+        if (unavailable)
+            throw new IllegalStateException("Blessing reward configuration is unavailable; repair the file and reload");
     }
 
     /** 祝福邮件发件人显示名（默认「猫猫售货机」） */
@@ -195,7 +196,8 @@ public class BlessingConfig {
             // 猫猫币以附件物品形式发放（v1.7.6 用户确认口径：领取后自行投币入钱包）
             if (currencyAmount > 0 && currency != null && !currency.isEmpty()) {
                 ItemStack coin = NekoCurrencyRegistrar.getItemStack(currency, currencyAmount);
-                if (coin == null) throw new IllegalArgumentException("Blessing currency item is unavailable: " + currency);
+                if (coin == null)
+                    throw new IllegalArgumentException("Blessing currency item is unavailable: " + currency);
                 attachments.add(coin);
             }
             return attachments;
@@ -228,7 +230,8 @@ public class BlessingConfig {
             }
             if (currencyAmount > 0 && currency != null && !currency.isEmpty()) {
                 ItemStack coin = NekoCurrencyRegistrar.getItemStack(currency, currencyAmount);
-                if (coin == null) throw new IllegalArgumentException("Blessing currency item is unavailable: " + currency);
+                if (coin == null)
+                    throw new IllegalArgumentException("Blessing currency item is unavailable: " + currency);
                 attachments.add(coin);
             }
             return attachments;
@@ -256,10 +259,10 @@ public class BlessingConfig {
             }
             if (Files.exists(path)) {
                 JsonObject root = RewardConfigFile.readObject(path);
-                if (root.has("festivals") && !root.get("festivals").isJsonArray())
-                    throw new IllegalArgumentException("Invalid blessing festivals");
-                if (root.has("birthday") && !root.get("birthday").isJsonObject())
-                    throw new IllegalArgumentException("Invalid birthday reward");
+                if (root.has("festivals") && !root.get("festivals")
+                    .isJsonArray()) throw new IllegalArgumentException("Invalid blessing festivals");
+                if (root.has("birthday") && !root.get("birthday")
+                    .isJsonObject()) throw new IllegalArgumentException("Invalid birthday reward");
                 ConfigData data = GSON.fromJson(root, ConfigData.class);
                 sender = data.sender == null || data.sender.isEmpty() ? "猫猫售货机" : data.sender;
                 festivals = data.festivals;
@@ -272,7 +275,9 @@ public class BlessingConfig {
             }
         } catch (Exception failure) {
             unavailable = true;
-            throw new IllegalStateException("Unable to load blessing reward configuration; existing files are preserved", failure);
+            throw new IllegalStateException(
+                "Unable to load blessing reward configuration; existing files are preserved",
+                failure);
         }
     }
 

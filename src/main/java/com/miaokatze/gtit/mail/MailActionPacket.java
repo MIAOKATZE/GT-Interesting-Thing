@@ -195,7 +195,8 @@ public class MailActionPacket implements IMessage {
                         player.addChatMessage(
                             new ChatComponentText(EnumChatFormatting.GREEN + "已领取 " + granted + " 组邮件附件"));
                     } else if (granted == -2) {
-                        player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "附件尚未送达，已保留；请腾出背包空间后重试"));
+                        player
+                            .addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "附件尚未送达，已保留；请腾出背包空间后重试"));
                     } else {
                         player.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "没有可领取的附件"));
                     }

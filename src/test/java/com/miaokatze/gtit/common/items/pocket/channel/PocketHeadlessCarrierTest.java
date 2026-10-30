@@ -27,17 +27,30 @@ import com.mojang.authlib.GameProfile;
 public final class PocketHeadlessCarrierTest {
 
     private static final class Player extends EntityPlayerMP {
+
         GameProfile profile;
-        private Player() { super(null, null, null, null); }
-        @Override public GameProfile getGameProfile() { return profile; }
+
+        private Player() {
+            super(null, null, null, null);
+        }
+
+        @Override
+        public GameProfile getGameProfile() {
+            return profile;
+        }
     }
 
     private static final class Vanilla extends net.minecraft.inventory.Container {
+
         Vanilla(EntityPlayer player) {
             addSlotToContainer(new Slot(player.inventory, 0, 0, 0));
             addSlotToContainer(new Slot(player.inventory, 1, 0, 0));
         }
-        @Override public boolean canInteractWith(EntityPlayer player) { return true; }
+
+        @Override
+        public boolean canInteractWith(EntityPlayer player) {
+            return true;
+        }
     }
 
     private static <T> T allocate(Class<T> type) throws Exception {
@@ -67,8 +80,8 @@ public final class PocketHeadlessCarrierTest {
         inventory.markClean();
         // Exercise the real session without requiring a launched world or a configured AE grid.
         Class<?> type = Class.forName(PocketChannelSessions.class.getName() + "$HeadlessSession");
-        Constructor<?> constructor = type.getDeclaredConstructor(UUID.class, EntityPlayer.class, ItemStack.class,
-            PocketInventory.class);
+        Constructor<?> constructor = type
+            .getDeclaredConstructor(UUID.class, EntityPlayer.class, ItemStack.class, PocketInventory.class);
         constructor.setAccessible(true);
         PocketSession session = (PocketSession) constructor.newInstance(uuid, player, original, inventory);
         PocketSessions.register(session);
@@ -85,35 +98,44 @@ public final class PocketHeadlessCarrierTest {
             ItemStack moved = player.inventory.mainInventory[1];
             check(moved != original && original.stackSize == 0, "native placement must create a carrier copy");
             PocketChannelDriver.onItemTick(moved, null, player, 1, false);
-            check(session.carrierStack() == moved && state.sessionCarrier() == moved,
+            check(
+                session.carrierStack() == moved && state.sessionCarrier() == moved,
                 "headless session resolves before the driver checks/retargets carrier identity");
-            check(state.ticksUntilDue() == ticks - 1 && state.remainingBatches() == batches,
+            check(
+                state.ticksUntilDue() == ticks - 1 && state.remainingBatches() == batches,
                 "moving carrier resumes the existing timer; no free restart or extra batch");
             inventory.drainOwnTank(0, 400);
             session.persistIdle();
-            check(PocketInventory.readFrom(moved.getTagCompound()).tankTruthAt(0) == 600,
+            check(
+                PocketInventory.readFrom(moved.getTagCompound())
+                    .tankTruthAt(0) == 600,
                 "accepted state persists to the uniquely relocated headless carrier");
 
             ItemStack foreign = new ItemStack(original.getItem(), 1);
             player.inventory.mainInventory[2] = foreign;
             PocketChannelDriver.onItemTick(foreign, null, player, 2, false);
-            check(state.sessionCarrier() == moved && state.ticksUntilDue() == ticks - 1,
+            check(
+                state.sessionCarrier() == moved && state.ticksUntilDue() == ticks - 1,
                 "another pocket must not retarget state or advance this channel's clock");
             player.inventory.mainInventory[2] = moved.copy();
             PocketChannelDriver.onItemTick(moved, null, player, 1, false);
-            check(session.carrierStack() == null && !session.isHeldByOwner()
-                && state.ticksUntilDue() == ticks - 1, "duplicate tokens fail closed before driver mutation");
+            check(
+                session.carrierStack() == null && !session.isHeldByOwner() && state.ticksUntilDue() == ticks - 1,
+                "duplicate tokens fail closed before driver mutation");
             player.inventory.mainInventory[2] = null;
             PocketCarrierIdentity.capture(moved, true);
             inventory.drainOwnTank(0, 100);
             session.persistFinal();
-            check(session.carrierStack() == null && inventory.isDirty()
-                && PocketInventory.readFrom(moved.getTagCompound()).tankTruthAt(0) == 600,
+            check(
+                session.carrierStack() == null && inventory.isDirty()
+                    && PocketInventory.readFrom(moved.getTagCompound())
+                        .tankTruthAt(0) == 600,
                 "a reopened carrier revokes the old headless writer without losing its dirty marker");
         } finally {
             PocketSessions.forget(uuid);
             PocketChannelManager.INSTANCE.reset();
         }
-        System.out.println("PocketHeadlessCarrierTest: PASS (native copies, timer, accepted state, foreign, ambiguous, revoked)");
+        System.out.println(
+            "PocketHeadlessCarrierTest: PASS (native copies, timer, accepted state, foreign, ambiguous, revoked)");
     }
 }

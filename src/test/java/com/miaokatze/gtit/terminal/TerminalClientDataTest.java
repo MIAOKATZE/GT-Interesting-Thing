@@ -13,9 +13,13 @@ public final class TerminalClientDataTest {
         List<String> players = new ArrayList<>(Arrays.asList("previous-world"));
         TerminalClientData.setOnlinePlayers(players);
         players.clear();
-        check(TerminalClientData.getOnlinePlayers().size() == 1, "player snapshot is detached");
+        check(
+            TerminalClientData.getOnlinePlayers()
+                .size() == 1,
+            "player snapshot is detached");
         try {
-            TerminalClientData.getOnlinePlayers().clear();
+            TerminalClientData.getOnlinePlayers()
+                .clear();
             throw new AssertionError("player snapshot must be immutable");
         } catch (UnsupportedOperationException expected) {}
         TerminalClientData.setLastResult(7, 0, "old action");
@@ -29,19 +33,38 @@ public final class TerminalClientDataTest {
         TerminalClientData.applyData(TerminalClientData.DATA_TYPE_SIGNIN_SUMMARY, tag);
         TerminalClientData.applyData(TerminalClientData.DATA_TYPE_GIFT_LIST, tag);
         TerminalClientData.resetSession();
-        check(TerminalClientData.getOnlinePlayers().isEmpty(), "old online players cleared");
-        check(TerminalClientData.getLastAction() == -1 && TerminalClientData.getLastStatus() == -1,
+        check(
+            TerminalClientData.getOnlinePlayers()
+                .isEmpty(),
+            "old online players cleared");
+        check(
+            TerminalClientData.getLastAction() == -1 && TerminalClientData.getLastStatus() == -1,
             "old action/status cleared");
-        check(TerminalClientData.getLastResultMessage().isEmpty() && TerminalClientData.getLastResultAt() == 0,
+        check(
+            TerminalClientData.getLastResultMessage()
+                .isEmpty() && TerminalClientData.getLastResultAt() == 0,
             "old result cleared");
-        check(TerminalClientData.getMailTemplateTitle().isEmpty() && TerminalClientData.getMailTemplateBody().isEmpty()
-            && !TerminalClientData.isMailTemplateHasAttachment(), "old template cleared");
-        check(TerminalClientData.getSignInSummaryLines().isEmpty(), "old sign-in summary cleared");
-        check(TerminalClientData.getGiftListLines().isEmpty() && TerminalClientData.getGiftTotalCount() == 0,
+        check(
+            TerminalClientData.getMailTemplateTitle()
+                .isEmpty()
+                && TerminalClientData.getMailTemplateBody()
+                    .isEmpty()
+                && !TerminalClientData.isMailTemplateHasAttachment(),
+            "old template cleared");
+        check(
+            TerminalClientData.getSignInSummaryLines()
+                .isEmpty(),
+            "old sign-in summary cleared");
+        check(
+            TerminalClientData.getGiftListLines()
+                .isEmpty() && TerminalClientData.getGiftTotalCount() == 0,
             "old gift query cleared");
         TerminalClientData.resetSession();
         TerminalClientData.setOnlinePlayers(Arrays.asList("next-world"));
-        check(TerminalClientData.getOnlinePlayers().equals(Arrays.asList("next-world")), "next session still updates");
+        check(
+            TerminalClientData.getOnlinePlayers()
+                .equals(Arrays.asList("next-world")),
+            "next session still updates");
         System.out.println("TerminalClientDataTest: detached snapshot, immutable list and complete world reset passed");
     }
 
