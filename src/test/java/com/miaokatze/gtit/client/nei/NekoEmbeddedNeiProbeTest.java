@@ -33,7 +33,7 @@ public final class NekoEmbeddedNeiProbeTest {
 
     public static void main(String[] args) throws Exception {
         geometry();
-        nativeAbi(args.length == 0 ? "2.8.98" : args[0]);
+        nativeAbi(args.length == 0 ? "2.8.171" : args[0]);
         nativeWidgetRegistry();
         nativeGrid();
         noSpawnBytecode();
@@ -84,6 +84,9 @@ public final class NekoEmbeddedNeiProbeTest {
                     .getModifiers()),
             "disabled options click injection uses instance ABI");
         PanelWidget.class.getMethod("getStackMouseOverWithQuantity", int.class, int.class);
+        PanelWidget.class.getMethod("onHotkeyPressed");
+        codechicken.nei.KeyManager.class
+            .getMethod("handleMouseHotkey", int.class, java.util.function.BooleanSupplier.class);
         ItemsGrid.class.getMethod("setGridSize", int.class, int.class, int.class, int.class);
         ItemsGrid.class.getMethod("refresh", GuiContainer.class);
         SearchField.class.getMethod("onTextChange", String.class);
@@ -197,22 +200,21 @@ public final class NekoEmbeddedNeiProbeTest {
 
     private static void focusedEditorOwnsKeys() throws Exception {
         final boolean[] focusedBeforeNativeKey = { false }, sawNativeKey = { false };
-        try (InputStream stream = NekoEmbeddedNeiSession.Bridge.class
-            .getResourceAsStream("NekoEmbeddedNeiSession$Bridge.class")) {
+        try (InputStream stream = NekoEmbeddedNeiSession.class.getResourceAsStream("NekoEmbeddedNeiSession.class")) {
             check(stream != null, "bridge bytecode available");
             new ClassReader(stream).accept(new ClassVisitor(Opcodes.ASM5) {
 
                 @Override
                 public MethodVisitor visitMethod(int access, String name, String descriptor, String signature,
                     String[] exceptions) {
-                    if (!name.equals("key")) return null;
+                    if (!name.equals("hotkey")) return null;
                     return new MethodVisitor(Opcodes.ASM5) {
 
                         @Override
                         public void visitMethodInsn(int opcode, String owner, String name, String descriptor,
                             boolean isInterface) {
                             if (name.equals("isFocused") && !sawNativeKey[0]) focusedBeforeNativeKey[0] = true;
-                            if (owner.startsWith("codechicken/nei/") && name.equals("handleKeyPress")) {
+                            if (owner.startsWith("codechicken/nei/") && name.equals("onHotkeyPressed")) {
                                 sawNativeKey[0] = true;
                                 check(
                                     focusedBeforeNativeKey[0],

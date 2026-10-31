@@ -38,6 +38,7 @@ import com.miaokatze.gtit.gui.vm.edit.NekoGhostTarget;
 import codechicken.nei.ItemPanel;
 import codechicken.nei.ItemPanels;
 import codechicken.nei.ItemsGrid;
+import codechicken.nei.KeyManager;
 import codechicken.nei.LayoutManager;
 import codechicken.nei.NEIClientConfig;
 import codechicken.nei.SearchField;
@@ -396,6 +397,11 @@ public final class NekoEmbeddedNeiSession {
             selectionPress = false;
             return true;
         }
+        if (KeyManager.handleMouseHotkey(button, () -> hotkey(x, y))) {
+            capturedButton = button;
+            selectionPress = false;
+            return true;
+        }
         if (text) {
             clearOwnedGhost();
             return false; // Native MUI field handles cursor placement, selection, clipboard and modern text events.
@@ -434,6 +440,24 @@ public final class NekoEmbeddedNeiSession {
             selectionPress = true;
         } else clearOwnedGhost();
         return true;
+    }
+
+    private boolean hotkey(int x, int y) {
+        // MUI owns text/IME while any editor field is focused, including mouse-bound NEI hotkeys.
+        if (screen.getContext()
+            .isFocused()) return false;
+        if (KeyManager.isHashDown("gui.search")) {
+            clearOwnedGhost();
+            screen.getContext()
+                .focus(searchInput);
+            return true;
+        }
+        // Only forward the native panel's paging hotkeys; never dispatch global cheat/click handlers.
+        if (geometry.bounds.contains(x, y) && ItemPanels.itemPanel.onHotkeyPressed()) {
+            rememberPage();
+            return true;
+        }
+        return false;
     }
 
     private void rememberPage() {
@@ -545,27 +569,18 @@ public final class NekoEmbeddedNeiSession {
             NekoEmbeddedNeiSession session = owner;
             if (session == null || !Keyboard.getEventKeyState()) return;
             try {
-                // MUI owns editor/search keystrokes even while the pointer rests over the catalog.
-                // Its native field consumes legacy control keys and receives modern TextEvent strings separately.
                 if (session.screen.getContext()
                     .isFocused()) return;
                 if (Keyboard.getEventKey() == Keyboard.KEY_ESCAPE && session.ownedGhost != null) {
                     session.clearOwnedGhost();
                     event.setCanceled(true);
-                } else if (NEIClientConfig.isKeyHashDown("gui.search")) {
-                    session.clearOwnedGhost();
-                    session.screen.getContext()
-                        .focus(session.searchInput);
-                    event.setCanceled(true);
-                } else if (session.geometry.bounds.contains(
+                } else if (session.hotkey(
                     session.screen.getContext()
                         .getAbsMouseX(),
                     session.screen.getContext()
-                        .getAbsMouseY())
-                    && ItemPanels.itemPanel.handleKeyPress(Keyboard.getEventKey(), Keyboard.getEventCharacter())) {
-                        session.rememberPage();
-                        event.setCanceled(true);
-                    }
+                        .getAbsMouseY())) {
+                            event.setCanceled(true);
+                        }
             } catch (RuntimeException | LinkageError failure) {
                 session.fail(failure);
                 event.setCanceled(true);

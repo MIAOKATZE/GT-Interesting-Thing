@@ -429,6 +429,27 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         return survivalBuildPiece(STRUCTURE_PIECE_MAIN, stackSize, 2, 3, 0, elementBudget, env, false, true);
     }
 
+    @Override
+    public void clearHatches() {
+        super.clearHatches();
+        clearUplinkHatch();
+    }
+
+    private void clearUplinkHatch() {
+        if (uplinkHatch != null) {
+            uplinkHatch.updateCraftingIcon(null, getBaseMetaTileEntity());
+            uplinkHatch = null;
+        }
+    }
+
+    @Override
+    protected void onStructureCheckFinished(IGregTechTileEntity base) {
+        super.onStructureCheckFinished(base);
+        if (!mMachine && uplinkHatch != null) {
+            uplinkHatch.updateCraftingIcon(null, base);
+        }
+    }
+
     // === 结构检查（3参数版，含 List<StructureError> errors）===
 
     /**
@@ -450,7 +471,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      */
     @Override
     public void checkMachine(IGregTechTileEntity aBaseMetaTileEntity, ItemStack aStack, List<StructureError> errors) {
-        uplinkHatch = null;
+        clearUplinkHatch();
         // 调用带 errors 列表的 5 参数版本，由 StructureChecker 自动写入错误
         checkPiece(STRUCTURE_PIECE_MAIN, 2, 3, 0, errors);
     }
@@ -499,9 +520,9 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         MTEVendingUplinkHatch hatch = (MTEVendingUplinkHatch) aMetaTileEntity;
         hatch.updateTexture(aBaseCasingIndex);
         // 防御 GTNL mixin 对 null icon 调用 func_82837_s() 导致 NPE
-        ItemStack machineCraftingIcon = hatch.getMachineCraftingIcon();
+        ItemStack machineCraftingIcon = getMachineCraftingIcon();
         if (machineCraftingIcon != null) {
-            hatch.updateCraftingIcon(machineCraftingIcon);
+            hatch.updateCraftingIcon(machineCraftingIcon, getBaseMetaTileEntity());
         }
         uplinkHatch = hatch;
         if (LOG.isDebugEnabled()) {

@@ -135,8 +135,8 @@ tasks.named("check") { dependsOn("runTradeMatchingTest") }
 
 // NEI production query entry points need these client classes only in test runtimes.
 val neiTestRuntimeClasspath = configurations.detachedConfiguration(
-    dependencies.create("com.github.GTNewHorizons:NotEnoughItems:2.8.98-GTNH:dev"),
-    dependencies.create("com.github.GTNewHorizons:CodeChickenCore:1.4.21:dev"),
+    dependencies.create("com.github.GTNewHorizons:NotEnoughItems:2.8.171-GTNH:dev"),
+    dependencies.create("com.github.GTNewHorizons:CodeChickenCore:1.4.22:dev"),
     dependencies.create("org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209"),
     dependencies.create("org.lwjgl.lwjgl:lwjgl_util:2.9.4-nightly-20150209")
 ).apply { isTransitive = false }

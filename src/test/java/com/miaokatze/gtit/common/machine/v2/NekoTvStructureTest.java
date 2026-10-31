@@ -202,6 +202,9 @@ public final class NekoTvStructureTest {
     private static TileEntity tileFixture(Object machine) throws Exception {
         Class<?> type = Class.forName("gregtech.api.metatileentity.BaseMetaTileEntity");
         TileEntity tile = (TileEntity) allocate(type);
+        Field coordinates = gregtech.api.metatileentity.BaseTileEntity.class.getDeclaredField("mReturnedCoordinates");
+        coordinates.setAccessible(true);
+        coordinates.set(tile, new net.minecraft.util.ChunkCoordinates());
         gregtech.api.interfaces.tileentity.IGregTechTileEntity base = (gregtech.api.interfaces.tileentity.IGregTechTileEntity) tile;
         ((gregtech.api.interfaces.metatileentity.IMetaTileEntity) machine).setBaseMetaTileEntity(base);
         check(base.getMetaTileEntity() == machine, "fixture obeys GT's bidirectional MTE ownership and validity");
@@ -330,7 +333,15 @@ public final class NekoTvStructureTest {
         Class<?> tileType = gregtech.api.interfaces.tileentity.IGregTechTileEntity.class;
         Method add = MTENekoVendingMachineV2.class.getDeclaredMethod("addUplinkHatch", tileType, int.class);
         add.setAccessible(true);
-        MTENekoVendingMachineV2 controller = new MTENekoVendingMachineV2("uplink_policy_fixture");
+        final ItemStack controllerIcon = new ItemStack(Items.iron_ingot);
+        MTENekoVendingMachineV2 controller = new MTENekoVendingMachineV2("uplink_policy_fixture") {
+
+            @Override
+            public ItemStack getMachineCraftingIcon() {
+                return controllerIcon;
+            }
+        };
+        tileFixture(controller);
         int id = MetaTileEntityID.NEKO_VENDING_UPLINK_HATCH.ID;
         int texture = BlockRegistrar.nekoVendingCasing.getTextureIndex(0);
         check(!(boolean) add.invoke(controller, hatchTile(original, 2742), texture), "old VM hatch ID is rejected");
@@ -342,6 +353,34 @@ public final class NekoTvStructureTest {
         check(
             !(boolean) add.invoke(controller, hatchTile(second, id), texture),
             "a second dedicated hatch is rejected");
+        gregtech.api.metatileentity.implementations.MTEHatch hatch = (gregtech.api.metatileentity.implementations.MTEHatch) first;
+        check(hatch.getMachineCraftingIcon() == controllerIcon, "uplink advertises its controller's crafting icon");
+        controller.clearHatches();
+        check(hatch.getMachineCraftingIcon() == null, "clearing a structure removes its owned icon");
+        check((boolean) add.invoke(controller, firstTile, texture), "the same hatch can bind again after clearing");
+        final ItemStack otherIcon = new ItemStack(Items.gold_ingot);
+        MTENekoVendingMachineV2 other = new MTENekoVendingMachineV2("other_uplink_owner") {
+
+            @Override
+            public ItemStack getMachineCraftingIcon() {
+                return otherIcon;
+            }
+        };
+        TileEntity otherTile = tileFixture(other);
+        otherTile.xCoord = 1;
+        check((boolean) add.invoke(other, firstTile, texture), "a shared hatch can acquire another controller owner");
+        controller.clearHatches();
+        check(
+            hatch.getMachineCraftingIcon() == otherIcon,
+            "clearing the old controller preserves the new owner's icon");
+        other.onStructureCheckFinished(other.getBaseMetaTileEntity());
+        check(hatch.getMachineCraftingIcon() == null, "a failed structure check clears its newly registered icon");
+        other.clearHatches();
+        check((boolean) add.invoke(controller, hatchTile(second, id), texture), "a replacement uplink can bind");
+        controller.clearHatches();
+        check(
+            ((gregtech.api.metatileentity.implementations.MTEHatch) second).getMachineCraftingIcon() == null,
+            "replacement hatches use the same owner cleanup lifecycle");
     }
 
     private static void uplinkRecipe() throws Exception {
