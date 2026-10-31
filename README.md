@@ -13,11 +13,11 @@
   <img alt="GTIT 2.1.0" src="https://img.shields.io/badge/GTIT-2.1.0-green.svg">
 </p>
 
-此版本客户端与服务端均必须安装前置库 [MIAOKATZE Core 0.2.0+](https://github.com/MIAOKATZE/MIAOKATZE-Core)（最低版本：0.2.0）。FalsePatternLib 可在缺失时补下载；已有旧版请手动更新。
+此版本客户端与服务端均必须安装前置库 [MIAOKATZE Core 0.2.0 ~ +](https://github.com/MIAOKATZE/MIAOKATZE-Core)（最低版本：0.2.0，无上限）。FalsePatternLib 可在缺失时补下载；已有旧版请手动更新。
 
-Both client and server require [MIAOKATZE Core 0.2.0 or newer](https://github.com/MIAOKATZE/MIAOKATZE-Core).
+Both client and server require [MIAOKATZE Core 0.2.0 ~ +](https://github.com/MIAOKATZE/MIAOKATZE-Core).
 
-当前 2.1.x 系列仅支持 GTNH 2.9.0 正式版；RC、beta 和 2.8.4 玩家请按下表选择历史 Release。建议 GTIT、GTSWN、GTSR 三者一起更新。
+当前 2.1.0 ~ + 系列仅支持 GTNH 2.9.0 正式版；RC、beta 和 2.8.4 玩家请按下表选择历史版本。建议 GTIT、GTSWN、GTSR 三者一起更新。
 
 A GregTech New Horizons gadget mod that **provides interesting items enhancing the gameplay experience**, including flight cores, ore scanning tools, functional rings, a starter gift system, a hardcore reincarnation cycle, and a custom trading machine, while balancing usage costs to maintain progression integrity.
 
@@ -29,18 +29,16 @@ A GregTech New Horizons gadget mod that **provides interesting items enhancing t
 
 ## Downloads & Requirements / 下载与版本需求
 
-下表按已发布 Release 的兼容声明列出各 GTNH 版本可下载的最新版本；历史版本不代表仍在维护。
+下表按兼容声明列出版本范围或已知版本，下载列仅链接已发布 Release；历史版本不代表仍在维护。
 
-The table lists the latest published release for each GTNH version, according to its release notes. Historical versions are no longer maintained.
+The table lists declared version ranges or known compatible versions. Download links point only to published releases; historical versions are no longer maintained.
 
-| GTNH | GTIT Release / 下载 | Maintenance / 维护 |
+| GTNH | GTIT 版本范围 / Version range | 已发布下载 / Status |
 | --- | --- | --- |
-| 2.9.0 正式版 / final | v2.1.0（待发布 / Unreleased） | 2.1.x 当前维护 / Active series |
-| 2.9.0 RC-1 / RC-2 | **[v2.0.8](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v2.0.8)** | RC 历史版本 / Legacy RC |
-| 2.9.0 beta-3 | [v1.9.3](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v1.9.3) | 历史版本 / Legacy |
-| 2.9.0 beta-2 | [v1.9.3](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v1.9.3) | 历史版本 / Legacy |
-| 2.9.0 beta-1 | [v1.9.3](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v1.9.3) | 历史版本 / Legacy |
-| 2.8.4 | [v0.1.1](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v0.1.1) | 历史版本 / Legacy |
+| 2.9.0 正式版 / final | 2.1.0 ~ + | 当前 2.1.0 待发布草稿 / Draft |
+| 2.9.0 RC-1 / RC-2 | 2.0.0 ~ 2.0.23 | [v2.0.20](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v2.0.20)；范围上限 2.0.23 为未发布候选 |
+| 2.9.0 beta-1 / beta-2 / beta-3 | 1.9.3 | [v1.9.3](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v1.9.3) |
+| 2.8.4 | 0.1.1 | [v0.1.1](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v0.1.1) |
 
 当前源码为 v2.1.0，对应 GTNH 2.9.0 正式版；该版本目前为待发布草稿。表内下载版本以公开 Release 为准。
 
@@ -690,9 +688,9 @@ A literal `\n` in mail bodies is converted to a line break. / 邮件正文中字
 
 - Jabel (modern Java syntax, Java 8 bytecode) / Minecraft 1.7.10 / Forge 10.13.4.1614
 - ModularUI / ModularUI2 / StructureLib
-- Dependencies: MIAOKATZE Core 0.2.0+, GT5-Unofficial (5.09.54.264), GTNHLib, VisualProspecting, Baubles-Expanded, IC2; VendingMachine 0.4.103 (local release jar; original casings and ME uplinks convert to GTIT's dedicated Neko parts), BetterQuesting 3.8.92 (compileOnly)
+- Dependencies: MIAOKATZE Core 0.2.0 ~ +, GT5-Unofficial (5.09.54.264), GTNHLib, VisualProspecting, Baubles-Expanded, IC2; VendingMachine 0.4.103 (local release jar; original casings and ME uplinks convert to GTIT's dedicated Neko parts), BetterQuesting 3.8.92 (compileOnly)
 - Jabel（现代 Java 语法，编译为 Java 8 字节码）/ Minecraft 1.7.10 / Forge 10.13.4.1614
-- 依赖：MIAOKATZE Core 0.2.0+、GT5-Unofficial（5.09.54.264）、GTNHLib、VisualProspecting、Baubles-Expanded、IC2；VendingMachine 0.4.103（本地发布 jar；原机械方块与 ME 仓可转换为 GTIT 猫猫专用部件）、BetterQuesting 3.8.92（compileOnly）
+- 依赖：MIAOKATZE Core 0.2.0 ~ +、GT5-Unofficial（5.09.54.264）、GTNHLib、VisualProspecting、Baubles-Expanded、IC2；VendingMachine 0.4.103（本地发布 jar；原机械方块与 ME 仓可转换为 GTIT 猫猫专用部件）、BetterQuesting 3.8.92（compileOnly）
 
 ***
 
