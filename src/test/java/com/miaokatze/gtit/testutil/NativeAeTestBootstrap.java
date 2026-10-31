@@ -50,6 +50,7 @@ public final class NativeAeTestBootstrap {
                     .equals(transformer))) {
             throw new IllegalStateException("Native AE integration transformer did not register");
         }
+        verifyNativeIntegration(loader);
         if (fixtureContainer != null) {
             // Native AppEng uses its singleton factory; retain that exact object, not a surrogate mod.
             Object instance = appeng.core.AppEng.instance();
@@ -75,7 +76,7 @@ public final class NativeAeTestBootstrap {
             cpw.mods.fml.common.ModContainer existing = loader.getIndexedModList()
                 .get("appliedenergistics2");
             if (existing instanceof cpw.mods.fml.common.FMLModContainer
-                && "rv3-beta-1080-GTNH".equals(existing.getVersion())
+                && "rv3-beta-1095-GTNH".equals(existing.getVersion())
                 && existing.getMod() == appeng.core.AppEng.instance()
                 && loader.getReversedModObjectList()
                     .get(existing.getMod()) == existing)
@@ -92,8 +93,8 @@ public final class NativeAeTestBootstrap {
             .digest(java.nio.file.Files.readAllBytes(jar.toPath()));
         StringBuilder hash = new StringBuilder();
         for (byte value : digest) hash.append(String.format("%02x", value & 255));
-        if (jar.length() != 5011325L
-            || !"325d58c44250aae283899296eb8832ab184afc0d0d2c25b15acf6e806031415a".equals(hash.toString())) {
+        if (jar.length() != 5021052L
+            || !"0bb7d05ae555a7b16e7e9b64f6eb4234217fc82dedc7bbba4874a9d6766042a2".equals(hash.toString())) {
             throw new IllegalStateException("Unexpected AE artifact for native loader fixture: " + jar);
         }
         cpw.mods.fml.common.discovery.ASMDataTable table = new cpw.mods.fml.common.discovery.ASMDataTable();
@@ -104,7 +105,7 @@ public final class NativeAeTestBootstrap {
         java.util.List<cpw.mods.fml.common.ModContainer> discovered = candidate.explore(table);
         cpw.mods.fml.common.FMLModContainer ae = null;
         for (cpw.mods.fml.common.ModContainer mod : discovered) {
-            if ("appliedenergistics2".equals(mod.getModId()) && "rv3-beta-1080-GTNH".equals(mod.getVersion())
+            if ("appliedenergistics2".equals(mod.getModId()) && "rv3-beta-1095-GTNH".equals(mod.getVersion())
                 && mod instanceof cpw.mods.fml.common.FMLModContainer) {
                 if (ae != null) throw new IllegalStateException("Duplicate native AE mod metadata");
                 ae = (cpw.mods.fml.common.FMLModContainer) mod;
@@ -121,6 +122,55 @@ public final class NativeAeTestBootstrap {
         field(cpw.mods.fml.common.Loader.class, "namedMods").set(loader, names);
         controllerField.set(loader, controller);
         return ae;
+    }
+
+    /** Exercise the real coremod's optional interface/method rewrite on an unmodified native AE class. */
+    private static void verifyNativeIntegration(net.minecraft.launchwrapper.LaunchClassLoader loader) throws Exception {
+        String target = "appeng.tile.powersink.RotaryCraft";
+        byte[] original = loader.getClassBytes(target);
+        if (original == null) throw new IllegalStateException("Missing native AE integration contract class");
+        org.objectweb.asm.tree.ClassNode before = new org.objectweb.asm.tree.ClassNode();
+        new org.objectweb.asm.ClassReader(original).accept(before, 0);
+        String[] interfaces = { "Reika/RotaryCraft/API/Power/AdvancedShaftPowerReceiver",
+            "Reika/RotaryCraft/API/Interfaces/Transducerable" };
+        for (String optional : interfaces) {
+            if (!before.interfaces.contains(optional)) {
+                throw new IllegalStateException("Native AE optional interface shape changed: " + optional);
+            }
+        }
+        boolean hasTick = false;
+        for (Object method : before.methods) {
+            org.objectweb.asm.tree.MethodNode nativeMethod = (org.objectweb.asm.tree.MethodNode) method;
+            if ("Tick_RotaryCraft".equals(nativeMethod.name) && "()V".equals(nativeMethod.desc)) hasTick = true;
+        }
+        if (!hasTick) throw new IllegalStateException("Native AE optional method shape changed");
+        net.minecraft.launchwrapper.IClassTransformer transformer = loader.getTransformers()
+            .stream()
+            .filter(
+                t -> t.getClass()
+                    .getName()
+                    .equals("appeng.transformer.asm.ASMIntegration"))
+            .findFirst()
+            .get();
+        byte[] transformed = transformer.transform(target, target, original);
+        org.objectweb.asm.tree.ClassNode after = new org.objectweb.asm.tree.ClassNode();
+        new org.objectweb.asm.ClassReader(transformed).accept(after, 0);
+        for (String optional : interfaces) {
+            if (after.interfaces.contains(optional)) {
+                throw new IllegalStateException(
+                    "Native AE transformer did not strip absent optional interface: " + optional);
+            }
+        }
+        for (Object method : after.methods) {
+            if ("Tick_RotaryCraft".equals(((org.objectweb.asm.tree.MethodNode) method).name)) {
+                throw new IllegalStateException("Native AE transformer did not strip absent optional method");
+            }
+        }
+        if (!before.superName.equals(after.superName) || after.methods.size() != before.methods.size() - 1) {
+            throw new IllegalStateException("Native AE integration rewrite changed unrelated class structure");
+        }
+        System.out.println(
+            "Native AE1095 integration contract: two optional interfaces and one method stripped by actual ASMIntegration");
     }
 
     private static java.io.File loadedArtifact(Class<?> type) throws Exception {
