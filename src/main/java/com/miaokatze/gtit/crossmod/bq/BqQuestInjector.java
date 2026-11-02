@@ -35,9 +35,6 @@ import betterquesting.api.utils.NBTConverter;
 import betterquesting.api.utils.UuidConverter;
 import betterquesting.api2.storage.DBEntry;
 import betterquesting.handlers.SaveLoadHandler;
-import betterquesting.network.handlers.NetChapterSync;
-import betterquesting.network.handlers.NetQuestSync;
-import betterquesting.network.handlers.NetSettingSync;
 import betterquesting.questing.QuestDatabase;
 import betterquesting.questing.QuestInstance;
 import betterquesting.questing.QuestLine;
@@ -83,7 +80,7 @@ import cpw.mods.fml.common.Loader;
  *      <li>进度回填：只回填本次实际重建的已识别包内任务；保留已有任务的权威内存进度，
  *      旧版汇总先 merge=false、逐玩家后 merge=true，并合并原生 dirty-player 集合</li>
  *      <li>版本戳按包写回（刷新成功才写；写失败仅告警，下次启动重试定义刷新）</li>
- *      <li>同步四连（NetSettingSync / NetQuestSync.quickSync / NetChapterSync / markDirty）</li>
+ *      <li>标记定义需要保存；远程玩家由 BQ 原生登录同步接收定义与进度</li>
  *      </ol>
  */
 public final class BqQuestInjector {
@@ -179,10 +176,8 @@ public final class BqQuestInjector {
                 writeStamp(pack.stampKey);
             }
             int orderFixedCount = applyFrontRowOrdering();
-            // 同步四连（与 QuestCommandDefaults.load 尾部同款）
-            NetSettingSync.sendSync(null);
-            NetQuestSync.quickSync(null, true, true);
-            NetChapterSync.sendSync(null, null);
+            // 启动时不排队广播：迟到的全书定义包会清空单机共享任务库的进度。
+            // 本机直接共享数据库，远程玩家由 BQ 原生登录同步接收定义与进度。
             SaveLoadHandler.INSTANCE.markDirty();
             GTInterestingThing.LOG.info(
                 "[GTIT-BQ] 任务注入完成：{} 条任务线，{} 个新任务，{} 个定义刷新{}，{} 个已存在跳过，{} 个已删除任务清理，{} 条任务线清理，前排有序 {} 条 ({})",
