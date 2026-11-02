@@ -103,30 +103,33 @@ public final class StatusCodec {
      * @param playerId    玩家 UUID（服务端查询用）
      */
     public void registerSyncValues(PanelSyncManager syncManager, UUID playerId) {
+        // StringSyncValue 构造时立即读取 getter；客户端只接收 S2C 状态，不查询服务端存储。
         // --- BQ 锁定状态（S2C，同步所有交易组的状态）---
         bqLockStatusSync = new StringSyncValue(
-            () -> buildBqLockStatusString(playerId),
+            () -> syncManager.isClient() ? "" : buildBqLockStatusString(playerId),
             val -> { parseBqLockStatus(val); });
         syncManager.syncValue("nekoV2BqLockStatus", bqLockStatusSync);
 
         // --- 冷却状态（S2C，同步所有交易组的状态）---
         cooldownStatusSync = new StringSyncValue(
-            () -> buildCooldownStatusString(playerId),
+            () -> syncManager.isClient() ? "" : buildCooldownStatusString(playerId),
             val -> { parseCooldownStatus(val); });
         syncManager.syncValue("nekoV2CooldownStatus", cooldownStatusSync);
 
         // --- 可交易状态（S2C，服务端综合 BQ/冷却/钱包/输入物品计算）---
-        tradeableStatusSync = new StringSyncValue(() -> buildTradeableStatusString(playerId), val -> {
-            parseTradeableStatus(val);
-            // 服务端同步值到达后通知主面板刷新，确保客户端立即应用新的可交易状态
-            requestCurrencyNotify.run();
-        });
+        tradeableStatusSync = new StringSyncValue(
+            () -> syncManager.isClient() ? "" : buildTradeableStatusString(playerId),
+            val -> {
+                parseTradeableStatus(val);
+                // 服务端同步值到达后通知主面板刷新，确保客户端立即应用新的可交易状态
+                requestCurrencyNotify.run();
+            });
         syncManager.syncValue("nekoV2TradeableStatus", tradeableStatusSync);
 
         // --- 团队缩放状态（S2C，同步冷却内最大次数和已用次数，用于 tooltip 展示）---
         // 客户端无法直接调用 GTNHLib Teams API，必须通过此同步值获取缩放信息
         teamScaleSync = new StringSyncValue(
-            () -> buildTeamScaleString(playerId),
+            () -> syncManager.isClient() ? "" : buildTeamScaleString(playerId),
             val -> { parseTeamScaleString(val); });
         syncManager.syncValue("nekoV2TeamScale", teamScaleSync);
 
