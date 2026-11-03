@@ -13,11 +13,10 @@
   <img alt="GTIT 2.1.2" src="https://img.shields.io/badge/GTIT-2.1.2-green.svg">
 </p>
 
-此版本客户端与服务端均必须安装前置库 [MIAOKATZE Core 0.2.4 ~ +](https://github.com/MIAOKATZE/MIAOKATZE-Core)（最低版本：0.2.4，无上限）。FalsePatternLib 可在缺失时补下载；已有旧版请手动更新。
-
-Both client and server require [MIAOKATZE Core 0.2.4 ~ +](https://github.com/MIAOKATZE/MIAOKATZE-Core).
-
-当前 2.1.0 ~ + 系列仅支持 GTNH 2.9.0 正式版；RC、beta 和 2.8.4 玩家请按下表选择历史版本。建议 GTIT、GTSWN、GTSR 三者一起更新。
+| 前置 / Requirement | 版本 / Version |
+| --- | --- |
+| GTNH | 2.9.0 |
+| [MIAOKATZE Core](https://github.com/MIAOKATZE/MIAOKATZE-Core) | 0.2.4+ |
 
 A GregTech New Horizons gadget mod that **provides interesting items enhancing the gameplay experience**, including flight cores, ore scanning tools, functional rings, a starter gift system, a hardcore reincarnation cycle, and a custom trading machine, while balancing usage costs to maintain progression integrity.
 
@@ -29,28 +28,16 @@ A GregTech New Horizons gadget mod that **provides interesting items enhancing t
 
 ## Downloads & Requirements / 下载与版本需求
 
-下表按兼容声明列出版本范围或已知版本，下载列仅链接已发布 Release；历史版本不代表仍在维护。
-
-The table lists declared version ranges or known compatible versions. Download links point only to published releases; historical versions are no longer maintained.
-
-| GTNH | GTIT 版本范围 / Version range | 已发布下载 / Status |
+| GTNH | GTIT 版本范围 / Version range | 下载 / Download |
 | --- | --- | --- |
 | 2.9.0 正式版 / final | 2.1.0 ~ + | [v2.1.2](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v2.1.2) |
-| 2.9.0 RC-1 / RC-2 | 2.0.0 ~ 2.0.23 | [v2.0.23](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v2.0.23)；RC 最终版已发布，随附 Core 0.1.28 |
+| 2.9.0 RC-1 / RC-2 | 2.0.0 ~ 2.0.23 | [v2.0.23](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v2.0.23) |
 | 2.9.0 beta-1 / beta-2 / beta-3 | 1.9.3 | [v1.9.3](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v1.9.3) |
 | 2.8.4 | 0.1.1 | [v0.1.1](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v0.1.1) |
 
-本次 v2.1.2 修复 BQ 启动同步竞态：注入后只保存任务定义，单机保留共享任务进度，远程玩家由 BQ 原生登录同步接收完整任务与进度。
+客户端和服务端均安装运行 JAR 与相应前置，替换旧包。 / Install the runtime JAR and required dependencies on both client and server.
 
-This release removes pre-login quest broadcasts after injection. Definitions remain persistent, and remote players receive quests and progress through BetterQuesting's native login synchronization.
-
-当前正式版为 v2.1.2，对应 GTNH 2.9.0 正式版。表内下载版本以公开 Release 为准。
-
-Current release: v2.1.2 for GTNH 2.9.0 final. The download table uses published releases.
-
-从对应 Release 下载运行包，并按该版本的说明安装前置；历史版本不要套用本文顶部的当前前置要求。2.8.4 的 v0.1.1 Release 中，运行包实际文件名为 `gtit-0.1.0.jar`。
-
-Download the runtime JAR and follow the dependency requirements of the selected release; the current requirements above do not apply to historical versions. The runtime asset in the v0.1.1 release for 2.8.4 is named `gtit-0.1.0.jar`.
+2.8.4 对应下载包名为 `gtit-0.1.0.jar`。 / The 2.8.4 runtime file is named `gtit-0.1.0.jar`.
 
 ***
 
