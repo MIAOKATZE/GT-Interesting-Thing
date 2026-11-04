@@ -104,6 +104,7 @@ public final class BundledTradeGroups {
      */
     public static void applyBundledGroups() {
         // Defaults are assembled from jar resources by DefaultTradeSources; never install them to user files.
+        NekoTradeIntegrationAPI.removeRetiredGtmbGroup();
         cachedPromptState = PROMPT_NONE;
     }
 

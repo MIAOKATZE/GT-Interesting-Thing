@@ -1,8 +1,10 @@
 package com.miaokatze.gtit.gui.vm;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import net.minecraft.init.Items;
@@ -12,6 +14,7 @@ import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
+import com.miaokatze.gtit.trade.v2.NekoFavouritesTracker;
 import com.miaokatze.gtit.trade.v2.NekoHistoryManager;
 import com.miaokatze.gtit.trade.v2.NekoTrade;
 import com.miaokatze.gtit.trade.v2.NekoTradeCategory;
@@ -26,8 +29,8 @@ import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 /**
  * S2C 状态字符串编解码器（A01 蓝图 G5 抽取自 NekoVMGuiV2，方法体逐字搬移）
  * <p>
- * 持有四类 S2C 状态通道（BQ 锁定/冷却/可交易/团队缩放）的同步值、客户端缓存 Map
- * 与服务端重建缓存（脏标记 + tick 窗口），build/parse 八个方法的双端编码格式不变。
+ * 持有 BQ 锁定/冷却/可交易/团队缩放及收藏的 S2C 同步值、客户端缓存
+ * 与服务端重建缓存（脏标记 + tick 窗口）。
  * 宿主与 {@code processTradeRequest} 等交易编排经本类的标记/通知 API 触发重算，
  * 不再直摸通道字段。
  * <p>
@@ -60,6 +63,10 @@ public final class StatusCodec {
      * </p>
      */
     private StringSyncValue teamScaleSync;
+
+    /** 玩家收藏的只读 S2C 快照；客户端不访问服务端收藏存储。 */
+    private StringSyncValue favouriteStatusSync;
+    private final Set<String> favouriteStatus = new HashSet<>();
 
     /** BQ 锁定状态映射：groupId → 是否锁定（true=锁定） */
     private final Map<UUID, Boolean> bqLockStatusMap = new HashMap<>();
@@ -97,7 +104,7 @@ public final class StatusCodec {
     }
 
     /**
-     * 注册四类 S2C 状态通道（A01 蓝图 G5 分域下沉，注册体逐字搬移）
+     * 注册 S2C 状态通道
      *
      * @param syncManager 面板同步管理器
      * @param playerId    玩家 UUID（服务端查询用）
@@ -132,6 +139,14 @@ public final class StatusCodec {
             () -> syncManager.isClient() ? "" : buildTeamScaleString(playerId),
             val -> { parseTeamScaleString(val); });
         syncManager.syncValue("nekoV2TeamScale", teamScaleSync);
+
+        favouriteStatusSync = new StringSyncValue(
+            () -> syncManager.isClient() ? "" : buildFavouriteStatusString(playerId),
+            val -> {
+                parseFavouriteStatus(val);
+                requestCurrencyNotify.run();
+            });
+        syncManager.syncValue("nekoV2FavouriteStatus", favouriteStatusSync);
 
         // BQ 锁定/冷却状态变化时也需要重新计算可交易状态
         if (!syncManager.isClient()) {
@@ -200,6 +215,29 @@ public final class StatusCodec {
     /** 客户端读：团队缩放 [maxTrades, usedTrades]（null=未同步） */
     public long[] getTeamScale(UUID groupId) {
         return teamScaleMap.get(groupId);
+    }
+
+    public boolean isFavourite(UUID groupId, int tradeIndex) {
+        return favouriteStatus.contains(groupId + ":" + tradeIndex);
+    }
+
+    public void notifyFavouritesChanged() {
+        if (favouriteStatusSync != null) favouriteStatusSync.notifyUpdate();
+    }
+
+    private String buildFavouriteStatusString(UUID playerId) {
+        if (playerId == null) return "";
+        return NekoFavouritesTracker.INSTANCE.getFavourites(playerId)
+            .stream()
+            .map(favourite -> favourite.getLeft() + ":" + favourite.getRight())
+            .sorted()
+            .collect(java.util.stream.Collectors.joining(","));
+    }
+
+    private void parseFavouriteStatus(String status) {
+        favouriteStatus.clear();
+        if (status == null || status.isEmpty()) return;
+        java.util.Collections.addAll(favouriteStatus, status.split(","));
     }
 
     // ==================== BQ 锁定状态编解码 ====================
