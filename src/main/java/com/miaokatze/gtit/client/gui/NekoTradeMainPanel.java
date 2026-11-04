@@ -176,6 +176,10 @@ public class NekoTradeMainPanel extends ModularPanel {
             return false;
         }
 
+        default boolean getSyncedFavourite(UUID groupId, int tradeIndex) {
+            return NekoFavouritesTracker.INSTANCE.isFavourite(getPlayerId(), groupId, tradeIndex);
+        }
+
         /**
          * 获取当前激活的交易分类
          * <p>
@@ -482,9 +486,10 @@ public class NekoTradeMainPanel extends ModularPanel {
      * <p>
      * 完美复刻 VM 的 updateTradeInformation 逻辑，但适配 GTIT V2 系统：
      * <ol>
-     * <li>从所有分类的已收藏交易中筛选，更新 FAVOURITES 分类</li>
+     * <li>移除旧收藏汇总及当前 scope 外的分类</li>
      * <li>遍历每个分类的交易显示数据，从数据库重新查询最新状态</li>
      * <li>更新 BQ 锁定状态、冷却剩余、可交易状态、收藏状态</li>
+     * <li>按最新收藏状态重建 FAVOURITES 分类并通知显示更新</li>
      * </ol>
      * <p>
      * <b>VM 适配</b>：VM 从 {@code TradeManager.INSTANCE.tradeData} 获取最新状态，
@@ -497,14 +502,11 @@ public class NekoTradeMainPanel extends ModularPanel {
             return;
         }
 
-        // 更新收藏分类（从所有分类的已收藏交易中筛选）
-        List<NekoTradeItemDisplay> allTrades = new ArrayList<>();
-        for (List<NekoTradeItemDisplay> list : currentData.values()) {
-            if (list != null) {
-                allTrades.addAll(list);
-            }
-        }
-        currentData.put(NekoTradeCategory.FAVOURITES, filterFavouritedTrades(allTrades));
+        // 收藏是派生分类；丢弃旧结果及当前 scope 之外的分类，避免重复或跨 scope 残留。
+        currentData.entrySet()
+            .removeIf(
+                entry -> NekoTradeCategory.FAVOURITES.equals(entry.getKey())
+                    || !callback.isTradeCategoryVisible(entry.getKey()));
 
         // 遍历每个分类，更新交易状态
         for (Map.Entry<NekoTradeCategory, List<NekoTradeItemDisplay>> entry : currentData.entrySet()) {
@@ -544,13 +546,14 @@ public class NekoTradeMainPanel extends ModularPanel {
                 }
 
                 // 更新收藏状态
-                if (playerId != null) {
-                    display.setFavourite(
-                        NekoFavouritesTracker.INSTANCE
-                            .isFavourite(playerId, display.getGroupId(), display.getTradeIndex()));
-                }
+                display.setFavourite(callback.getSyncedFavourite(display.getGroupId(), display.getTradeIndex()));
             }
         }
+
+        List<NekoTradeItemDisplay> allTrades = new ArrayList<>();
+        for (List<NekoTradeItemDisplay> list : currentData.values()) allTrades.addAll(list);
+        currentData.put(NekoTradeCategory.FAVOURITES, filterFavouritedTrades(allTrades));
+        callback.onTradeDisplayUpdated(currentData);
     }
 
     // ==================== 交易格式化 ====================
@@ -614,9 +617,7 @@ public class NekoTradeMainPanel extends ModularPanel {
                     NekoTradeItemDisplay display = NekoTradeItemDisplay.fromNekoTrade(trade, group, i);
 
                     // 设置收藏状态
-                    if (playerId != null) {
-                        display.setFavourite(NekoFavouritesTracker.INSTANCE.isFavourite(playerId, group.getId(), i));
-                    }
+                    display.setFavourite(callback.getSyncedFavourite(group.getId(), i));
 
                     // 设置 BQ 锁定状态
                     boolean bqLocked = playerId != null && !group.isConditionsSatisfied(playerId);

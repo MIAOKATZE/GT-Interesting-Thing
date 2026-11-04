@@ -139,8 +139,8 @@ public class NekoFavouritesTracker {
      * @return true 表示已收藏
      */
     public boolean isFavourite(UUID playerId, UUID groupId, int tradeIndex) {
-        Set<Pair<UUID, Integer>> playerFaves = favourites.get(playerId);
-        if (playerFaves == null) return false;
+        if (playerId == null) return false;
+        Set<Pair<UUID, Integer>> playerFaves = getPlayerFavourites(playerId);
         return playerFaves.contains(new ImmutablePair<>(groupId, tradeIndex));
     }
 
@@ -153,8 +153,8 @@ public class NekoFavouritesTracker {
      * @return 收藏集合的不可修改视图（不为 null，未收藏时返回空集）
      */
     public Set<Pair<UUID, Integer>> getFavourites(UUID playerId) {
-        Set<Pair<UUID, Integer>> playerFaves = favourites.get(playerId);
-        if (playerFaves == null) return Collections.emptySet();
+        if (playerId == null) return Collections.emptySet();
+        Set<Pair<UUID, Integer>> playerFaves = getPlayerFavourites(playerId);
         return Collections.unmodifiableSet(playerFaves);
     }
 

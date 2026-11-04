@@ -2,6 +2,7 @@ package com.miaokatze.gtit.gui.vm;
 
 import static com.miaokatze.gtit.gui.vm.NekoVMGuiV2.MAX_TRADES;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -13,6 +14,8 @@ import java.util.UUID;
 
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
+
+import org.apache.logging.log4j.LogManager;
 
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
@@ -58,6 +61,8 @@ import com.miaokatze.gtit.trade.v2.NekoTradeCategory;
 import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
 import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
 
+import cpw.mods.fml.common.Loader;
+
 /**
  * 贸易主标签页（A01 蓝图 G6 抽取自 NekoVMGuiV2，方法体逐字搬移）
  * <p>
@@ -94,8 +99,10 @@ public final class TradePage {
     public static final int SCOPE_DEFAULT = 0;
     public static final int SCOPE_CUSTOM = 1;
     public static final int SCOPE_PRESET = 2;
-    private static int lastTradeScope = SCOPE_DEFAULT;
-    private int tradeScope = lastTradeScope;
+    private int tradeScope = SCOPE_DEFAULT;
+    private NekoNavigationMemory navigationMemory;
+    private boolean navigationRestored;
+    private boolean navigationEditMode;
     private IntSyncValue tradeScopeSync;
     private BooleanSyncValue canManageCustomSync;
 
@@ -115,6 +122,8 @@ public final class TradePage {
     private int currentTabId = 0;
     /** 同步使用稳定的标签 ID，避免删除前页后索引指向其他分类。 */
     private int selectedTabId = -1;
+    /** 标签同步晚到时保留待恢复 ID，用户显式切换分类后取消。 */
+    private Integer pendingTabId;
     private long lastPageRegistryVersion;
     private Flow tradeContent;
     /** 搜索文本 */
@@ -240,17 +249,21 @@ public final class TradePage {
     private void selectTradeScope(int scope) {
         mainTabController.setPage(MAIN_TAB_TRADE);
         mainTabId = MAIN_TAB_TRADE;
-        NekoMainTabButton.lastMainTab = MAIN_TAB_TRADE;
         if (mainTabSync != null) mainTabSync.setValue(MAIN_TAB_TRADE);
-        if (tradeScope == scope) return;
+        if (tradeScope == scope) {
+            rememberNavigation();
+            return;
+        }
         tradeScope = scope;
-        lastTradeScope = scope;
         if (tradeScopeSync != null) tradeScopeSync.setValue(scope);
         lastPageRegistryVersion = -1;
         currentTabId = 0;
-        selectedTabId = -1;
+        selectedTabId = navigationMemory.selection(navigationEditMode).tabIds[scope];
+        pendingTabId = selectedTabId;
         tabPage = 0;
         refreshPagesIfChanged();
+        tabController.setPage(currentTabId);
+        rememberNavigation();
     }
 
     /**
@@ -260,20 +273,45 @@ public final class TradePage {
      * @param playerId    玩家 UUID（与宿主同源）
      */
     public void registerSyncValues(PanelSyncManager syncManager, UUID playerId) {
-        // --- 当前标签页 ID（C2S）---
+        if (syncManager.isClient()) {
+            navigationMemory = new NekoNavigationMemory(
+                Loader.instance()
+                    .getConfigDir()
+                    .toPath()
+                    .resolve("gtit_navigation.properties"));
+            try {
+                navigationMemory.load();
+            } catch (IOException e) {
+                LogManager.getLogger("GTIT")
+                    .error("[NekoNavigation] 无法读取导航偏好，使用默认位置", e);
+            }
+            tradeScope = navigationMemory.browsing.scope;
+            mainTabId = navigationMemory.browsing.mainTab;
+            pendingTabId = navigationMemory.browsing.tabIds[tradeScope];
+            loadTradeCategories();
+            updateSelectedCategory();
+            tabPage = currentTabId / PAGE_SIZE;
+        }
+        // 导航偏好由客户端持有；服务端首包的默认值不能覆盖本地恢复结果。
+        // 三个通道仍将当前浏览位置同步给服务端，保留原有业务判断所需的镜像。
         tradeScopeSync = new IntSyncValue(
             () -> tradeScope,
-            value -> tradeScope = value == SCOPE_CUSTOM || value == SCOPE_PRESET ? value : SCOPE_DEFAULT).allowC2S();
+            value -> {
+                if (!syncManager.isClient())
+                    tradeScope = value == SCOPE_CUSTOM || value == SCOPE_PRESET ? value : SCOPE_DEFAULT;
+            }).allowC2S();
         syncManager.syncValue("nekoV2TradeScope", tradeScopeSync);
         canManageCustomSync = new BooleanSyncValue(() -> !syncManager.isClient() && gui.canManageTradeContent());
         syncManager.syncValue("nekoV2CustomHelp", canManageCustomSync);
 
-        currentTabSync = new IntSyncValue(() -> selectedTabId, val -> { selectedTabId = val; });
+        currentTabSync = new IntSyncValue(
+            () -> selectedTabId,
+            val -> { if (!syncManager.isClient()) selectedTabId = val; });
         currentTabSync.allowC2S();
         syncManager.syncValue("nekoV2CurrentTab", currentTabSync);
 
         // --- v1.7.0 主标签索引（C2S）---
-        mainTabSync = new IntSyncValue(() -> mainTabId, val -> { mainTabId = val; });
+        mainTabSync = new IntSyncValue(() -> mainTabId, val -> { if (!syncManager.isClient()) mainTabId = val; });
         mainTabSync.allowC2S();
         syncManager.syncValue("nekoV2MainTab", mainTabSync);
 
@@ -358,31 +396,10 @@ public final class TradePage {
         return NekoTradeCategory.ofTabId(selectedTabId);
     }
 
-    /** 恢复上次会话的标签位置与搜索文本（原宿主 onRestoreSettings 方法体逐字搬移） */
-    public void restoreSettings() { // 恢复上次的主标签位置（v1.7.0）
-        if (mainTabController != null) {
-            int page = Math.min(NekoMainTabButton.lastMainTab, MAIN_TAB_COUNT - 1);
-            if (page < 0) page = MAIN_TAB_TRADE;
-            mainTabController.setPage(page);
-            mainTabId = page;
-            // v1.7.5 修复：同步 mainTabSync 使服务端 mainTabId 与客户端一致
-            // （否则服务端恒 0，背包行 enabled 状态双端可能不一致）
-            if (mainTabSync != null) mainTabSync.setValue(page);
-        }
-        // 恢复上次的标签页位置
-        if (tabController != null) {
-            int maxPage = tradeCategories.size();
-            int page = Math.min(NekoPageButtonV2.lastPage, maxPage - 1);
-            if (page < 0) page = 0; // 默认 FAVOURITES 分类
-            tabController.setPage(page);
-            currentTabId = page;
-            // v1.7.33 T3：恢复的标签可能不在第 0 页——翻页页码随恢复位置收敛并重建标签列，
-            // 否则激活标签按钮不在可见页内（onOpen 晚于 build，late 重建走 MUI2 官方路径）
-            if (tabPage != page / PAGE_SIZE) {
-                tabPage = page / PAGE_SIZE;
-                rebuildTabColumnChildren();
-            }
-        }
+    /** 恢复客户端浏览位置；编辑导航独立保留在当前窗口中。 */
+    public void restoreSettings() {
+        navigationEditMode = gui.isEditModeActive();
+        restoreNavigation();
         // 恢复搜索文本
         if (searchBar != null && !searchText.isEmpty()) {
             searchBar.setText(searchText);
@@ -390,17 +407,83 @@ public final class TradePage {
 
     }
 
+    /** 编辑状态可能晚于 onOpen 同步到达，切换时各自恢复原位置。 */
+    public boolean updateNavigationMode() {
+        boolean editing = gui.isEditModeActive();
+        if (!navigationRestored) return false;
+        if (navigationEditMode != editing) {
+            navigationEditMode = editing;
+            restoreNavigation();
+            return true;
+        }
+        return restoreLotterySelection();
+    }
+
+    private void restoreNavigation() {
+        navigationRestored = false;
+        NekoNavigationMemory.Selection selection = navigationMemory.selection(navigationEditMode);
+        tradeScope = selection.scope;
+        selectedTabId = selection.tabIds[tradeScope];
+        pendingTabId = selectedTabId;
+        currentTabId = 0;
+        tabPage = 0;
+        if (tradeScopeSync != null) tradeScopeSync.setValue(tradeScope);
+        lastPageRegistryVersion = -1;
+        refreshPagesIfChanged();
+        tabController.setPage(currentTabId);
+        tabPage = currentTabId / PAGE_SIZE;
+        rebuildTabColumnChildren();
+        mainTabId = selection.mainTab;
+        mainTabController.setPage(mainTabId);
+        if (mainTabSync != null) mainTabSync.setValue(mainTabId);
+        signInPageController.setPage(selection.signInTab);
+        mailPageController.setPage(selection.mailTab);
+        MailClientData.setListPage(0);
+        restoreLotterySelection();
+        navigationRestored = true;
+    }
+
+    /** 池数据可晚于开窗到达；按 ID 恢复，不按列表位置选择其他池。 */
+    private boolean restoreLotterySelection() {
+        NekoNavigationMemory.Selection selection = navigationMemory.selection(navigationEditMode);
+        List<LotteryClientData.PoolSummary> pools = LotteryClientData.getPools();
+        if (pools.isEmpty()) return false;
+        if (selection.poolId.isEmpty()) selection.poolId = pools.get(0).id;
+        String poolId = LotteryClientData.getPool(selection.poolId) == null ? pools.get(0).id : selection.poolId;
+        if (poolId.equals(LotteryClientData.getSelectedPoolId())) return false;
+        LotteryClientData.setSelectedPoolId(poolId);
+        return true;
+    }
+
+    private void rememberNavigation() {
+        if (!navigationRestored) return;
+        rememberNavigation(navigationMemory.selection(navigationEditMode).poolId);
+    }
+
+    private void rememberNavigation(String poolId) {
+        if (!navigationRestored || !gui.isClient() || navigationEditMode != gui.isEditModeActive()) return;
+        try {
+            navigationMemory.remember(
+                navigationEditMode,
+                mainTabId,
+                tradeScope,
+                pendingTabId == null ? selectedTabId : pendingTabId,
+                signInPageController.getActivePageIndex(),
+                mailPageController.getActivePageIndex(),
+                poolId);
+        } catch (IOException e) {
+            LogManager.getLogger("GTIT")
+                .error("[NekoNavigation] 导航偏好保存失败，本次窗口仍保留所选位置", e);
+        }
+    }
+
     /** 客户端 tick 检测注册表变化，保留稳定 tabId 并原位更新非同步子树。 */
     public boolean refreshPagesIfChanged() {
         if (tradeContent == null || lastPageRegistryVersion == NekoPageRegistry.getVersion()) return false;
-        NekoTradeCategory selected = getActiveCategory();
         boolean selectedWasVisible = tabPage == currentTabId / PAGE_SIZE;
         List<NekoTradeCategory> previous = new ArrayList<>(tradeCategories);
         loadTradeCategories();
-        currentTabId = resolveSelectedIndex(tradeCategories, selected, currentTabId);
-        selectedTabId = tradeCategories.get(currentTabId)
-            .getTabId();
-        NekoPageButtonV2.lastPage = currentTabId;
+        updateSelectedCategory();
         if (!previous.equals(tradeCategories)) {
             // removeAll 会 dispose 整棵旧树，已销毁的内容 Widget 不可重复挂载。
             tradeContent.removeAll();
@@ -412,6 +495,15 @@ public final class TradePage {
         tabPage = resolveTabPage(tabPage, currentTabId, tradeCategories.size(), selectedWasVisible);
         rebuildTabColumnChildren();
         return true;
+    }
+
+    private void updateSelectedCategory() {
+        NekoTradeCategory selected = pendingTabId == null ? getActiveCategory()
+            : NekoTradeCategory.ofTabId(pendingTabId);
+        currentTabId = resolveSelectedIndex(tradeCategories, selected, currentTabId);
+        selectedTabId = tradeCategories.get(currentTabId)
+            .getTabId();
+        if (tradeCategories.contains(selected)) pendingTabId = null;
     }
 
     static int resolveSelectedIndex(List<NekoTradeCategory> categories, NekoTradeCategory selected, int oldIndex) {
@@ -447,8 +539,8 @@ public final class TradePage {
             rail.child(NekoVendingTheme.button(() -> names[index], () -> {
                 mainTabController.setPage(index);
                 mainTabId = index;
-                NekoMainTabButton.lastMainTab = index;
                 if (mainTabSync != null) mainTabSync.setValue(index);
+                rememberNavigation();
             }, () -> mainTabController.getActivePageIndex() == index, () -> true)
                 .size(54, 24)
                 .overlay((context, x, y, width, height, theme) -> {
@@ -475,7 +567,7 @@ public final class TradePage {
      * <p>
      * v1.7.33 T3 标签翻页：本列每次只为本页标签 [tabPage*{@link #PAGE_SIZE},
      * min(tabPage*PAGE_SIZE+PAGE_SIZE, size)) 创建按钮（全局索引传 {@link NekoPageButtonV2}，
-     * tabController/lastPage 仍使用索引，currentTabSync 使用稳定 tabId）；tradeCategories.size() ≥ {@link #PAGE_SIZE}
+     * tabController 使用索引，导航偏好与 currentTabSync 使用稳定 tabId）；tradeCategories.size() ≥ {@link #PAGE_SIZE}
      * 时在第 11 槽正下方固定一行 ◀/▶ 翻页行（短页以透明占位保持行位固定）。
      * build 与翻页共用 {@link #rebuildTabColumnChildren()} 同一条子树填充路径
      * （翻页重建走 MUI2 ParentWidget 公有 removeAll/child + late initialise 官方路径；
@@ -549,14 +641,15 @@ public final class TradePage {
             NekoPageEntry page = NekoPageRegistry.getPage(category.getTabId());
 
             // v1.7.6 G3④：匿名子类包一层点击拦截——编辑模式下 Shift+点击 page 标签
-            // 打开 page 编辑面板（不切页、不更新 lastPage）；普通点击维持原切页逻辑。
+            // 打开 page 编辑面板（不切页、不更新导航偏好）；普通点击维持原切页逻辑。
             // 收藏（tabId=-1）/未知（tabId=0）为虚拟分类，无对应 page 条目，不拦截。
             ButtonWidget<?> tabButton = NekoVendingTheme.button(() -> name, () -> {
                 if (gui.isEditModeActive() && Interactable.hasShiftDown() && page != null && page.canCreateTrade())
                     gui.pageEditor.beginEdit(category.getTabId());
                 else {
+                    pendingTabId = null;
                     tabController.setPage(index);
-                    NekoPageButtonV2.lastPage = index;
+                    rememberNavigation();
                 }
             }, () -> tabController.getActivePageIndex() == index, () -> true)
                 .size(TAB_BUTTON_WIDTH, TAB_BUTTON_HEIGHT);
@@ -778,6 +871,7 @@ public final class TradePage {
                         gui.lotteryPoolEditor.beginEdit(pool);
                     } else {
                         LotteryClientData.setSelectedPoolId(pool.id);
+                        rememberNavigation(pool.id);
                     }
                 });
                 poolButton.tooltipBuilder(t -> {
@@ -844,9 +938,10 @@ public final class TradePage {
                 // v1.7.6 G2②：邮件页切换 sub-tab（全部/系统/玩家/管理员）时重置列表页码——
                 // 各类型过滤后总页数不同，不重置则翻页行可能短暂显示「当前页 > 总页数」。
                 // 写邮件页（index 4）无列表，同回调重置无副作用；签到页（G2③）如需同逻辑自行挂接。
-                if (mainTab == MAIN_TAB_MAIL) {
-                    subTabButton.onSelected(() -> MailClientData.setListPage(0));
-                }
+                subTabButton.onSelected(() -> {
+                    if (mainTab == MAIN_TAB_MAIL) MailClientData.setListPage(0);
+                    rememberNavigation();
+                });
                 subTabColumn.child(subTabButton);
             }
             // --- v1.7.6 G5：「祝福预设」入口按钮——仅邮件页 + 编辑模式显示（列尾）---

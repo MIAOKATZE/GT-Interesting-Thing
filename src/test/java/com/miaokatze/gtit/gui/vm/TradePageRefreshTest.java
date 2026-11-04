@@ -41,6 +41,13 @@ public final class TradePageRefreshTest {
         check(TradePage.resolveSelectedIndex(categories(-1, 1, 2, 3, 9, 10), selected, 4) == 4, "追加空页不改变选择");
         check(TradePage.resolveSelectedIndex(categories(-1, 1, 3), selected, 4) == 2, "删除选中末页回退到合法末页");
         check(TradePage.resolveSelectedIndex(categories(-1), selected, 4) == 0, "空注册表仍能回退到收藏");
+        check(
+            TradePage.resolveSelectedIndex(categories(-1, -400002, -400001), NekoTradeCategory.ofTabId(-400001), 0)
+                == 2,
+            "持久化的默认预设稳定 ID 在重排后恢复到原分类");
+        check(
+            TradePage.resolveSelectedIndex(categories(-1, 27), NekoTradeCategory.ofTabId(90), 0) == 0,
+            "持久化分类已删除时安全恢复到该范围的收藏");
         int pageSize = TradePage.PAGE_SIZE;
         check(TradePage.resolveTabPage(2, 3, pageSize + 1, false) == 1, "末标签分页删除后钳制到上一页");
         check(TradePage.resolveTabPage(1, pageSize - 1, pageSize * 2, true) == 0, "删除前页跨边界后选中标签仍可见");
@@ -80,6 +87,29 @@ public final class TradePageRefreshTest {
         before = NekoPageRegistry.getVersion();
         NekoPageRegistry.applySyncedPages(null);
         check(NekoPageRegistry.getVersion() == before, "无效同步不能产生虚假修订");
+        java.lang.reflect.Field pendingTab = TradePage.class.getDeclaredField("pendingTabId");
+        pendingTab.setAccessible(true);
+        java.lang.reflect.Method updateSelectedCategory = TradePage.class.getDeclaredMethod("updateSelectedCategory");
+        updateSelectedCategory.setAccessible(true);
+        pendingTab.set(tradePage, 27);
+        updateSelectedCategory.invoke(tradePage);
+        check(
+            tradePage.getActiveCategory()
+                .isFavourites(),
+            "保存的标签尚未同步时暂时显示收藏");
+        check(
+            Integer.valueOf(27)
+                .equals(pendingTab.get(tradePage)),
+            "暂时缺页不能丢弃待恢复稳定 ID");
+        data.setPages(Arrays.asList(page(1, "renamed"), page(27, "late")));
+        NekoPageRegistry.applySyncedPages(data);
+        reload.invoke(tradePage);
+        updateSelectedCategory.invoke(tradePage);
+        check(
+            tradePage.getActiveCategory()
+                .getTabId() == 27,
+            "标签快照晚到后恢复原保存 ID");
+        check(pendingTab.get(tradePage) == null, "成功恢复后清除待恢复 ID");
         NekoPageEntry base = page(-400001, "Foundation");
         NekoPageEntry author = page(-100003, "AE");
         author.setSource(NekoPageSource.PRESET);

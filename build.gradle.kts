@@ -209,6 +209,15 @@ tasks.register<JavaExec>("runTradePageRefreshTest") {
 
 tasks.named("check") { dependsOn("runTradePageRefreshTest") }
 
+tasks.register<JavaExec>("runNekoNavigationMemoryTest") {
+    group = "verification"
+    description = "Runs cross-JVM Neko vending navigation persistence and editor isolation checks."
+    mainClass = "com.miaokatze.gtit.gui.vm.NekoNavigationMemoryTest"
+    classpath = storeTestRuntimeClasspath
+}
+
+tasks.named("check") { dependsOn("runNekoNavigationMemoryTest") }
+
 tasks.register<JavaExec>("runNekoMusicConfigTest") {
     group = "verification"
     description = "Runs real client music config persistence across separate JVM restarts."

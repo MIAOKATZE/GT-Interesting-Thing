@@ -14,16 +14,11 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 
 import com.google.common.collect.ArrayListMultimap;
-import com.google.gson.Gson;
 import com.miaokatze.gtit.crossmod.gtmb.GtmbProjectorCompat;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
 import com.miaokatze.gtit.trade.NekoTradeEntry;
-import com.miaokatze.gtit.trade.v2.NekoTrade;
-import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
-import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
-import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 
 import cpw.mods.fml.common.DummyModContainer;
 import cpw.mods.fml.common.LoadController;
@@ -36,7 +31,6 @@ import cpw.mods.fml.common.registry.GameData;
 /** 真实 Forge 物品、重映射与生产贸易管线；仅在 Gradle scratch 目录运行。 */
 public final class GtmbProjectorCompatibilityTest {
 
-    private static final String RESOURCE = "assets/gtit/gtit/trade/groups/neko_hologram_projector.json";
     private static final String TRADE_ID = "d7f5e8f2-247c-49af-b19b-d2f726ce34d0";
     private static final String CUSTOM_ID = "2f0c54f4-9f4c-47a5-a819-d462585dd899";
     private static Item projector;
@@ -51,17 +45,14 @@ public final class GtmbProjectorCompatibilityTest {
         NekoCurrencyRegistrar.nekoCoinItem = Items.gold_nugget;
         NekoCurrencyRegistrar.shimmeringNekoCoinItem = Items.emerald;
         setPresence(false);
-        NekoTradeGroupDef def = group();
         check(
-            def.getVersion() == 3 && def.getTrades()
-                .size() == 1,
-            "original managed group upgrades to v3");
+            JarAssetManifest.parse(JarAssetManifest.readJsonResource("assets/gtit/gtit/trade/index.json"))
+                .getGroups()
+                .isEmpty(),
+            "GTIT no longer declares any GTMB trade injection");
         check(
-            TRADE_ID.equals(
-                def.getTrades()
-                    .get(0)
-                    .getId()),
-            "original UUID stays stable");
+            JarAssetManifest.readJsonResource("assets/gtit/gtit/trade/groups/neko_hologram_projector.json") == null,
+            "retired projector exchange asset is absent");
         check(
             JarAssetManifest.readJsonResource("assets/gtit/bqtrades/base_trades.json")
                 .get("version")
@@ -83,11 +74,10 @@ public final class GtmbProjectorCompatibilityTest {
         custom.setId(CUSTOM_ID);
         custom.getToItems()
             .add(new NekoTradeEntry.ItemEntry("minecraft:paper", 0, 1));
-        NekoTradeEntry legacy = group().getTrades()
-            .get(0);
+        NekoTradeEntry legacy = new NekoTradeEntry();
+        legacy.setId(TRADE_ID);
         legacy.getToItems()
-            .get(0)
-            .setItem(GtmbProjectorCompat.OLD_ITEM_ID);
+            .add(new NekoTradeEntry.ItemEntry(GtmbProjectorCompat.OLD_ITEM_ID, 0, 1));
         legacy.setCurrency(new NekoTradeEntry.NekoCurrencyCost("shimmeringNeko", 1));
         data.getTrades()
             .add(custom);
@@ -103,68 +93,43 @@ public final class GtmbProjectorCompatibilityTest {
         unrelated.tradeIds.add(CUSTOM_ID);
         unrelated.save();
         byte[] unrelatedRecord = Files.readAllBytes(unrelated.path());
-        applyAssetQueue();
-        check(find(TRADE_ID) == null && find(CUSTOM_ID) != null, "without GTMB removes only old managed exchange");
+        BundledTradeGroups.applyBundledGroups();
+        check(find(TRADE_ID) == null && find(CUSTOM_ID) != null, "without GTMB removes only retired managed exchange");
         check(
             NekoTradeIntegrationAPI.GroupRecord.load(GtmbProjectorCompat.GROUP_ID) == null,
-            "absent mod leaves no record");
+            "retired group leaves no registration record");
 
-        // GTIT postInit 只排队，GTMB 稍后完成注册；不能预先查出 null 物品写入记录。
         setPresence(true);
-        NekoTradeIntegrationAPI.registerTradeAssetsFromJar("gtit");
-        check(!NekoTradeIntegrationAPI.applyGroup(group()), "loaded mod without item refuses exchange");
-        check(find(TRADE_ID) == null, "missing registry item creates no phantom entry");
         FMLMissingMappingsEvent.MissingMapping missing = mapping(GtmbProjectorCompat.OLD_ITEM_ID, 24000);
         GtmbProjectorCompat.remapMissingItems(event(missing));
         check(
             missing.getAction() == FMLMissingMappingsEvent.Action.DEFAULT,
             "missing target never requests illegal remap");
         register(projector, GtmbProjectorCompat.GTMB_ITEM_ID);
-        // 真实旧 v2 记账/闪烁币条目在前置齐全后按版本更新为 v3。
+        nativeRemap();
+        // GTMB present and fully registered: remove the prior exchange rather than upgrading it.
         NekoTradeConfig.save(data);
         oldRecord.save();
-        NekoTradeIntegrationAPI.applyQueuedGroups();
-        assertTrade();
-        check(!NekoTradeIntegrationAPI.applyGroup(group()), "same source version is idempotent");
-        nativeRemap();
-
-        NekoTradeEntry saved = find(TRADE_ID);
-        NekoTradeConfig.NekoTradeData stale = new NekoTradeConfig.NekoTradeData();
-        stale.getTrades()
-            .add(saved);
-        NekoCurrencyRegistrar.nekoCoinItem = null;
-        NekoTradeRegistryV2.applySyncedTrades(stale);
-        check(NekoTradeDatabase.INSTANCE.getTradeGroupCount() == 0, "missing coin cannot turn exchange free");
-        NekoCurrencyRegistrar.nekoCoinItem = Items.gold_nugget;
-        setPresence(false);
-        NekoTradeRegistryV2.applySyncedTrades(stale);
-        check(
-            NekoTradeDatabase.INSTANCE.getTradeGroupCount() == 0,
-            "first disk/sync load rejects stale optional exchange");
+        BundledTradeGroups.applyBundledGroups();
+        check(find(TRADE_ID) == null && find(CUSTOM_ID) != null, "installed GTMB also retires the managed exchange");
         applyAssetQueue();
-        check(find(TRADE_ID) == null && find(CUSTOM_ID) != null, "unload clears managed exchange only");
-        FMLMissingMappingsEvent.MissingMapping reverse = mapping(GtmbProjectorCompat.GTMB_ITEM_ID, 24000);
-        GtmbProjectorCompat.remapMissingItems(event(reverse));
-        check(reverse.getAction() == FMLMissingMappingsEvent.Action.DEFAULT, "no reverse GTMB to GTIT mapping");
-        setPresence(true);
-        applyAssetQueue();
-        assertTrade();
+        BundledTradeGroups.applyBundledGroups();
+        check(find(TRADE_ID) == null, "restart never reinjects retired exchange");
         check(
             java.util.Arrays.equals(unrelatedRecord, Files.readAllBytes(unrelated.path())),
             "unrelated group record unchanged");
 
-        NekoTradeIntegrationAPI.GroupRecord.load(GtmbProjectorCompat.GROUP_ID)
-            .delete();
-        setPresence(false);
-        applyAssetQueue();
+        // Losing the integration receipt must not strand the original fixed UUID or remove custom trades.
+        NekoTradeConfig.save(data);
+        BundledTradeGroups.applyBundledGroups();
         check(
             find(TRADE_ID) == null && find(CUSTOM_ID) != null,
             "lost-record cleanup only targets stable managed UUID");
+        setPresence(false);
+        FMLMissingMappingsEvent.MissingMapping reverse = mapping(GtmbProjectorCompat.GTMB_ITEM_ID, 24000);
+        GtmbProjectorCompat.remapMissingItems(event(reverse));
+        check(reverse.getAction() == FMLMissingMappingsEvent.Action.DEFAULT, "no reverse GTMB to GTIT mapping");
         System.out.println("GtmbProjectorCompatibilityTest passed");
-    }
-
-    private static NekoTradeGroupDef group() {
-        return new Gson().fromJson(JarAssetManifest.readJsonResource(RESOURCE), NekoTradeGroupDef.class);
     }
 
     private static void applyAssetQueue() {
@@ -176,43 +141,6 @@ public final class GtmbProjectorCompatibilityTest {
         for (NekoTradeEntry entry : NekoTradeConfig.load()
             .getTrades()) if (id.equals(entry.getId())) return entry;
         return null;
-    }
-
-    private static void assertTrade() {
-        NekoTradeGroup group = NekoTradeDatabase.INSTANCE
-            .getTradeGroup(NekoTradeRegistryV2.parseTradeGroupId(TRADE_ID));
-        check(
-            group != null && group.getTrades()
-                .size() == 1,
-            "exactly one managed exchange");
-        NekoTrade trade = group.getTrades()
-            .get(0);
-        check(
-            trade.getFromItems()
-                .size() == 1,
-            "one paid input without duplicates");
-        check(
-            trade.getCurrencyCosts()
-                .get("neko") == 1,
-            "exactly one ordinary neko coin");
-        check(
-            !trade.getCurrencyCosts()
-                .containsKey("shimmeringNeko"),
-            "zero shimmering coin input");
-        check(
-            trade.getToItems()
-                .size() == 1
-                && trade.getToItems()
-                    .get(0)
-                    .getBaseStack()
-                    .getItem() == projector,
-            "output resolves to the actual GTMB registry item");
-        check(
-            trade.getToItems()
-                .get(0)
-                .getStackSize() == 1,
-            "exactly one projector output");
-        check(find(CUSTOM_ID) != null, "custom entry preserved");
     }
 
     private static void setPresence(boolean present) throws Exception {

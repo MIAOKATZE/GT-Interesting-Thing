@@ -1070,6 +1070,11 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     }
 
     @Override
+    public boolean getSyncedFavourite(UUID groupId, int tradeIndex) {
+        return statusCodec.isFavourite(groupId, tradeIndex);
+    }
+
+    @Override
     public NekoTradeCategory getActiveCategory() {
         return tradePage.getActiveCategory();
     }
@@ -1204,7 +1209,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      */
     @Override
     public void onMainPanelUpdate() {
-        if (tradePage.refreshPagesIfChanged()) {
+        boolean navigationChanged = tradePage.updateNavigationMode();
+        if (tradePage.refreshPagesIfChanged() || navigationChanged) {
             mainPanel.setForceRefresh();
         }
         if (defaultTradeSyncDialogShown || defaultTradeSyncPromptSync == null || defaultTradeSyncPanel == null) {
@@ -2274,6 +2280,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             }
 
             NekoFavouritesTracker.INSTANCE.toggleFavourite(playerId, groupId, tradeIndex);
+            statusCodec.notifyFavouritesChanged();
         } catch (Throwable t) {
             LOG.error("[NekoVMV2] processFavouriteToggle 异常!", t);
         }

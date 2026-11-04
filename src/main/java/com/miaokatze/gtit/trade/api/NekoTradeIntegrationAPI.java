@@ -455,7 +455,17 @@ public final class NekoTradeIntegrationAPI {
         return true;
     }
 
-    /** 仅显式可选组使用；记账丢失时也只移除资产声明的固定 ID，不扫描其它交易。 */
+    /** 撤销已退役的 GTMB 联动条目；无记账时仍只清理原注入 UUID。 */
+    static void removeRetiredGtmbGroup() {
+        NekoTradeGroupDef retired = new NekoTradeGroupDef("gtit-neko-hologram-projector", 3);
+        NekoTradeEntry entry = new NekoTradeEntry();
+        entry.setId("d7f5e8f2-247c-49af-b19b-d2f726ce34d0");
+        retired.getTrades()
+            .add(entry);
+        removeUnavailableGroup(retired);
+    }
+
+    /** 精准移除可选或已退役组；记账丢失时也只移除声明的固定 ID，不扫描其它交易。 */
     private static void removeUnavailableGroup(NekoTradeGroupDef def) {
         synchronized (APPLY_LOCK) {
             GroupRecord record = GroupRecord.load(def.getGroupId());

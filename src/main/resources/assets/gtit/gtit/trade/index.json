@@ -1,10 +1,4 @@
 {
   "formatVersion": 1,
-  "groups": [
-    {
-      "groupId": "gtit-neko-hologram-projector",
-      "version": 3,
-      "path": "groups/neko_hologram_projector.json"
-    }
-  ]
+  "groups": []
 }

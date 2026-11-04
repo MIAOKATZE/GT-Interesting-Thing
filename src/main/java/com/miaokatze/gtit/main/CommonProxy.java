@@ -523,13 +523,6 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[3/3] 猫猫币注册失败", t);
         }
 
-        // 独立 jar 贸易资产：货币已初始化，实际应用沿用 serverStarted 的排队管线。
-        try {
-            NekoTradeIntegrationAPI.registerTradeAssetsFromJar("gtit");
-        } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[3/3] 猫猫全息投影仪贸易资产注册失败", t);
-        }
-
         // E4a: 内置基础贸易组预探测——base 资产可用时抑制旧 42 条默认注入。
         // 必须先于 NekoPageRegistry/NekoTradeRegistryV2 的客户端初始化执行：
         // 单人存档下 postInit 的 initializeClient 会触发 NekoTradeConfig.init() 的
