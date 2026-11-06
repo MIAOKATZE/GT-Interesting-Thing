@@ -122,7 +122,7 @@ public class NekoTradeSyncPacket implements IMessage {
                     // 先页签后交易：交易分类按 tabId 映射，页签先就绪保证分类一致
                     NekoPageRegistry.applySyncedPages(NekoPageConfig.fromJson(message.getPagesJson()));
                     NekoTradeRegistryV2.applySyncedTrades(NekoTradeConfig.fromJson(message.getTradesJson()));
-                    LOG.info("[NekoSync] 已应用服务端交易/标签页配置同步");
+                    LOG.debug("[NekoSync] 已应用服务端交易/标签页配置同步");
                 } catch (Throwable t) {
                     LOG.error("[NekoSync] 应用交易配置同步失败", t);
                 }

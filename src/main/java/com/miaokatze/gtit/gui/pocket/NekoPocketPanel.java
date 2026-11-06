@@ -3628,7 +3628,7 @@ public final class NekoPocketPanel implements PocketSession {
         if (closed) {
             return;
         }
-        GTInterestingThing.LOG.info("[pocket][diag] 关屏钩子触发（若紧跟在 createScreen 之后 ⇒ 界面是被立刻关掉，不是没建）");
+        GTInterestingThing.LOG.debug("[pocket][diag] 关屏钩子触发（若紧跟在 createScreen 之后 ⇒ 界面是被立刻关掉，不是没建）");
         // ★R88 C3：摘掉本面板的回执登记，槽件侧此后写来的回执一律丢弃（不再有现役面板可投）
         RECEIPT_HOSTS.remove(syncManager);
         final ItemStack carrier = relocateCarrier();

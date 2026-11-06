@@ -7,6 +7,7 @@ import java.util.UUID;
 
 import net.minecraft.item.ItemStack;
 
+import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -146,7 +147,8 @@ public class NekoTradeRegistryV2 {
                 successCount++;
             }
         }
-        LOG.info(
+        LOG.log(
+            defaultsGate ? Level.INFO : Level.DEBUG,
             "V2 交易加载完成：{}/{} 个交易组注册成功",
             successCount,
             data.getTrades()
@@ -170,7 +172,7 @@ public class NekoTradeRegistryV2 {
             NekoBqBridge.clearAllTriggers();
             NekoTradeDatabase.INSTANCE.clear();
             registerTradesFromData(data, false);
-            LOG.info(
+            LOG.debug(
                 "[NekoSync] 客户端已应用同步交易配置，共 {} 个交易组，{} 笔交易",
                 NekoTradeDatabase.INSTANCE.getTradeGroupCount(),
                 NekoTradeDatabase.INSTANCE.getTradeCount());

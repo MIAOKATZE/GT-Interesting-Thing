@@ -24,7 +24,7 @@ import com.gtnewhorizon.gtnhlib.teams.TeamManager;
  * <li>钱包 → 回退个人钱包（getTeam/getData 返回 null）</li>
  * <li>抽奖保底键 → 回退玩家自身 UUID（{@link #resolveTeamKey}）</li>
  * <li>交易限额 → 回退 1（getTeam 返回 null，调用方自行取默认）</li>
- * <li>钱包模式 → 回退 PERSONAL（客户端路径 NekoVMGuiV2#getWalletMode 维持异常驱动不变，不经本门面）</li>
+ * <li>钱包模式 → 服务端按钱包数据路由同步，Teams 不可用时回退 PERSONAL</li>
  * <li>交易历史 → 回退个人文件（getTeam/getData 返回 null）</li>
  * </ul>
  * <p>
@@ -63,7 +63,7 @@ public final class TeamDataProvider {
     }
 
     /**
-     * 解析玩家所在团队
+     * 解析玩家所在团队（仅供逻辑服务端调用；客户端展示须接收服务端同步）
      *
      * @return 团队；玩家无团队、Teams 不可用或查询异常时返回 null（调用方按既有口径降级）
      */

@@ -134,7 +134,7 @@ public final class PageEditor {
             if (icon != null) {
                 editPageItemHandler.setStackInSlot(0, icon);
             }
-            LOG.info("[NekoEdit] 已加载标签页到编辑缓冲区: {}", target);
+            LOG.debug("[NekoEdit] 已加载标签页到编辑缓冲区: {}", target);
         } catch (Exception e) {
             LOG.error("[NekoEdit] 加载标签页到编辑缓冲区失败: {}", target, e);
         }

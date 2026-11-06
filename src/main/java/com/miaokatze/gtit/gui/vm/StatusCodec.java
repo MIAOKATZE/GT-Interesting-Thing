@@ -10,10 +10,12 @@ import java.util.UUID;
 import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 
+import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
+import com.miaokatze.gtit.trade.TeamDataProvider;
 import com.miaokatze.gtit.trade.v2.NekoFavouritesTracker;
 import com.miaokatze.gtit.trade.v2.NekoHistoryManager;
 import com.miaokatze.gtit.trade.v2.NekoTrade;
@@ -64,6 +66,10 @@ public final class StatusCodec {
      */
     private StringSyncValue teamScaleSync;
 
+    /** 服务端按实际钱包路由同步来源；客户端不查询 Teams 静态存储。 */
+    private BooleanSyncValue teamWalletSync;
+    private boolean teamWallet;
+
     /** 玩家收藏的只读 S2C 快照；客户端不访问服务端收藏存储。 */
     private StringSyncValue favouriteStatusSync;
     private final Set<String> favouriteStatus = new HashSet<>();
@@ -110,6 +116,15 @@ public final class StatusCodec {
      * @param playerId    玩家 UUID（服务端查询用）
      */
     public void registerSyncValues(PanelSyncManager syncManager, UUID playerId) {
+        teamWalletSync = new BooleanSyncValue(
+            () -> syncManager.isClient() ? teamWallet
+                : TeamDataProvider.getData(TeamDataProvider.getTeam(playerId)) != null,
+            value -> {
+                teamWallet = value;
+                requestCurrencyNotify.run();
+            });
+        syncManager.syncValue("nekoV2TeamWallet", teamWalletSync);
+
         // StringSyncValue 构造时立即读取 getter；客户端只接收 S2C 状态，不查询服务端存储。
         // --- BQ 锁定状态（S2C，同步所有交易组的状态）---
         bqLockStatusSync = new StringSyncValue(
@@ -160,6 +175,10 @@ public final class StatusCodec {
             bqLockStatusSync.setChangeListener(tradeableStatusDirtyMarker);
             cooldownStatusSync.setChangeListener(tradeableStatusDirtyMarker);
         }
+    }
+
+    public boolean isTeamWallet() {
+        return teamWalletSync != null && teamWalletSync.getBoolValue();
     }
 
     /**

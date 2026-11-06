@@ -264,7 +264,7 @@ public class NekoPageRegistry {
             }
         }
         version++;
-        LOG.info("[NekoSync] 客户端已应用同步标签页配置，共 {} 个标签页", PAGES.size());
+        LOG.debug("[NekoSync] 客户端已应用同步标签页配置，共 {} 个标签页", PAGES.size());
     }
 
     /**

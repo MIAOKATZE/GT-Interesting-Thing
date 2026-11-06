@@ -115,7 +115,7 @@ public final class LotteryEntryEditor {
             if (stack != null) {
                 editLotteryItemHandler.setStackInSlot(0, stack);
             }
-            LOG.info("[NekoEdit] 已加载抽奖条目到编辑缓冲区: {}", target);
+            LOG.debug("[NekoEdit] 已加载抽奖条目到编辑缓冲区: {}", target);
         } catch (Exception e) {
             LOG.error("[NekoEdit] 加载抽奖条目到编辑缓冲区失败: {}", target, e);
         }

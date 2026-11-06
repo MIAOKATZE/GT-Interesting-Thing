@@ -115,7 +115,7 @@ public final class OnlineTierEditor {
                 }
                 break;
             }
-            LOG.info("[NekoEdit] 已加载在线档位到编辑缓冲区: {}s", seconds);
+            LOG.debug("[NekoEdit] 已加载在线档位到编辑缓冲区: {}s", seconds);
         } catch (Exception e) {
             LOG.error("[NekoEdit] 加载在线档位到编辑缓冲区失败: {}", target, e);
         }

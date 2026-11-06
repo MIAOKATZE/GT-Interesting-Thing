@@ -192,7 +192,7 @@ public final class SignInEditor {
                 }
             }
             fillSignInItemBuffer(editSignInItemHandler, reward);
-            LOG.info("[NekoEdit] 已加载签到{}阶梯到编辑缓冲区: {}", cumulative ? "累计" : "连续", target);
+            LOG.debug("[NekoEdit] 已加载签到{}阶梯到编辑缓冲区: {}", cumulative ? "累计" : "连续", target);
         } catch (Exception e) {
             LOG.error("[NekoEdit] 加载签到阶梯到编辑缓冲区失败: {}", target, e);
         }

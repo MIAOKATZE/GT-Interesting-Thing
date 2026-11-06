@@ -361,7 +361,7 @@ public class NekoWalletManager {
             }
         }
         if (saved > 0) {
-            LOG.info("[NekoWallet] 周期落盘脏钱包: {} 个", saved);
+            LOG.debug("[NekoWallet] 周期落盘脏钱包: {} 个", saved);
         }
         return saved;
     }
