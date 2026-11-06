@@ -154,6 +154,18 @@ tasks.register<JavaExec>("runNekoTradeNeiTest") {
 
 tasks.named("check") { dependsOn("runNekoTradeNeiTest") }
 
+tasks.register<JavaExec>("runInfinityCellClientQueryTest") {
+    group = "verification"
+    description = "Checks native NEI queries cannot open server-backed infinity inventories."
+    mainClass = "com.miaokatze.gtit.common.items.infinitycell.InfinityCellClientQueryTest"
+    classpath = storeTestRuntimeClasspath + sourceSets.getByName("main").compileClasspath + neiTestRuntimeClasspath
+    javaLauncher.set(javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(8))
+    })
+}
+
+tasks.named("check") { dependsOn("runInfinityCellClientQueryTest") }
+
 mapOf(
     "runNekoTextFitTest" to "com.miaokatze.gtit.client.gui.NekoTextFitTest",
     "runNekoTradePresentationTest" to "com.miaokatze.gtit.client.gui.NekoTradePresentationTest",
