@@ -982,28 +982,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
     @Override
     public NekoWalletMode getWalletMode() {
-        // 检测当前玩家是否在团队中，如果在团队中则返回 TEAM 模式
-        // NekoWalletManager.getWallet() 会自动路由到团队钱包（通过 GTNHLib Teams API），
-        // 因此钱包模式需要显式反映当前实际使用的钱包来源
-        UUID playerId = getPlayerId();
-        if (playerId == null) {
-            return NekoWalletMode.PERSONAL;
-        }
-        try {
-            // 通过 GTNHLib Teams API 检查玩家是否在团队中
-            com.gtnewhorizon.gtnhlib.teams.Team team = com.gtnewhorizon.gtnhlib.teams.TeamManager
-                .getTeamByPlayer(playerId);
-            if (team != null) {
-                // 玩家在团队中，NekoWalletManager 会自动使用团队共享钱包
-                return NekoWalletMode.TEAM;
-            }
-        } catch (NoClassDefFoundError e) {
-            // GTNHLib Teams API 不可用，回退到个人钱包模式
-            return NekoWalletMode.PERSONAL;
-        } catch (Exception e) {
-            LOG.error("[NekoVMGuiV2] getWalletMode 检测团队状态异常", e);
-        }
-        return NekoWalletMode.PERSONAL;
+        return statusCodec.isTeamWallet() ? NekoWalletMode.TEAM : NekoWalletMode.PERSONAL;
     }
 
     @Override

@@ -306,14 +306,14 @@ public class NekoMusicEventHandler {
 
         // 如果用户手动关闭了 BGM，不自动播放
         if (isMutedByUser()) {
-            LOG.info("[NEKO] handleGuiOpened: BGM 被用户手动关闭，跳过播放");
+            LOG.debug("[NEKO] handleGuiOpened: BGM 被用户手动关闭，跳过播放");
             return;
         }
 
         // V2 不需要停止 VM 原版 BGM（V2 独立于 VM 运行）
         // 停止已有猫猫 BGM（防止叠加）
         if (this.currentSound != null) {
-            LOG.info("[NEKO] handleGuiOpened: 停止已有猫猫 BGM（防叠加）");
+            LOG.debug("[NEKO] handleGuiOpened: 停止已有猫猫 BGM（防叠加）");
             stopSound(mc);
         }
 
@@ -322,7 +322,7 @@ public class NekoMusicEventHandler {
             this.currentSound = PositionedSoundRecord.func_147673_a(NEKO_BGM);
             mc.getSoundHandler()
                 .playSound(this.currentSound);
-            LOG.info("[NEKO] handleGuiOpened: 已请求播放猫猫 BGM，等待 Mixin 回调...");
+            LOG.debug("[NEKO] handleGuiOpened: 已请求播放猫猫 BGM，等待 Mixin 回调...");
             // 淡入由 Mixin 回调 onSoundCreated 触发
         } catch (Exception e) {
             LOG.warn("[NEKO] 无法播放猫猫售货机 BGM: {}", e.getMessage());

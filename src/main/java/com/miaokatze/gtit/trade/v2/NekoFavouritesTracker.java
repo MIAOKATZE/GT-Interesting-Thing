@@ -262,7 +262,7 @@ public class NekoFavouritesTracker {
                     LOG.warn("跳过无效的收藏记录 groupId: " + faveNbt.getString("groupId"));
                 }
             }
-            LOG.info("已加载 {} 条收藏记录: {}", result.size(), playerId);
+            LOG.debug("已加载 {} 条收藏记录: {}", result.size(), playerId);
             return result;
         } catch (Exception e) {
             LOG.error("加载猫猫币收藏失败: " + playerId, e);

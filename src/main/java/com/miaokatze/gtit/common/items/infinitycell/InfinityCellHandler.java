@@ -34,6 +34,8 @@ public class InfinityCellHandler implements ICellHandler {
 
     @Override
     public IMEInventoryHandler<?> getCellInventory(ItemStack is, ISaveProvider container, StorageChannel channel) {
+        // 外置库存只存在于服务端。NEI/tooltip 查询不得构造库存、写物品 NBT 或访问集成服务端存储。
+        if (Platform.isClient()) return null;
         try {
             if (is.getItem() instanceof IInfinityCellItem iih) {
                 if (iih.getChannel() == channel) {
@@ -45,7 +47,7 @@ public class InfinityCellHandler implements ICellHandler {
                 }
             }
         } catch (Exception e) {
-            // 不再静默吞异常：StorageManager 未初始化（客户端 tooltip、serverStarted 前）等情况
+            // 不再静默吞异常：StorageManager 未初始化（serverStarted 前）等服务端故障
             // 会在此抛出，记录便于诊断"元件静默失效"问题
             LOG.warn("获取无限元件 InventoryHandler 失败", e);
         }
@@ -58,6 +60,7 @@ public class InfinityCellHandler implements ICellHandler {
      */
     @Override
     public IMEInventoryHandler getCellInventory(ItemStack is, ISaveProvider container, IAEStackType<?> type) {
+        if (Platform.isClient()) return null;
         try {
             if (is != null && is.getItem() instanceof IInfinityCellItem iih
                 && iih.getSupportedStackTypes()

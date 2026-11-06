@@ -594,7 +594,7 @@ public final class TradeEditor {
 
             // 发送成功后强制刷新主面板，确保客户端显示与最新配置同步
             requestMainPanelRefresh.run();
-            LOG.info(
+            LOG.debug(
                 "[NekoEdit] 客户端发送保存: group={}, index={}, new={}, fromItems={}, toItems={}",
                 editTradeIsNew ? String.valueOf(editTabId)
                     : editingDisplay.getGroupId()

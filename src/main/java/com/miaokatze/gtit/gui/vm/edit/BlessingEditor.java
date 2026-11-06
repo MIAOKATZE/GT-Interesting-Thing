@@ -167,7 +167,7 @@ public final class BlessingEditor {
                     editBlessingItemHandler.setStackInSlot(slot++, stack);
                 }
             }
-            LOG.info("[NekoEdit] 已加载祝福预设到编辑缓冲区: {}", target);
+            LOG.debug("[NekoEdit] 已加载祝福预设到编辑缓冲区: {}", target);
         } catch (Exception e) {
             LOG.error("[NekoEdit] 加载祝福预设到编辑缓冲区失败: {}", target, e);
         }

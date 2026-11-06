@@ -152,7 +152,7 @@ public final class LotteryPoolEditor {
                 stack.stackSize = cost.getStackSize();
                 editPoolItemHandler.setStackInSlot(slot++, stack);
             }
-            LOG.info("[NekoEdit] 已加载抽奖卡池到编辑缓冲区: {}", target);
+            LOG.debug("[NekoEdit] 已加载抽奖卡池到编辑缓冲区: {}", target);
         } catch (Exception e) {
             LOG.error("[NekoEdit] 加载抽奖卡池到编辑缓冲区失败: {}", target, e);
         }

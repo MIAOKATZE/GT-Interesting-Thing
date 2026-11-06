@@ -15,10 +15,14 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.network.PacketBuffer;
 
+import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.ModularSyncManager;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
 import com.cleanroommc.modularui.value.sync.ValueSyncHandler;
+import com.gtnewhorizon.gtnhlib.teams.ITeamData;
+import com.gtnewhorizon.gtnhlib.teams.Team;
+import com.gtnewhorizon.gtnhlib.teams.TeamManager;
 import com.miaokatze.gtit.client.gui.NekoDisplayType;
 import com.miaokatze.gtit.client.gui.NekoSortMode;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplay;
@@ -31,6 +35,7 @@ import com.miaokatze.gtit.trade.NekoPageConfig;
 import com.miaokatze.gtit.trade.NekoPageEntry;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoPageSource;
+import com.miaokatze.gtit.trade.NekoTeamData;
 import com.miaokatze.gtit.trade.v2.NekoFavouritesTracker;
 import com.miaokatze.gtit.trade.v2.NekoHistoryManager;
 import com.miaokatze.gtit.trade.v2.NekoTrade;
@@ -54,6 +59,7 @@ public final class StatusCodecSyncTest {
         cpw.mods.fml.server.FMLServerHandler.instance();
         NekoTradeDatabase.INSTANCE.clear();
         try {
+            walletModePacketsAndIsolation();
             addGroup(COOLDOWN_GROUP, 60);
             addGroup(ONE_TIME_GROUP, -1);
             historyRemainsUnavailable();
@@ -63,9 +69,128 @@ public final class StatusCodecSyncTest {
             serverStillRequiresHistory();
             persistedFavouritesLoadOnRead();
             favouritePacketsAndScope();
-            System.out.println("StatusCodecSyncTest: 6 cases passed");
+            System.out.println("StatusCodecSyncTest: 7 cases passed");
         } finally {
             NekoTradeDatabase.INSTANCE.clear();
+        }
+    }
+
+    private static final class WalletGui extends NekoVMGuiV2 {
+
+        private WalletGui() {
+            super(null);
+        }
+
+        @Override
+        public UUID getPlayerId() {
+            return PLAYER;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void walletModePacketsAndIsolation() throws Exception {
+        Field teamsField = TeamManager.class.getDeclaredField("TEAMS");
+        Field mapField = TeamManager.class.getDeclaredField("TEAM_MAP");
+        Field cacheField = TeamManager.class.getDeclaredField("PLAYER_TEAM_CACHE");
+        teamsField.setAccessible(true);
+        mapField.setAccessible(true);
+        cacheField.setAccessible(true);
+        List<Team> teams = (List<Team>) teamsField.get(null);
+        Map<UUID, Team> map = (Map<UUID, Team>) mapField.get(null);
+        Map<UUID, Team> cache = (Map<UUID, Team>) cacheField.get(null);
+        List<Team> oldTeams = new java.util.ArrayList<>(teams);
+        Map<UUID, Team> oldMap = new java.util.HashMap<>(map);
+        Map<UUID, Team> oldCache = new java.util.HashMap<>(cache);
+        int[] queries = { 0 };
+        ITeamData[] data = { new NekoTeamData() };
+        Team team = new Team("Integrated server team", UUID.randomUUID(), false) {
+
+            @Override
+            public boolean isMember(UUID id) {
+                queries[0]++;
+                return PLAYER.equals(id);
+            }
+
+            @Override
+            public ITeamData getData(String key) {
+                queries[0]++;
+                return NekoTeamData.ID.equals(key) ? data[0] : null;
+            }
+        };
+        try {
+            teams.clear();
+            map.clear();
+            cache.clear();
+            teams.add(team);
+            map.put(team.getTeamId(), team);
+            StatusCodec client = new StatusCodec(null, null, () -> {});
+            PanelSyncManager clientManager = manager(true);
+            client.registerSyncValues(clientManager, PLAYER);
+            clientManager.initialize("wallet_client");
+            BooleanSyncValue clientValue = clientManager.findSyncHandler("nekoV2TeamWallet", BooleanSyncValue.class);
+            SimpleAssert.that(!clientValue.isAllowC2S(), "wallet source remains S2C only");
+
+            // Use the production GUI getter, without constructing an unrelated GregTech machine.
+            Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+            Field unsafeField = unsafeClass.getDeclaredField("theUnsafe");
+            unsafeField.setAccessible(true);
+            WalletGui gui = (WalletGui) unsafeClass.getMethod("allocateInstance", Class.class)
+                .invoke(unsafeField.get(null), WalletGui.class);
+            Field codecField = NekoVMGuiV2.class.getDeclaredField("statusCodec");
+            codecField.setAccessible(true);
+            codecField.set(gui, client);
+            for (int i = 0; i < 100; i++) {
+                SimpleAssert.eq(NekoWalletMode.PERSONAL, gui.getWalletMode(), "no local-server team leak before S2C");
+                clientValue.updateCacheFromSource(true);
+            }
+            SimpleAssert.eq(0, queries[0], "client construction, getter and source refresh never query Teams");
+
+            StatusCodec server = new StatusCodec(null, null, () -> {});
+            PanelSyncManager serverManager = manager(false);
+            server.registerSyncValues(serverManager, PLAYER);
+            BooleanSyncValue serverValue = serverManager.findSyncHandler("nekoV2TeamWallet", BooleanSyncValue.class);
+            SimpleAssert.that(server.isTeamWallet(), "server recognizes the actual shared wallet route");
+            receiveWallet(clientManager, serverValue);
+            int afterServerQuery = queries[0];
+            for (int i = 0; i < 100; i++) {
+                SimpleAssert
+                    .eq(NekoWalletMode.TEAM, gui.getWalletMode(), "S2C selects team wallet in production getter");
+                clientValue.updateCacheFromSource(true);
+            }
+            SimpleAssert.eq(afterServerQuery, queries[0], "repeated client reads use the synchronized cache");
+
+            data[0] = null;
+            serverValue.updateCacheFromSource(false);
+            SimpleAssert.that(!server.isTeamWallet(), "missing GTIT team data follows personal-wallet fallback");
+            SimpleAssert.eq(NekoWalletMode.TEAM, gui.getWalletMode(), "client changes only when S2C arrives");
+            receiveWallet(clientManager, serverValue);
+            SimpleAssert.eq(NekoWalletMode.PERSONAL, gui.getWalletMode(), "server route changes refresh client mode");
+            receiveWallet(clientManager, new BooleanSyncValue(() -> true));
+            StatusCodec reopened = new StatusCodec(null, null, () -> {});
+            reopened.registerSyncValues(manager(true), PLAYER);
+            SimpleAssert.that(!reopened.isTeamWallet(), "a new connection/view cannot inherit old wallet mode");
+        } finally {
+            teams.clear();
+            teams.addAll(oldTeams);
+            map.clear();
+            map.putAll(oldMap);
+            cache.clear();
+            cache.putAll(oldCache);
+        }
+    }
+
+    private static void receiveWallet(PanelSyncManager manager, BooleanSyncValue source) throws Exception {
+        PacketBuffer packet = new PacketBuffer(Unpooled.buffer());
+        try {
+            source.write(packet);
+            manager.receiveWidgetUpdate(
+                PanelSyncManager.makeSyncKey("nekoV2TeamWallet", 0),
+                false,
+                ValueSyncHandler.SYNC_VALUE,
+                packet);
+            SimpleAssert.that(!packet.isReadable(), "wallet source consumes its S2C packet");
+        } finally {
+            packet.release();
         }
     }
 
