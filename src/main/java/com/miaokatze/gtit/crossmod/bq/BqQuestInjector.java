@@ -17,7 +17,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.nbt.NBTTagList;
 import net.minecraftforge.common.util.Constants;
 
 import com.google.gson.JsonArray;
@@ -26,23 +25,18 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.miaokatze.gtit.Tags;
 import com.miaokatze.gtit.main.GTInterestingThing;
+import com.miaokatze.miaokatzecore.api.bq.QuestProgressRecovery;
 
 import betterquesting.api.questing.IQuest;
 import betterquesting.api.questing.IQuestLine;
-import betterquesting.api.questing.tasks.ITask;
 import betterquesting.api.storage.BQ_Settings;
 import betterquesting.api.utils.NBTConverter;
-import betterquesting.api.utils.UuidConverter;
-import betterquesting.api2.storage.DBEntry;
 import betterquesting.handlers.SaveLoadHandler;
 import betterquesting.questing.QuestDatabase;
 import betterquesting.questing.QuestInstance;
 import betterquesting.questing.QuestLine;
 import betterquesting.questing.QuestLineDatabase;
 import betterquesting.questing.QuestLineEntry;
-import bq_standard.tasks.TaskCheckbox;
-import bq_standard.tasks.TaskCrafting;
-import bq_standard.tasks.TaskRetrieval;
 import cpw.mods.fml.common.Loader;
 
 /**
@@ -171,7 +165,9 @@ public final class BqQuestInjector {
                 prunedCount = pruneDeletedQuests(pack, expected);
                 prunedLineCount = pruneDeletedQuestLines(pack, expectedLines);
             }
-            restoreProgress(recreatedOwnedQuests);
+            QuestProgressRecovery.Summary recovery = QuestProgressRecovery
+                .restore(BQ_Settings.curWorldDir, recreatedOwnedQuests);
+            GTInterestingThing.LOG.info("[BQ] Progress recovery: {}", recovery);
             if (refresh) {
                 writeStamp(pack.stampKey);
             }
@@ -534,101 +530,6 @@ public final class BqQuestInjector {
             BqStampFile.update(f, stampKey, Tags.VERSION);
         } catch (Exception e) {
             GTInterestingThing.LOG.warn("[GTIT-BQ] 版本戳写入失败（下次启动可能重复刷新一次定义）", e);
-        }
-    }
-
-    /**
-     * 只恢复本次调用实际重建的已识别包内任务在 default load 缺失定义窗口内丢弃的进度。
-     * <p>
-     * 每个包独立持有恢复白名单，空 miao 包及未知资产根不会重放任何进度。
-     * 已有任务（包括定义刷新过的任务）持有 BQ 恢复后的权威内存进度；merge=true
-     * 仍会替换完成/领取记录，不能用磁盘旧值覆盖。旧版汇总文件先读，逐玩家文件后读，
-     * 与 BQ SaveLoadHandler.loadProgress 的格式及优先级一致。只通过原生 dirty-player
-     * API 安排恢复后的用户在正常存盘时持久化；本读取过程不修改进度文件。
-     */
-    private static void restoreProgress(Set<UUID> recreatedOwnedQuests) {
-        if (recreatedOwnedQuests.isEmpty()) {
-            return;
-        }
-        File legacy = new File(BQ_Settings.curWorldDir, "QuestProgress.json");
-        if (legacy.isFile()) {
-            restoreProgressFile(legacy, recreatedOwnedQuests, false);
-        }
-        File dir = new File(BQ_Settings.curWorldDir, "QuestProgress");
-        File[] files = dir.listFiles();
-        if (files == null) {
-            return;
-        }
-        for (File f : files) {
-            if (f.isFile() && f.getName()
-                .endsWith(".json")) {
-                restoreProgressFile(f, recreatedOwnedQuests, true);
-            }
-        }
-    }
-
-    /** 仅识别本包使用的三个原生任务类的已知用户字段，不遍历自定义任务或任务数据。 */
-    private static void collectRestoredUsers(QuestInstance quest, Set<UUID> users) {
-        quest.getUsersWithCompletionData(users);
-        for (DBEntry<ITask> entry : quest.getTasks()
-            .getEntries()) {
-            ITask task = entry.getValue();
-            Class<?> type = task.getClass();
-            if (type != TaskCheckbox.class && type != TaskRetrieval.class && type != TaskCrafting.class) {
-                continue;
-            }
-            // 原生 TaskBase / TaskProgressableBase 输出的顶层用户列表；不读取 data 载荷。
-            NBTTagCompound progress = task.writeProgressToNBT(new NBTTagCompound(), null);
-            NBTTagList completed = progress.getTagList("completeUsers", Constants.NBT.TAG_STRING);
-            for (int i = 0; i < completed.tagCount(); i++) {
-                users.add(UUID.fromString(completed.getStringTagAt(i)));
-            }
-            NBTTagList partial = progress.getTagList("userProgress", Constants.NBT.TAG_COMPOUND);
-            for (int i = 0; i < partial.tagCount(); i++) {
-                users.add(
-                    UUID.fromString(
-                        partial.getCompoundTagAt(i)
-                            .getString("uuid")));
-            }
-        }
-    }
-
-    private static void restoreProgressFile(File file, Set<UUID> recreatedOwnedQuests, boolean merge) {
-        // JsonHelper.ReadFromFile 会备份损坏文件；这里只读，不改写任何进度文件。
-        try (BufferedReader reader = new BufferedReader(
-            new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8),
-            32768)) {
-            JsonObject json = new JsonParser().parse(reader)
-                .getAsJsonObject();
-            NBTTagCompound nbt = NBTConverter.JSONtoNBT_Object(json, new NBTTagCompound(), true);
-            NBTTagList progress = nbt.getTagList("questProgress", Constants.NBT.TAG_COMPOUND);
-            NBTTagList selected = new NBTTagList();
-            Set<UUID> selectedIds = new HashSet<>();
-            for (int i = 0; i < progress.tagCount(); i++) {
-                NBTTagCompound entry = progress.getCompoundTagAt(i);
-                // 与原生 QuestDatabase.readProgressFromNBT 一样支持 UUID 和旧整数 ID。
-                UUID questId = NBTConverter.UuidValueType.QUEST.tryReadId(entry)
-                    .orElse(null);
-                if (questId == null && entry.hasKey("questID", Constants.NBT.TAG_ANY_NUMERIC)) {
-                    questId = UuidConverter.convertLegacyId(entry.getInteger("questID"));
-                }
-                if (recreatedOwnedQuests.contains(questId)) {
-                    selected.appendTag(entry);
-                    selectedIds.add(questId);
-                }
-            }
-            QuestDatabase.INSTANCE.readProgressFromNBT(selected, merge);
-            // 与 BQ 旧版进度迁移相同，通过原生 API 合并 dirty 用户，不清空已有集合。
-            Set<UUID> restoredUsers = new HashSet<>();
-            for (UUID id : selectedIds) {
-                IQuest quest = QuestDatabase.INSTANCE.get(id);
-                if (quest instanceof QuestInstance) {
-                    collectRestoredUsers((QuestInstance) quest, restoredUsers);
-                }
-            }
-            SaveLoadHandler.INSTANCE.addDirtyPlayers(restoredUsers);
-        } catch (Throwable t) {
-            GTInterestingThing.LOG.warn("[GTIT-BQ] 进度回填跳过无法解析的文件: {}", file.getName(), t);
         }
     }
 

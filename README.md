@@ -10,13 +10,13 @@
   <img alt="Minecraft 1.7.10" src="https://img.shields.io/badge/Minecraft-1.7.10-blue.svg">
   <img alt="Forge 10.13.4.1614" src="https://img.shields.io/badge/Forge-10.13.4.1614-blue.svg">
   <a href="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack"><img alt="GTNH 2.9.0 final" src="https://img.shields.io/badge/GTNH-2.9.0-orange.svg"></a>
-  <img alt="GTIT 2.1.2" src="https://img.shields.io/badge/GTIT-2.1.2-green.svg">
+  <img alt="GTIT 2.1.5" src="https://img.shields.io/badge/GTIT-2.1.5-green.svg">
 </p>
 
 | 前置 / Requirement | 版本 / Version |
 | --- | --- |
 | GTNH | 2.9.0 |
-| [MIAOKATZE Core](https://github.com/MIAOKATZE/MIAOKATZE-Core) | 0.2.5+ |
+| [MIAOKATZE Core](https://github.com/MIAOKATZE/MIAOKATZE-Core) | 0.2.6+ |
 
 A GregTech New Horizons gadget mod that **provides interesting items enhancing the gameplay experience**, including flight cores, ore scanning tools, functional rings, a starter gift system, a hardcore reincarnation cycle, and a custom trading machine, while balancing usage costs to maintain progression integrity.
 
