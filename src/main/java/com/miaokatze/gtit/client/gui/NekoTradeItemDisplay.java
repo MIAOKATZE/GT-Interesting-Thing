@@ -124,6 +124,15 @@ public class NekoTradeItemDisplay {
 
     /** 是否可交易（综合判断：非锁定、非冷却中） */
     private boolean tradeable;
+    private String tradeFailure = "";
+
+    public String getTradeFailure() {
+        return tradeFailure;
+    }
+
+    public void setTradeFailure(String reason) {
+        tradeFailure = reason == null ? "" : reason;
+    }
 
     /** 是否已收藏 */
     private boolean favourite;

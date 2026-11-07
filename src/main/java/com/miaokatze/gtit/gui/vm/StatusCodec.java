@@ -1,5 +1,8 @@
 package com.miaokatze.gtit.gui.vm;
 
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -10,7 +13,9 @@ import java.util.UUID;
 import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 
+import com.cleanroommc.modularui.network.NetworkUtils;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
+import com.cleanroommc.modularui.value.sync.GenericListSyncHandler;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
@@ -56,6 +61,10 @@ public final class StatusCodec {
     private StringSyncValue cooldownStatusSync;
     /** 可交易状态字符串（S2C：服务端构建 "groupId:tradeIndex:true/false,..." 发送到客户端） */
     private StringSyncValue tradeableStatusSync;
+    private GenericListSyncHandler<String> tradeFailureSync;
+    private final Map<String, String> tradeFailureMap = new HashMap<>();
+    private List<String> cachedTradeFailures = new ArrayList<>();
+    private static final int MAX_FAILURE_LENGTH = 1024;
     /**
      * 团队缩放状态字符串（S2C：服务端构建 "groupId:maxTrades:usedTrades,..." 发送到客户端）
      * <p>
@@ -148,6 +157,20 @@ public final class StatusCodec {
             });
         syncManager.syncValue("nekoV2TradeableStatus", tradeableStatusSync);
 
+        // Each entry is bounded independently; a list avoids StringSyncValue truncating all trade reasons at 32 KiB.
+        tradeFailureSync = GenericListSyncHandler.<String>builder()
+            .getter(() -> {
+                if (syncManager.isClient()) return java.util.Collections.emptyList();
+                buildTradeableStatusString(playerId);
+                return cachedTradeFailures;
+            })
+            .setter(this::parseTradeFailures)
+            .serializer(NetworkUtils::writeStringSafe)
+            .deserializer(NetworkUtils::readStringSafe)
+            .immutableCopy()
+            .build();
+        syncManager.syncValue("nekoV2TradeFailures", tradeFailureSync);
+
         // --- 团队缩放状态（S2C，同步冷却内最大次数和已用次数，用于 tooltip 展示）---
         // 客户端无法直接调用 GTNHLib Teams API，必须通过此同步值获取缩放信息
         teamScaleSync = new StringSyncValue(
@@ -191,6 +214,7 @@ public final class StatusCodec {
         if (tradeableStatusSync != null) {
             tradeableStatusSync.notifyUpdate();
         }
+        if (tradeFailureSync != null) tradeFailureSync.notifyUpdate();
     }
 
     /**
@@ -229,6 +253,36 @@ public final class StatusCodec {
     /** 客户端读：可交易状态（"groupId:tradeIndex" 键，null=未同步） */
     public Boolean getTradeable(String key) {
         return tradeableStatusMap.get(key);
+    }
+
+    public String getTradeFailure(String key) {
+        return tradeFailureMap.getOrDefault(key, "");
+    }
+
+    static String encodeTradeFailure(String key, String reason) {
+        if (reason.length() > MAX_FAILURE_LENGTH) reason = reason.substring(0, MAX_FAILURE_LENGTH - 16) + "…请查看交易需求清单";
+        return key + ":"
+            + Base64.getEncoder()
+                .encodeToString(reason.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private void parseTradeFailures(List<String> entries) {
+        tradeFailureMap.clear();
+        if (entries != null) for (String entry : entries) {
+            if (entry == null || entry.length() > MAX_FAILURE_LENGTH * 4 + 64) continue;
+            String[] parts = entry.split(":", 3);
+            if (parts.length != 3) continue;
+            try {
+                UUID.fromString(parts[0]);
+                if (Integer.parseInt(parts[1]) < 0) continue;
+                String reason = new String(
+                    Base64.getDecoder()
+                        .decode(parts[2]),
+                    StandardCharsets.UTF_8);
+                if (reason.length() <= MAX_FAILURE_LENGTH) tradeFailureMap.put(parts[0] + ":" + parts[1], reason);
+            } catch (IllegalArgumentException ignored) {}
+        }
+        requestCurrencyNotify.run();
     }
 
     /** 客户端读：团队缩放 [maxTrades, usedTrades]（null=未同步） */
@@ -404,6 +458,7 @@ public final class StatusCodec {
         }
 
         StringBuilder sb = new StringBuilder();
+        List<String> failures = new ArrayList<>();
         Map<UUID, NekoTradeGroup> groups = NekoTradeDatabase.INSTANCE.getAllTradeGroups();
         if (groups != null) {
             for (NekoTradeGroup group : groups.values()) {
@@ -413,6 +468,8 @@ public final class StatusCodec {
                 for (int i = 0; i < trades.size(); i++) {
                     NekoTradeResult result = multiblock.checkTrade(playerId, group.getId(), i);
                     boolean tradeable = result != null && result.isSuccess();
+                    if (!tradeable && result != null)
+                        failures.add(encodeTradeFailure(group.getId() + ":" + i, result.getDisplayMessage()));
                     if (sb.length() > 0) sb.append(",");
                     sb.append(
                         group.getId()
@@ -426,6 +483,7 @@ public final class StatusCodec {
         }
 
         cachedTradeableStatusString = sb.toString();
+        cachedTradeFailures = failures;
         tradeableStatusDirty = false;
         lastTradeableStatusRebuildTick = currentTick;
         return cachedTradeableStatusString;

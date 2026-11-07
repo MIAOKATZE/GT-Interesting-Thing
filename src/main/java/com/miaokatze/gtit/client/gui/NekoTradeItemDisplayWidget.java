@@ -445,7 +445,9 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
         return display.isOneTimeRedeemed() ? "已售罄"
             : display.isBqLocked() ? "LOCKED"
                 : display.getCooldownRemaining() > 0 ? formatCooldown(display.getCooldownRemaining())
-                    : display.isTradeable() ? "可交易" : "条件未满足";
+                    : display.isTradeable() ? "可交易"
+                        : display.getTradeFailure()
+                            .isEmpty() ? "条件未满足" : display.getTradeFailure();
     }
 
     /** Display abbreviation only; complete exact long quantities remain in the detail and tooltip. */

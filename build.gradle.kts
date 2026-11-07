@@ -166,6 +166,18 @@ tasks.register<JavaExec>("runInfinityCellClientQueryTest") {
 
 tasks.named("check") { dependsOn("runInfinityCellClientQueryTest") }
 
+tasks.register<JavaExec>("runAePresetEnergyCellTest") {
+    group = "verification"
+    description = "Checks bundled AE input NBT policy using native charged and drained energy cells."
+    mainClass = "com.miaokatze.gtit.trade.v2.AePresetEnergyCellTest"
+    classpath = storeTestRuntimeClasspath + sourceSets.getByName("main").compileClasspath + neiTestRuntimeClasspath
+    javaLauncher.set(javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(8))
+    })
+}
+
+tasks.named("check") { dependsOn("runAePresetEnergyCellTest") }
+
 mapOf(
     "runNekoTextFitTest" to "com.miaokatze.gtit.client.gui.NekoTextFitTest",
     "runNekoTradePresentationTest" to "com.miaokatze.gtit.client.gui.NekoTradePresentationTest",

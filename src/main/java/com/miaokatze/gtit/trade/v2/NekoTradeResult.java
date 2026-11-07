@@ -41,7 +41,7 @@ public class NekoTradeResult {
 
     private NekoTradeResult(Status status, String message) {
         this.status = status;
-        this.message = message;
+        this.message = message != null && message.length() > 1024 ? message.substring(0, 1000) + "…请查看交易需求清单" : message;
     }
 
     /**
@@ -89,5 +89,36 @@ public class NekoTradeResult {
 
     public String getMessage() {
         return message;
+    }
+
+    /** Shared server-side explanation for the status snapshot and the actual click result. */
+    public String getDisplayMessage() {
+        if (message != null && !message.isEmpty()) return message;
+        switch (status) {
+            case SUCCESS:
+                return "交易成功";
+            case TRADE_GROUP_NOT_FOUND:
+                return "交易组不存在";
+            case TRADE_INDEX_OUT_OF_BOUNDS:
+                return "交易索引越界";
+            case ON_COOLDOWN:
+                return "冷却中，请稍后再试";
+            case ONE_TIME_REDEEMED:
+                return "已兑换（仅限一次）";
+            case MAX_TRADES_REACHED:
+                return "已达到最大交易次数";
+            case CONDITION_NOT_SATISFIED:
+                return "前置条件未满足";
+            case INSUFFICIENT_CURRENCY:
+                return "猫猫币不足";
+            case INSUFFICIENT_ITEMS:
+                return "输入物品不足";
+            case OUTPUT_FULL:
+                return "输出总线已满";
+            case NOT_FORMED:
+                return "机器未成型";
+            default:
+                return "交易失败";
+        }
     }
 }

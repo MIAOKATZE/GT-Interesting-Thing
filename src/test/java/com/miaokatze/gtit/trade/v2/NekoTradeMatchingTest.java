@@ -214,6 +214,98 @@ public final class NekoTradeMatchingTest {
             "ore coin requires actual physical candidate");
     }
 
+    private static void shortageDiagnosis() {
+        com.miaokatze.gtit.currency.NekoCurrencyRegistrar.nekoCoinItem = Items.emerald;
+        com.miaokatze.gtit.currency.NekoCurrencyRegistrar.shimmeringNekoCoinItem = Items.diamond;
+        com.miaokatze.gtit.trade.NekoWallet wallet = com.miaokatze.gtit.trade.NekoWalletManager.INSTANCE
+            .getWallet(TEST_PLAYER);
+        wallet.addCount("neko", 2);
+        wallet.addCount("shimmeringNeko", 1);
+        NekoTrade trade = new NekoTrade();
+        trade.getFromItems()
+            .add(new NekoBigItemStack(new ItemStack(Items.emerald, 8)));
+        trade.getFromItems()
+            .add(new NekoBigItemStack(new ItemStack(Items.diamond, 3)));
+        trade.getFromItems()
+            .add(iron(5));
+        final int[] snapshots = { 0 };
+        Input input = new Input(new ItemStack(Items.emerald, 1), new ItemStack(Items.iron_ingot, 1)) {
+
+            @Override
+            public List<ItemStack> getMEItems() {
+                snapshots[0]++;
+                return me;
+            }
+        };
+        input.me.add(new ItemStack(Items.emerald, 2));
+        input.me.add(new ItemStack(Items.iron_ingot, 2));
+        NekoTradeGroup group = new NekoTradeGroup();
+        group.getTrades()
+            .add(trade);
+        NekoTradeDatabase.INSTANCE.addTradeGroup(group);
+        try {
+            NekoTradeResult result = NekoTradeExecutor.INSTANCE
+                .checkTrade(TEST_PLAYER, group.getId(), 0, input, new Output());
+            check(
+                result.getStatus() == NekoTradeResult.Status.INSUFFICIENT_ITEMS && result.getMessage()
+                    .contains("猫猫币 × 3")
+                    && result.getMessage()
+                        .contains("闪烁猫猫币 × 2")
+                    && result.getMessage()
+                        .contains(Items.iron_ingot.getItemStackDisplayName(new ItemStack(Items.iron_ingot)) + " × 2"),
+                "mixed failure identifies each currency and material using wallet, local and ME stock together");
+            check(
+                snapshots[0] == 1 && wallet.getCount("neko") == 2 && input.slots[0].stackSize == 1,
+                "diagnosis snapshots ME once and never consumes resources");
+        } finally {
+            NekoTradeDatabase.INSTANCE.removeTradeGroup(group.getId());
+            wallet.resetCount("neko");
+            wallet.resetCount("shimmeringNeko");
+            com.miaokatze.gtit.currency.NekoCurrencyRegistrar.shimmeringNekoCoinItem = null;
+        }
+        trade.getFromItems()
+            .clear();
+        trade.getFromItems()
+            .add(new NekoBigItemStack(1, "gtitTestMetal", new ItemStack(Items.gold_ingot)));
+        trade.getFromItems()
+            .add(iron(2));
+        String shared = NekoTradeMatcher.check(trade, null, new Input(new ItemStack(Items.iron_ingot, 2))).failure;
+        check(
+            shared.contains(" × 1") && !shared.contains(" × 2"),
+            "shared stock shortage comes from one joint allocation");
+        trade.getFromItems()
+            .clear();
+        NekoBigItemStack option = iron(2);
+        option.getAlternatives()
+            .add(gold(3));
+        trade.getFromItems()
+            .add(option);
+        String either = NekoTradeMatcher
+            .check(trade, null, new Input(new ItemStack(Items.iron_ingot), new ItemStack(Items.gold_ingot, 2))).failure;
+        check(
+            either.startsWith("可选方案还缺少：") && either.contains(" × 1") && !either.contains("；"),
+            "OR reports one complete supplement rather than claiming every alternative is required");
+        option.getAlternatives()
+            .clear();
+        trade.setRecordNBT(true);
+        ItemStack tagged = new ItemStack(Items.iron_ingot, 2);
+        tagged.setTagCompound(new NBTTagCompound());
+        tagged.getTagCompound()
+            .setInteger("energy", 0);
+        Input wrongNBT = new Input();
+        wrongNBT.me.add(tagged);
+        String nbt = NekoTradeMatcher.check(trade, null, wrongNBT).failure;
+        check(
+            nbt.contains(" × 2") && nbt.contains("NBT 不符"),
+            "ME same-item wrong-NBT stock gets an explicit explanation");
+        check(
+            !NekoTradeMatcher.check(trade, null, new Input()).failure.contains("NBT 不符"),
+            "absent stock is not mislabeled as an NBT mismatch");
+        trade.setRecordNBT(false);
+        check(NekoTradeMatcher.check(trade, null, wrongNBT).plan != null, "relaxed matching still accepts energy data");
+        System.out.println("Trade shortage diagnosis: mixed currencies/materials, shared stock, OR and ME NBT passed");
+    }
+
     private static void oneTimeCooldown() throws Exception {
         NekoHistoryManager manager = NekoHistoryManager.INSTANCE;
         java.lang.reflect.Field directory = NekoHistoryManager.class.getDeclaredField("saveDir");
@@ -575,6 +667,7 @@ public final class NekoTradeMatchingTest {
             executeAndCompensate();
             oneTimeCooldown();
             parserAndWallet();
+            shortageDiagnosis();
             com.miaokatze.gtit.trade.NekoTradeJson.validateDepth("{\"trades\":[{\"alternatives\":[{\"amount\":1}]}]}");
             StringBuilder deep = new StringBuilder();
             for (int i = 0; i < 10000; i++) deep.append("{\"alternatives\":[");

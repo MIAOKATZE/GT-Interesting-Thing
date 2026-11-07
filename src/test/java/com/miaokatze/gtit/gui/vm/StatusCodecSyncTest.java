@@ -15,7 +15,9 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.network.PacketBuffer;
 
+import com.cleanroommc.modularui.network.NetworkUtils;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
+import com.cleanroommc.modularui.value.sync.GenericListSyncHandler;
 import com.cleanroommc.modularui.value.sync.ModularSyncManager;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
@@ -66,10 +68,11 @@ public final class StatusCodecSyncTest {
             clientConstruction();
             clientConditionIsolation();
             receivedStatuses();
+            receivedFailureReasons();
             serverStillRequiresHistory();
             persistedFavouritesLoadOnRead();
             favouritePacketsAndScope();
-            System.out.println("StatusCodecSyncTest: 7 cases passed");
+            System.out.println("StatusCodecSyncTest: 8 cases passed");
         } finally {
             NekoTradeDatabase.INSTANCE.clear();
         }
@@ -149,6 +152,25 @@ public final class StatusCodecSyncTest {
             PanelSyncManager serverManager = manager(false);
             server.registerSyncValues(serverManager, PLAYER);
             BooleanSyncValue serverValue = serverManager.findSyncHandler("nekoV2TeamWallet", BooleanSyncValue.class);
+            GenericListSyncHandler<?> failureHandler = serverManager
+                .findSyncHandler("nekoV2TradeFailures", GenericListSyncHandler.class);
+            SimpleAssert.that(!failureHandler.isAllowC2S(), "server failure reasons are S2C only");
+            PacketBuffer forged = new PacketBuffer(Unpooled.buffer());
+            try {
+                forged.writeVarIntToBuffer(1);
+                NetworkUtils.writeStringSafe(forged, StatusCodec.encodeTradeFailure(COOLDOWN_GROUP + ":0", "伪造原因"));
+                serverManager.receiveWidgetUpdate(
+                    PanelSyncManager.makeSyncKey("nekoV2TradeFailures", 0),
+                    false,
+                    ValueSyncHandler.SYNC_VALUE,
+                    forged);
+                SimpleAssert.eq(
+                    "",
+                    server.getTradeFailure(COOLDOWN_GROUP + ":0"),
+                    "C2S cannot replace an authoritative failure");
+            } finally {
+                forged.release();
+            }
             SimpleAssert.that(server.isTeamWallet(), "server recognizes the actual shared wallet route");
             receiveWallet(clientManager, serverValue);
             int afterServerQuery = queries[0];
@@ -219,7 +241,100 @@ public final class StatusCodecSyncTest {
             value.updateCacheFromSource(true);
             SimpleAssert.eq("", value.getValue(), channel + " client getter stays safe after construction");
         }
+        GenericListSyncHandler<?> reasons = manager
+            .findSyncHandler("nekoV2TradeFailures", GenericListSyncHandler.class);
+        SimpleAssert.that(
+            !reasons.isAllowC2S() && reasons.getValue()
+                .isEmpty(),
+            "failure list starts empty and read only");
+        reasons.updateCacheFromSource(true);
+        SimpleAssert.that(
+            reasons.getValue()
+                .isEmpty(),
+            "failure source refresh never queries server stores on a client");
         historyRemainsUnavailable();
+    }
+
+    private static void receivedFailureReasons() throws Exception {
+        StatusCodec codec = new StatusCodec(null, null, () -> {});
+        PanelSyncManager manager = manager(true);
+        codec.registerSyncValues(manager, PLAYER);
+        manager.initialize("failure_reasons");
+        String key = COOLDOWN_GROUP + ":0";
+        AtomicReference<List<String>> values = new AtomicReference<>(
+            Arrays.asList(StatusCodec.encodeTradeFailure(key, "缺少：猫猫币 × 3；材料[a:b,c] × 2（NBT 不符）")));
+        GenericListSyncHandler<String> source = GenericListSyncHandler.<String>builder()
+            .getter(values::get)
+            .serializer(NetworkUtils::writeStringSafe)
+            .deserializer(NetworkUtils::readStringSafe)
+            .immutableCopy()
+            .build();
+        receiveFailures(manager, source);
+        SimpleAssert.eq(
+            "缺少：猫猫币 × 3；材料[a:b,c] × 2（NBT 不符）",
+            codec.getTradeFailure(key),
+            "actual MUI2 list packet preserves UTF8 and punctuation");
+        values.set(Arrays.asList(StatusCodec.encodeTradeFailure(key, "输出总线已满")));
+        SimpleAssert.that(source.updateCacheFromSource(false), "a same-size changed list invalidates the MUI2 cache");
+        receiveFailures(manager, source);
+        SimpleAssert.eq("输出总线已满", codec.getTradeFailure(key), "updated reason replaces old material shortage");
+        List<String> large = new java.util.ArrayList<>();
+        String longReason = String.join("", java.util.Collections.nCopies(180, "缺料"));
+        for (int i = 0; i < 100; i++) large.add(StatusCodec.encodeTradeFailure(COOLDOWN_GROUP + ":" + i, longReason));
+        values.set(large);
+        source.updateCacheFromSource(false);
+        receiveFailures(manager, source);
+        SimpleAssert.eq(
+            longReason,
+            codec.getTradeFailure(COOLDOWN_GROUP + ":99"),
+            "reason list beyond 32 KiB retains its last entry");
+        values.set(
+            Arrays.asList(
+                StatusCodec.encodeTradeFailure(key, String.join("", java.util.Collections.nCopies(2000, "长")))));
+        source.updateCacheFromSource(false);
+        receiveFailures(manager, source);
+        SimpleAssert.that(
+            codec.getTradeFailure(key)
+                .length() <= 1024,
+            "each reason has a bounded length");
+        values.set(java.util.Collections.emptyList());
+        source.updateCacheFromSource(false);
+        receiveFailures(manager, source);
+        SimpleAssert.eq("", codec.getTradeFailure(key), "success/empty snapshot clears the stale failure");
+
+        Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+        Field unsafeField = unsafeClass.getDeclaredField("theUnsafe");
+        unsafeField.setAccessible(true);
+        Object gui = unsafeClass.getMethod("allocateInstance", Class.class)
+            .invoke(unsafeField.get(null), WalletGui.class);
+        Method message = NekoVMGuiV2.class
+            .getDeclaredMethod("getTradeResultMessage", com.miaokatze.gtit.trade.v2.NekoTradeResult.class);
+        message.setAccessible(true);
+        String shortage = "缺少：闪烁猫猫币 × 2";
+        SimpleAssert.eq(
+            shortage,
+            message.invoke(
+                gui,
+                com.miaokatze.gtit.trade.v2.NekoTradeResult
+                    .fail(com.miaokatze.gtit.trade.v2.NekoTradeResult.Status.INSUFFICIENT_ITEMS, shortage)),
+            "actual click-result formatter preserves the server's specific shortage");
+        historyRemainsUnavailable();
+    }
+
+    private static void receiveFailures(PanelSyncManager manager, GenericListSyncHandler<String> source)
+        throws Exception {
+        PacketBuffer packet = new PacketBuffer(Unpooled.buffer());
+        try {
+            source.write(packet);
+            manager.receiveWidgetUpdate(
+                PanelSyncManager.makeSyncKey("nekoV2TradeFailures", 0),
+                false,
+                ValueSyncHandler.SYNC_VALUE,
+                packet);
+            SimpleAssert.that(!packet.isReadable(), "failure list consumes its actual MUI2 packet");
+        } finally {
+            packet.release();
+        }
     }
 
     private static void clientConditionIsolation() {

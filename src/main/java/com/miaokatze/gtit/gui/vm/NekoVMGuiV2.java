@@ -1134,6 +1134,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 // 更新可交易状态（优先使用服务端同步值，无则回退 BQ+冷却）
                 String tradeableKey = cdKey;
                 Boolean syncedTradeable = statusCodec.getTradeable(tradeableKey);
+                display.setTradeFailure(statusCodec.getTradeFailure(tradeableKey));
                 if (syncedTradeable != null) {
                     display.setTradeable(syncedTradeable);
                 } else {
@@ -2218,6 +2219,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 }
             } else {
                 tradeResultMessage = EnumChatFormatting.RED + getTradeResultMessage(result);
+                statusCodec.markTradeableStatusDirtyAndNotify();
                 if (tradeResultSync != null) {
                     tradeResultSync.notifyUpdate();
                 }
@@ -2272,29 +2274,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * @return 消息文本
      */
     private String getTradeResultMessage(NekoTradeResult result) {
-        switch (result.getStatus()) {
-            case SUCCESS:
-                return "交易成功";
-            case TRADE_GROUP_NOT_FOUND:
-                return "交易组不存在";
-            case TRADE_INDEX_OUT_OF_BOUNDS:
-                return "交易索引越界";
-            case ON_COOLDOWN:
-                return "冷却中，请稍后再试";
-            case ONE_TIME_REDEEMED:
-                return net.minecraft.util.StatCollector.translateToLocal("gtit.trade.cooldown.redeemed_hint");
-            case MAX_TRADES_REACHED:
-                return "已达到最大交易次数";
-            case CONDITION_NOT_SATISFIED:
-                return "前置条件未满足";
-            case INSUFFICIENT_CURRENCY:
-                return "猫猫币不足";
-            case INSUFFICIENT_ITEMS:
-                return "输入物品不足";
-            case OUTPUT_FULL:
-                return "输出总线已满";
-            default:
-                return result.getMessage() != null ? result.getMessage() : "交易失败";
-        }
+        return result.getStatus() == NekoTradeResult.Status.ONE_TIME_REDEEMED
+            ? net.minecraft.util.StatCollector.translateToLocal("gtit.trade.cooldown.redeemed_hint")
+            : result.getDisplayMessage();
     }
 }

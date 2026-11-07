@@ -262,10 +262,12 @@ public class NekoTradeExecutor {
         }
 
         NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
-        if (NekoTradeMatcher.plan(trade, wallet, inputSlots) == null) {
+        NekoTradeMatcher.Check matching = NekoTradeMatcher.check(trade, wallet, inputSlots);
+        if (matching.plan == null) {
             return NekoTradeResult.fail(
                 trade.isPureCurrencyTrade() ? NekoTradeResult.Status.INSUFFICIENT_CURRENCY
-                    : NekoTradeResult.Status.INSUFFICIENT_ITEMS);
+                    : NekoTradeResult.Status.INSUFFICIENT_ITEMS,
+                matching.failure);
         }
         long slotsNeeded = 0;
         for (NekoBigItemStack slot : trade.getToItems()) {
@@ -342,9 +344,11 @@ public class NekoTradeExecutor {
             for (ItemStack stack : outputs)
                 if (!outputSlots.hasSpaceFor(stack)) return NekoTradeResult.fail(NekoTradeResult.Status.OUTPUT_FULL);
             NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
-            NekoTradeMatcher.Plan plan = NekoTradeMatcher.plan(trade, wallet, inputSlots);
-            if (plan == null) return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_ITEMS);
-            if (!meCompensationFits(plan)) return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_ITEMS);
+            NekoTradeMatcher.Check matching = NekoTradeMatcher.check(trade, wallet, inputSlots);
+            NekoTradeMatcher.Plan plan = matching.plan;
+            if (plan == null) return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_ITEMS, matching.failure);
+            if (!meCompensationFits(plan))
+                return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_ITEMS, "本次所需 ME 物品过多，无法安全提取");
             Map<String, Integer> walletDeducted = new LinkedHashMap<>();
             List<ItemStack> meExtracted = new ArrayList<>();
             ItemStack[] originalInputs = inputSlots.getCopyOfInputs();
@@ -378,7 +382,12 @@ public class NekoTradeExecutor {
                 if (!success) {
                     rollbackWalletCurrency(wallet, walletDeducted);
                     for (ItemStack stack : meExtracted) inputSlots.refundME(stack);
-                    return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_ITEMS);
+                    String name = supply.currency != null
+                        ? com.miaokatze.gtit.currency.NekoCurrencyRegistrar.getDisplayName(supply.currency)
+                        : supply.stack.getDisplayName();
+                    return NekoTradeResult.fail(
+                        NekoTradeResult.Status.INSUFFICIENT_ITEMS,
+                        "未能取得：" + name + " × " + count + "，库存已变化或无法提取，请重试");
                 }
             }
             inputSlots.setInputs(inputs);

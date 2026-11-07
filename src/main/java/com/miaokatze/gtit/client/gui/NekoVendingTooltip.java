@@ -74,6 +74,15 @@ public final class NekoVendingTooltip {
         });
         // ComposedLine adds one pixel after each non-font-height icon (MUI2 2.3.92).
         int fixedHeight = 29 + 16 + 56 + 28;
+        if (!trade.isTradeable() && !trade.getTradeFailure()
+            .isEmpty()) {
+            // Keep the exact shortfall readable instead of fitting the entire reason into one clipped status row.
+            List<String> failureLines = mc.fontRenderer.listFormattedStringToWidth(
+                EnumChatFormatting.getTextWithoutFormattingCodes(trade.getTradeFailure()),
+                (int) ((width - 12) / .8f));
+            for (String line : failureLines) label(tooltip, width, line, NekoVendingTheme.DANGER, 12);
+            fixedHeight += failureLines.size() * 13;
+        }
         if (trade.isBqLocked() && trade.isOneTimeRedeemed()) {
             label(tooltip, width, tr("bq_locked"), NekoVendingTheme.DANGER, 12);
             fixedHeight += 13;
