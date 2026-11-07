@@ -44,6 +44,7 @@ import com.miaokatze.gtit.client.gui.NekoSearchBar;
 import com.miaokatze.gtit.client.gui.NekoSortMode;
 import com.miaokatze.gtit.client.gui.NekoSubTabButton;
 import com.miaokatze.gtit.client.gui.NekoTradeCardLayout;
+import com.miaokatze.gtit.client.gui.NekoTradeGrid;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplay;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplayWidget;
 import com.miaokatze.gtit.client.gui.NekoTradeRow;
@@ -1380,13 +1381,8 @@ public final class TradePage {
         // One wrapping native Flow: compact cards gain columns rather than becoming empty wide banners.
         List<NekoTradeItemDisplayWidget> tileWidgets = gui.displayedTradesTiles.get(category);
         if (tileWidgets != null) {
-            Flow grid = Flow.row()
-                .wrap()
-                .coverChildrenHeight()
-                .widthRelOffset(1f, -4)
-                .marginLeft(2)
-                .collapseDisabledChild(true)
-                .crossAxisChildPadding(0);
+            Flow grid = new NekoTradeGrid().widthRelOffset(1f, -4)
+                .marginLeft(2);
             grid.setEnabledIf(w -> gui.getDisplayType() == NekoDisplayType.TILE);
             for (NekoTradeItemDisplayWidget widget : tileWidgets) {
                 widget.margin(2);

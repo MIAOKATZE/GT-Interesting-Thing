@@ -170,6 +170,7 @@ mapOf(
     "runNekoTextFitTest" to "com.miaokatze.gtit.client.gui.NekoTextFitTest",
     "runNekoTradePresentationTest" to "com.miaokatze.gtit.client.gui.NekoTradePresentationTest",
     "runNekoTradeCardLayoutTest" to "com.miaokatze.gtit.client.gui.NekoTradeCardLayoutTest",
+    "runNekoTradeGridScrollTest" to "com.miaokatze.gtit.client.gui.NekoTradeGridScrollTest",
     "runNekoWorkbenchLayoutTest" to "com.miaokatze.gtit.client.gui.NekoWorkbenchLayoutTest",
     "runNekoGhostSlotTest" to "com.miaokatze.gtit.client.gui.NekoGhostSlotTest",
     "runNekoEditDragGeometryTest" to "com.miaokatze.gtit.client.gui.NekoEditDragGeometryTest",
