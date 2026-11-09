@@ -1,5 +1,6 @@
 package com.miaokatze.gtit.mixin.ae2;
 
+import java.util.HashMap;
 import java.util.Map;
 
 import net.minecraft.item.ItemStack;
@@ -113,6 +114,7 @@ public class MixinTileChest {
             if (is == null || handler == null) {
                 return;
             }
+            final Map<IAEStackType<?>, MEMonitorHandler> additions = new HashMap<>();
             for (IAEStackType<?> t : AEStackTypeRegistry.getAllTypes()) {
                 if (this.cellMap.containsKey(t)) {
                     continue;
@@ -121,8 +123,9 @@ public class MixinTileChest {
                 if (cell == null) {
                     continue;
                 }
-                this.cellMap.put(t, this.wrap(cell));
+                additions.put(t, this.wrap(cell));
             }
+            this.cellMap.putAll(additions);
         } catch (Throwable t) {
             if (!this.gtit$warned) {
                 this.gtit$warned = true;

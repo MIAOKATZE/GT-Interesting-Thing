@@ -7,7 +7,6 @@
   "compatibilityLevel": "JAVA_8",
   "mixins": ["MixinItemInWorldManager", "MixinBaseMetaTileEntityMuffle", "MixinEntityFishHook"],
   "client": [
-    "MixinAEBaseGuiDrawHoveringTextFix",
     "MixinPlayerControllerMP",
     "MixinEntityRenderer",
     "NekoSoundManagerMixin",

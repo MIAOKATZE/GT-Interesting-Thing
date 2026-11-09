@@ -106,6 +106,8 @@ public class MixinTileIOPort {
         if (is == null) {
             return;
         }
+        final ItemStack previousCell = this.currentCell;
+        final IMEInventory<?> previousInventory = this.cachedInventory;
         try {
             final List<IMEInventory<?>> channels = this.gtit$channelsOf(is);
             final int size = channels.size();
@@ -136,6 +138,8 @@ public class MixinTileIOPort {
             }
             ci.setReturnValue(selected);
         } catch (Throwable t) {
+            this.currentCell = previousCell;
+            this.cachedInventory = previousInventory;
             this.gtit$warn(t);
             // 不 cancel、不改原生字段：:488-502 照常执行并返回它自己的单通道结果
             this.gtit$activeChannels = null;

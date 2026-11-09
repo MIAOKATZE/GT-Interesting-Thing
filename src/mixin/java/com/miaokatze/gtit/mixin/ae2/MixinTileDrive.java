@@ -1,5 +1,7 @@
 package com.miaokatze.gtit.mixin.ae2;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -106,6 +108,7 @@ public class MixinTileDrive {
             return;
         }
         try {
+            final Map<IAEStackType<?>, List<IMEInventoryHandler>> additions = new HashMap<>();
             final ICellHandler[] handlers = this.handlersBySlot;
             final MEInventoryHandler[] bySlot = this.invBySlot;
             for (int x = 0; x < this.inv.getSizeInventory(); x++) {
@@ -135,12 +138,17 @@ public class MixinTileDrive {
                     }
                     final MEInventoryHandler ih = new MEInventoryHandler(cell, cell.getStackType());
                     ih.setPriority(this.priority);
-                    list.add(ih);
-                    if (!this.gtit$logged) {
-                        this.gtit$logged = true;
-                        gtit$LOG.info("[gtit] 驱动器多通道补登记命中：原生主通道={}，本次补={}（槽位 {}）", occupied.getId(), type.getId(), x);
-                    }
+                    additions.computeIfAbsent(type, ignored -> new ArrayList<>())
+                        .add(ih);
                 }
+            }
+            for (Map.Entry<IAEStackType<?>, List<IMEInventoryHandler>> addition : additions.entrySet()) {
+                this.cellsMap.get(addition.getKey())
+                    .addAll(addition.getValue());
+            }
+            if (!additions.isEmpty() && !this.gtit$logged) {
+                this.gtit$logged = true;
+                gtit$LOG.info("[gtit] 驱动器多通道补登记已完成：{} 个附加通道", additions.size());
             }
         } catch (Throwable t) {
             if (!this.gtit$warned) {

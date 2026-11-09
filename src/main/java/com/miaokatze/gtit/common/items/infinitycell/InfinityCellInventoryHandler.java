@@ -2,8 +2,6 @@ package com.miaokatze.gtit.common.items.infinitycell;
 
 import static appeng.util.item.AEItemStackType.ITEM_STACK_TYPE;
 
-import java.lang.reflect.Field;
-
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 
@@ -19,29 +17,11 @@ import appeng.api.storage.data.IItemList;
 import appeng.me.storage.MEInventoryHandler;
 import appeng.me.storage.MEPassThrough;
 import appeng.util.item.AEItemStack;
-import appeng.util.prioitylist.DefaultPriorityList;
 import appeng.util.prioitylist.FuzzyPriorityList;
-import appeng.util.prioitylist.IPartitionList;
 import appeng.util.prioitylist.OreFilteredList;
 import appeng.util.prioitylist.PrecisePriorityList;
 
 public class InfinityCellInventoryHandler extends MEInventoryHandler<IAEItemStack> implements ICellCacheRegistry {
-
-    private static final Field fPartitionList;
-    private static final Field fInternal;
-
-    // v1.5.11+: 合并为单个 static 块（此前分两块，fInternal 声明在使用它的方法之后，
-    // 虽然 Java 静态初始化顺序能保证正确，但易误导维护者）。与 InfinityFluidCellInventoryHandler 风格统一。
-    static {
-        try {
-            fPartitionList = MEInventoryHandler.class.getDeclaredField("myPartitionList");
-            fPartitionList.setAccessible(true);
-            fInternal = MEPassThrough.class.getDeclaredField("internal");
-            fInternal.setAccessible(true);
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to reflect MEInventoryHandler/MEPassThrough fields", e);
-        }
-    }
 
     public InfinityCellInventoryHandler(IMEInventory<IAEItemStack> i) {
         super(i, ITEM_STACK_TYPE);
@@ -150,21 +130,17 @@ public class InfinityCellInventoryHandler extends MEInventoryHandler<IAEItemStac
     public ITCellInventory getCellInv() {
         Object o = this.getInternal();
         if (o instanceof MEPassThrough<?>mpt) {
-            try {
-                o = fInternal.get(mpt);
-            } catch (Exception e) {
-                return null;
-            }
+            o = mpt.getInternal();
         }
         return (o instanceof ITCellInventory) ? (ITCellInventory) o : null;
     }
 
     public boolean isPreformatted() {
-        return !getPartitionList(this).isEmpty();
+        return !getPartitionList().isEmpty();
     }
 
     public boolean isFuzzy() {
-        return getPartitionList(this) instanceof FuzzyPriorityList;
+        return getPartitionList() instanceof FuzzyPriorityList;
     }
 
     public IncludeExclude getIncludeExcludeMode() {
@@ -180,11 +156,4 @@ public class InfinityCellInventoryHandler extends MEInventoryHandler<IAEItemStac
         return val;
     }
 
-    private static IPartitionList<?> getPartitionList(MEInventoryHandler<?> handler) {
-        try {
-            return (IPartitionList<?>) fPartitionList.get(handler);
-        } catch (Exception e) {
-            return new DefaultPriorityList<>();
-        }
-    }
 }

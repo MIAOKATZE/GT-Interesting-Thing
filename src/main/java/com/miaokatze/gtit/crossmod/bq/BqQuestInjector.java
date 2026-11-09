@@ -7,7 +7,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +24,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.miaokatze.gtit.Tags;
 import com.miaokatze.gtit.main.GTInterestingThing;
+import com.miaokatze.miaokatzecore.api.bq.QuestDefinitionPreflight;
+import com.miaokatze.miaokatzecore.api.bq.QuestPackPreflight;
 import com.miaokatze.miaokatzecore.api.bq.QuestProgressRecovery;
 
 import betterquesting.api.questing.IQuest;
@@ -198,52 +199,19 @@ public final class BqQuestInjector {
 
     static Map<String, NBTTagCompound> prepareResources(JsonArray lines, Function<String, NBTTagCompound> reader,
         Long ownedHigh) {
-        // Exported assets carry explicit long UUID pairs. Recognized packs own their high bits;
-        // unknown roots retain arbitrary UUIDs, but manifest/line/entry identities must still agree.
-        Map<String, NBTTagCompound> resources = new HashMap<>();
-        Set<UUID> lineIds = new HashSet<>();
-        Map<UUID, String> questFiles = new HashMap<>();
-        for (int i = 0; i < lines.size(); i++) {
-            JsonObject line = lines.get(i)
-                .getAsJsonObject();
-            // Validate every manifest field consumed by loadQuestLine before it can change a database.
-            UUID lineId = new UUID(requireLong(line, "idHigh"), requireLong(line, "idLow"));
-            Math.toIntExact(requireLong(line, "orderIndex"));
-            requireOwned(lineId, ownedHigh);
-            if (!lineIds.add(lineId)) throw new IllegalStateException("Duplicate BQ quest line: " + lineId);
-            NBTTagCompound lineTag = requireResource(
-                resources,
-                reader,
-                line.get("lineFile")
-                    .getAsString());
-            if (!lineId.equals(requireId(lineTag, "questLineID"))) {
-                throw new IllegalStateException("BQ quest line identity disagrees with manifest: " + lineId);
-            }
-            Set<UUID> entriesSeen = new HashSet<>();
-            JsonArray entries = line.getAsJsonArray("entries");
-            for (int j = 0; j < entries.size(); j++) {
-                JsonObject entry = entries.get(j)
-                    .getAsJsonObject();
-                String questFile = entry.get("questFile")
-                    .getAsString();
-                NBTTagCompound quest = requireResource(resources, reader, questFile);
-                UUID questId = requireId(quest, "questID");
-                requireOwned(questId, ownedHigh);
-                String priorFile = questFiles.putIfAbsent(questId, questFile);
-                if ((priorFile != null && !priorFile.equals(questFile)) || !entriesSeen.add(questId)) {
-                    throw new IllegalStateException("Conflicting BQ quest definition/entry: " + questId);
-                }
-                NBTTagCompound entryTag = requireResource(
-                    resources,
-                    reader,
-                    entry.get("entryFile")
-                        .getAsString());
-                if (!questId.equals(requireId(entryTag, "questID"))) {
-                    throw new IllegalStateException("BQ quest entry identity disagrees with definition: " + questId);
-                }
-            }
+        // Pack ownership belongs to GTIT, while syntax and detached native parsing are shared.
+        for (JsonElement element : lines) {
+            JsonObject line = element.getAsJsonObject();
+            requireOwned(new UUID(requireLong(line, "idHigh"), requireLong(line, "idLow")), ownedHigh);
         }
-        return resources;
+        return QuestPackPreflight.prepareResources(lines, path -> {
+            NBTTagCompound tag = reader.apply(path);
+            if (tag != null) {
+                if (tag.hasKey("questIDHigh")) requireOwned(requireId(tag, "questID"), ownedHigh);
+                if (tag.hasKey("questLineIDHigh")) requireOwned(requireId(tag, "questLineID"), ownedHigh);
+            }
+            return tag;
+        });
     }
 
     private static long requireLong(JsonObject object, String key) {
@@ -273,34 +241,6 @@ public final class BqQuestInjector {
         }
     }
 
-    private static NBTTagCompound requireResource(Map<String, NBTTagCompound> resources,
-        Function<String, NBTTagCompound> reader, String path) {
-        NBTTagCompound tag = resources.get(path);
-        if (tag == null) {
-            tag = reader.apply(path);
-            if (tag == null) throw new IllegalStateException("Incomplete BQ quest pack: " + path);
-            resources.put(path, tag);
-        }
-        return tag;
-    }
-
-    /**
-     * 装载单条任务线及其下所有任务（全幂等 + 版本化定义刷新）。
-     * <p>
-     * 装载规则：线 get(id)==null 才 new QuestLine + readFromNBT + put；
-     * 任务 get(id)==null 才 new QuestInstance + readFromNBT + put；
-     * 线内条目 line.get(questId)==null 才 put(new QuestLineEntry)。
-     * <p>
-     * 刷新规则（{@code refresh==true}，本包版本戳对账失败时）：已存在任务重读定义
-     * （进度快照→readFromNBT→merge 回填，完成/领取保留），挂线坐标用
-     * {@code line.put} 直接替换（UuidDatabase map 语义）。
-     *
-     * @param lineSpec      index.json 中该线的声明对象
-     * @param refresh       是否对已存在任务执行定义刷新
-     * @param expected      该包全部清单任务 UUID 的累积集（跨线共享，供剪枝比对）
-     * @param expectedLines 该包清单任务线 UUID 的累积集（跨线共享，供任务线剪枝比对）
-     * @return int[]{本次新建任务数, 本次刷新定义任务数, 已存在且未刷新的跳过任务数}
-     */
     private static int[] loadQuestLine(JsonObject lineSpec, boolean refresh, Set<UUID> expected,
         Set<UUID> expectedLines, Map<String, NBTTagCompound> resources, PackSpec pack, Set<UUID> recreatedOwnedQuests) {
         UUID lineId = new UUID(
@@ -552,11 +492,7 @@ public final class BqQuestInjector {
     }
 
     static void validateResourceIds(JsonObject json) {
-        // The native converter uses Number.longValue(), which loses fractions/overflow before
-        // NBT identity validation can see it. Check declared UUID longs while still in JSON form.
-        for (String key : new String[] { "questIDHigh:4", "questIDLow:4", "questLineIDHigh:4", "questLineIDLow:4" }) {
-            if (json.has(key)) requireLong(json, key);
-        }
+        QuestDefinitionPreflight.validateJsonIds(json);
     }
 
     /**

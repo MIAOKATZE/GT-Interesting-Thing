@@ -163,7 +163,17 @@ public final class DefaultTradeSources {
     }
 
     static void saveTrades(Path root, List<NekoTradeEntry> trades) throws IOException {
-        if (!DefaultContentConfig.loadDefaultTradeGroups()) return;
+        Map<String, byte[]> changes = planTradeChanges(root, trades);
+        if (!changes.isEmpty()) new PresetFileTransaction(root).commit(changes);
+    }
+
+    /** Stage overrides together with ordinary tab files in the same existing rollback journal. */
+    public static Map<String, byte[]> planTradeChanges(List<NekoTradeEntry> trades) throws IOException {
+        return planTradeChanges(TradeConfigPaths.gameRoot(), trades);
+    }
+
+    private static Map<String, byte[]> planTradeChanges(Path root, List<NekoTradeEntry> trades) throws IOException {
+        if (!DefaultContentConfig.loadDefaultTradeGroups()) return new LinkedHashMap<>();
         Map<String, String> originalOwners = new LinkedHashMap<>();
         for (String id : TradePresetStore.BUILTIN_IDS) for (TradePresetDefinition.Tab tab : bundled(id).tabs) {
             for (NekoTradeEntry entry : tab.trades)
@@ -191,7 +201,7 @@ public final class DefaultTradeSources {
             }
             changedOverride(id, edited, root, changes);
         }
-        if (!changes.isEmpty()) new PresetFileTransaction(root).commit(changes);
+        return changes;
     }
 
     public static void savePages(List<NekoPageEntry> pages) throws IOException {

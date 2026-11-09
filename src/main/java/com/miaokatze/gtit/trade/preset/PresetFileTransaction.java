@@ -21,14 +21,14 @@ import com.google.gson.GsonBuilder;
 import com.miaokatze.gtit.trade.NekoTradeJson;
 
 /** Write-ahead rollback journal. A crash before journal deletion rolls the whole operation back. */
-final class PresetFileTransaction {
+public final class PresetFileTransaction {
 
     private static final Gson GSON = new GsonBuilder().serializeNulls()
         .create();
     private static final String JOURNAL = "config/gtit/trade/preset_transaction.json";
     private final Path root;
 
-    PresetFileTransaction(Path root) {
+    public PresetFileTransaction(Path root) {
         this.root = root.toAbsolutePath()
             .normalize();
     }
@@ -65,7 +65,7 @@ final class PresetFileTransaction {
         return target;
     }
 
-    void recover() throws IOException {
+    public void recover() throws IOException {
         Path journal = checked(JOURNAL);
         if (!Files.exists(journal, LinkOption.NOFOLLOW_LINKS)) return;
         if (Files.size(journal) > 96L * 1024 * 1024) throw new IOException("预设事务日志过大，需人工检查");
@@ -82,7 +82,7 @@ final class PresetFileTransaction {
         Files.delete(journal);
     }
 
-    void commit(Map<String, byte[]> changes) throws IOException {
+    public void commit(Map<String, byte[]> changes) throws IOException {
         recover();
         Journal journal = new Journal();
         for (Map.Entry<String, byte[]> change : changes.entrySet()) {

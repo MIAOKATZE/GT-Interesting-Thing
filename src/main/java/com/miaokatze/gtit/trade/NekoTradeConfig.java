@@ -6,7 +6,9 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -17,6 +19,8 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
 import com.miaokatze.gtit.config.DefaultContentConfig;
+import com.miaokatze.gtit.trade.preset.DefaultTradeSources;
+import com.miaokatze.gtit.trade.preset.PresetFileTransaction;
 import com.miaokatze.gtit.trade.preset.TradePresetLayout;
 
 /**
@@ -82,6 +86,20 @@ public class NekoTradeConfig {
 
         private int version = 1;
         private List<NekoTradeEntry> trades = new ArrayList<>();
+        private transient List<String> loadFailures = new ArrayList<>();
+
+        public boolean isComplete() {
+            return loadFailures == null || loadFailures.isEmpty();
+        }
+
+        public List<String> getLoadFailures() {
+            return loadFailures == null ? Collections.emptyList() : Collections.unmodifiableList(loadFailures);
+        }
+
+        private void failed(String source) {
+            if (loadFailures == null) loadFailures = new ArrayList<>();
+            loadFailures.add(source);
+        }
 
         public int getVersion() {
             return version;
@@ -143,6 +161,7 @@ public class NekoTradeConfig {
      */
     public static synchronized void init() {
         try {
+            new PresetFileTransaction(TradeConfigPaths.gameRoot()).recover();
             Path dir = getTradeDirPath();
             if (!Files.exists(dir)) {
                 Files.createDirectories(dir);
@@ -174,6 +193,7 @@ public class NekoTradeConfig {
      */
     public static synchronized NekoTradeData load() {
         try {
+            new PresetFileTransaction(TradeConfigPaths.gameRoot()).recover();
             Path dir = getTradeDirPath();
             if (!Files.exists(dir)) {
                 Files.createDirectories(dir);
@@ -191,6 +211,7 @@ public class NekoTradeConfig {
                 }
             }
 
+            NekoTradeData data = new NekoTradeData();
             List<NekoTradeEntry> allTrades = new ArrayList<>();
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, "tab_*.json")) {
                 for (Path file : stream) {
@@ -198,7 +219,7 @@ public class NekoTradeConfig {
                         String json = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
                         NekoTradeJson.validateDepth(json);
                         TabFileData tab = GSON.fromJson(json, TabFileData.class);
-                        if (tab == null || tab.getTrades() == null) continue;
+                        if (tab == null || tab.getTrades() == null) throw new IOException("Invalid trade tab document");
                         // 文件名是权威 tabId（防止文件内容与文件名不一致）
                         int tabId = parseTabIdFromFileName(
                             file.getFileName()
@@ -214,18 +235,20 @@ public class NekoTradeConfig {
                             allTrades.add(entry);
                         }
                     } catch (Exception e) {
+                        data.failed(file.toString());
                         LOG.warn("猫猫售货机交易 tab 文件损坏或无法解析，已跳过: {}", file, e);
                     }
                 }
             }
-            NekoTradeData data = new NekoTradeData();
             loadPresetTrades(allTrades);
             data.setTrades(allTrades);
             LOG.info("猫猫售货机交易配置已加载（{} 条交易）", allTrades.size());
             return data;
         } catch (Exception e) {
             LOG.error("猫猫售货机交易配置加载失败，返回{}", defaultTradesSuppressed ? "空数据（旧默认已被内置组抑制）" : "默认数据", e);
-            return suppressedFallback();
+            NekoTradeData failed = suppressedFallback();
+            failed.failed(e.toString());
+            return failed;
         }
     }
 
@@ -236,63 +259,62 @@ public class NekoTradeConfig {
      */
     public static synchronized void save(NekoTradeData data) {
         if (data == null) return;
-        // Reject invalid cooldowns before any override or custom file can be changed (Gson bypasses setters).
+        if (!data.isComplete()) throw new IllegalStateException(
+            "Cannot save partially loaded trade configuration: " + data.getLoadFailures());
         if (data.getTrades() != null) for (NekoTradeEntry entry : data.getTrades()) {
             if (entry != null) NekoTradeEntry.validateCooldown(entry.getCooldown());
         }
         try {
-            Path dir = getTradeDirPath();
-            Files.createDirectories(dir);
-
-            com.miaokatze.gtit.trade.preset.DefaultTradeSources
-                .saveTrades(data.getTrades() == null ? new ArrayList<>() : data.getTrades());
+            List<NekoTradeEntry> trades = data.getTrades() == null ? new ArrayList<>() : data.getTrades();
+            // Stage every override, write and removal before the first disk mutation. The same
+            // journal already used by presets rolls back a failed multi-file ordinary edit.
+            Map<String, byte[]> changes = new LinkedHashMap<>(DefaultTradeSources.planTradeChanges(trades));
             Map<Integer, List<NekoTradeEntry>> groups = new HashMap<>();
-            if (data.getTrades() != null) {
-                for (NekoTradeEntry entry : data.getTrades()) {
-                    if (entry == null || TradePresetLayout.builtinId(entry.getTabId()) != null) continue;
-                    groups.computeIfAbsent(entry.getTabId(), k -> new ArrayList<>())
-                        .add(entry);
-                }
+            for (NekoTradeEntry entry : trades) {
+                if (entry == null || TradePresetLayout.builtinId(entry.getTabId()) != null) continue;
+                groups.computeIfAbsent(entry.getTabId(), k -> new ArrayList<>())
+                    .add(entry);
             }
-
-            // 清理已经不存在的 tab 文件
-            try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, "tab_*.json")) {
-                for (Path file : stream) {
-                    int tabId = parseTabIdFromFileName(
-                        file.getFileName()
-                            .toString());
-                    if (!groups.containsKey(tabId)) {
-                        Files.deleteIfExists(file);
-                    }
-                }
-            }
-
+            stageRemovedTabs(getTradeDirPath(), groups, changes, false);
+            stageRemovedTabs(TradeConfigPaths.resolve(TradePresetLayout.TRADES_PATH), groups, changes, true);
             for (Map.Entry<Integer, List<NekoTradeEntry>> group : groups.entrySet()) {
                 TabFileData tab = new TabFileData();
                 tab.setTabId(group.getKey());
                 tab.setTrades(group.getValue());
-                Path file = getTabFilePath(group.getKey());
-                Files.createDirectories(file.getParent());
-                Files.write(
-                    file,
+                changes.put(
+                    relativePath(getTabFilePath(group.getKey())),
                     GSON.toJson(tab)
                         .getBytes(StandardCharsets.UTF_8));
             }
-            Path presetDirectory = TradeConfigPaths.resolve(TradePresetLayout.TRADES_PATH);
-            if (Files.exists(presetDirectory)) {
-                try (DirectoryStream<Path> stream = Files.newDirectoryStream(presetDirectory, "tab_*.json")) {
-                    for (Path file : stream) {
-                        int id = parseTabIdFromFileName(
-                            file.getFileName()
-                                .toString());
-                        if (TradePresetLayout.isManagedPage(id) && !groups.containsKey(id)) Files.delete(file);
-                    }
+            if (!changes.isEmpty()) new PresetFileTransaction(TradeConfigPaths.gameRoot()).commit(changes);
+            LOG.info("Trade configuration committed ({} tab files)", groups.size());
+        } catch (IOException failure) {
+            throw new IllegalStateException("Trade configuration could not be committed", failure);
+        }
+    }
+
+    private static void stageRemovedTabs(Path directory, Map<Integer, List<NekoTradeEntry>> groups,
+        Map<String, byte[]> changes, boolean managedOnly) throws IOException {
+        if (!Files.exists(directory)) return;
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory, "tab_*.json")) {
+            for (Path file : stream) {
+                int id = parseTabIdFromFileName(
+                    file.getFileName()
+                        .toString());
+                if ((!managedOnly || TradePresetLayout.isManagedPage(id)) && !groups.containsKey(id)) {
+                    changes.put(relativePath(file), null);
                 }
             }
-            LOG.info("猫猫售货机交易配置已保存（{} 个 tab 文件）", groups.size());
-        } catch (Exception e) {
-            LOG.error("猫猫售货机交易配置保存失败", e);
         }
+    }
+
+    private static String relativePath(Path file) {
+        return TradeConfigPaths.gameRoot()
+            .relativize(
+                file.toAbsolutePath()
+                    .normalize())
+            .toString()
+            .replace('\\', '/');
     }
 
     private static void loadPresetTrades(List<NekoTradeEntry> trades) throws IOException {

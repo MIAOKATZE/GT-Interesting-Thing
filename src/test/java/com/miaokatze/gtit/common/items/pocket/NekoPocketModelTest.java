@@ -13193,7 +13193,7 @@ public class NekoPocketModelTest {
             PocketMagnetClaims.claimCount(crowd),
             "★每人认领条数有界（GTNH 矿机一次吐几千件时本表不跟着长）");
         for (int i = 0; i < PocketMagnetClaims.CLAIM_STALE_TICKS + 2; i++) {
-            PocketMagnetClaims.ripeClaims(crowd, carrier, new ArrayList<PocketMagnetClaims.Claim>());
+            PocketMagnetClaims.advanceTick();
         }
         SimpleAssert.eq(0, PocketMagnetClaims.claimCount(crowd), "★载体不再被 tick 的条目在寿命内自然淘汰 ⇒ 整张表可随时丢弃（它允许存在的理由）");
         // ---- 不落 NBT（R53c + S6 明令禁止） ----
@@ -13219,6 +13219,7 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(0, PocketMagnetClaims.ripeClaims(owner, pocketB, out), "★B 那一拍收不到 A 认领的条目（不会把 A 吸的东西塞进 B）");
         SimpleAssert.eq(0, PocketMagnetClaims.ripeClaims(owner, pocketB, out), "★悬停到点但归属不匹配 ⇒ B 仍不收口");
         out.clear();
+        SimpleAssert.eq(0, PocketMagnetClaims.ripeClaims(owner, pocketA, out), "其他载体不能加速 A 的悬停，第一个 A 回调仍不到期");
         SimpleAssert.eq(1, PocketMagnetClaims.ripeClaims(owner, pocketA, out), "A 自己那一拍收到（两枚互不越界）");
         SimpleAssert.that(
             out.get(0)

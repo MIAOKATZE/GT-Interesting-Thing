@@ -1,6 +1,7 @@
 package com.miaokatze.gtit.trade.v2;
 
 import java.io.File;
+import java.nio.file.Files;
 import java.util.Collections;
 import java.util.Set;
 import java.util.UUID;
@@ -15,6 +16,8 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import com.miaokatze.gtit.util.AtomicNbtFile;
 
 /**
  * 收藏追踪器单例
@@ -52,6 +55,7 @@ public class NekoFavouritesTracker {
 
     /** 收藏存储目录（{@code <world>/gtit_neko_favourites/}） */
     private File saveDir = null;
+    private boolean acceptingFavourites = true;
 
     private NekoFavouritesTracker() {
         this.favourites = new ConcurrentHashMap<>();
@@ -65,15 +69,28 @@ public class NekoFavouritesTracker {
      *
      * @param world 当前世界对象
      */
-    public void init(World world) {
-        saveDir = new File(
-            world.getSaveHandler()
-                .getWorldDirectory(),
-            "gtit_neko_favourites");
-        if (!saveDir.exists()) {
-            saveDir.mkdirs();
+    public synchronized void init(World world) {
+        bindDirectory(
+            new File(
+                world.getSaveHandler()
+                    .getWorldDirectory(),
+                "gtit_neko_favourites"));
+    }
+
+    /** Rebinding is all-or-nothing: old cached data can only be flushed to its old directory. */
+    synchronized void bindDirectory(File directory) {
+        acceptingFavourites = false;
+        try {
+            if (!saveAllInternal())
+                throw new IllegalStateException("Previous world favourites remain unsaved: " + saveDir);
+            File target = directory.getCanonicalFile();
+            Files.createDirectories(target.toPath());
+            favourites.clear();
+            saveDir = target;
+            acceptingFavourites = true;
+        } catch (Exception failure) {
+            throw new IllegalStateException("Favourites storage is not ready for this world", failure);
         }
-        LOG.info("猫猫币收藏存储目录: {}", saveDir.getAbsolutePath());
     }
 
     // ==================== 收藏操作 ====================
@@ -183,6 +200,7 @@ public class NekoFavouritesTracker {
      * @return 玩家的收藏集合（不为 null）
      */
     private Set<Pair<UUID, Integer>> getPlayerFavourites(UUID playerId) {
+        if (!acceptingFavourites) throw new IllegalStateException("Favourites storage is not ready for this world");
         Set<Pair<UUID, Integer>> playerFaves = favourites.get(playerId);
         if (playerFaves == null) {
             // 内存中没有，尝试从磁盘懒加载
@@ -208,10 +226,11 @@ public class NekoFavouritesTracker {
      *
      * @param playerId 玩家 UUID
      */
-    private void saveFavourites(UUID playerId) {
-        if (saveDir == null || playerId == null) return;
+    private boolean saveFavourites(UUID playerId) {
+        if (playerId == null) return true;
         Set<Pair<UUID, Integer>> playerFaves = favourites.get(playerId);
-        if (playerFaves == null) return;
+        if (playerFaves == null) return true;
+        if (saveDir == null) return false;
 
         File file = new File(saveDir, playerId.toString() + ".dat");
         try {
@@ -227,9 +246,11 @@ public class NekoFavouritesTracker {
                 faveList.appendTag(faveNbt);
             }
             root.setTag("favourites", faveList);
-            CompressedStreamTools.safeWrite(root, file);
+            AtomicNbtFile.write(root, file);
+            return true;
         } catch (Exception e) {
             LOG.error("保存猫猫币收藏失败: " + playerId, e);
+            return false;
         }
     }
 
@@ -237,10 +258,10 @@ public class NekoFavouritesTracker {
      * 从磁盘加载指定玩家的收藏
      * <p>
      * 读取 {@code <saveDir>/<playerId>.dat} 文件，反序列化为收藏集合。
-     * 若文件不存在或读取失败，返回 null（调用方会创建空集合）。
+     * 文件不存在返回 null；读取失败拒绝访问，避免空集合覆盖损坏的原文件。
      *
      * @param playerId 玩家 UUID
-     * @return 玩家的收藏集合，加载失败返回 null
+     * @return 玩家的收藏集合，文件不存在返回 null
      */
     private Set<Pair<UUID, Integer>> loadFavourites(UUID playerId) {
         if (saveDir == null || playerId == null) return null;
@@ -248,25 +269,28 @@ public class NekoFavouritesTracker {
         if (!file.exists()) return null;
         try {
             NBTTagCompound root = CompressedStreamTools.read(file);
-            if (root == null || !root.hasKey("favourites")) return null;
+            if (root == null || !root.hasKey("favourites", 9))
+                throw new IllegalArgumentException("Invalid favourites list");
+            NBTTagList raw = (NBTTagList) root.getTag("favourites");
+            if (raw.tagCount() > 0 && raw.func_150303_d() != 10)
+                throw new IllegalArgumentException("Invalid favourites entries");
             NBTTagList faveList = root.getTagList("favourites", 10);
             Set<Pair<UUID, Integer>> result = ConcurrentHashMap.newKeySet();
             for (int i = 0; i < faveList.tagCount(); i++) {
                 NBTTagCompound faveNbt = faveList.getCompoundTagAt(i);
-                try {
-                    UUID groupId = UUID.fromString(faveNbt.getString("groupId"));
-                    int tradeIndex = faveNbt.getInteger("tradeIndex");
-                    result.add(new ImmutablePair<>(groupId, tradeIndex));
-                } catch (IllegalArgumentException e) {
-                    // groupId 格式无效，跳过该条记录
-                    LOG.warn("跳过无效的收藏记录 groupId: " + faveNbt.getString("groupId"));
+                if (!faveNbt.hasKey("groupId", 8) || !faveNbt.hasKey("tradeIndex", 3)) {
+                    throw new IllegalArgumentException("Invalid favourite identity");
                 }
+                UUID groupId = UUID.fromString(faveNbt.getString("groupId"));
+                int tradeIndex = faveNbt.getInteger("tradeIndex");
+                if (tradeIndex < 0) throw new IllegalArgumentException("Invalid favourite index");
+                result.add(new ImmutablePair<>(groupId, tradeIndex));
             }
             LOG.debug("已加载 {} 条收藏记录: {}", result.size(), playerId);
             return result;
         } catch (Exception e) {
             LOG.error("加载猫猫币收藏失败: " + playerId, e);
-            return null;
+            throw new IllegalStateException("Cannot load favourites for " + playerId, e);
         }
     }
 
@@ -277,18 +301,28 @@ public class NekoFavouritesTracker {
      *
      * @param playerId 玩家 UUID
      */
-    public void unloadPlayer(UUID playerId) {
-        saveFavourites(playerId);
-        favourites.remove(playerId);
+    public synchronized void unloadPlayer(UUID playerId) {
+        if (saveFavourites(playerId)) favourites.remove(playerId);
     }
 
     /**
      * 保存所有内存中的收藏数据（服务器关闭时调用）
      */
-    public void saveAll() {
-        for (UUID playerId : favourites.keySet()) {
-            saveFavourites(playerId);
-        }
+    public synchronized void saveAll() {
+        saveAllInternal();
+    }
+
+    private boolean saveAllInternal() {
+        boolean success = true;
+        for (UUID playerId : favourites.keySet()) success &= saveFavourites(playerId);
+        return success;
+    }
+
+    public synchronized void unloadAll() {
+        acceptingFavourites = false;
+        if (!saveAllInternal()) throw new IllegalStateException("Cannot release unsaved favourites");
+        favourites.clear();
+        saveDir = null;
     }
 
     /**

@@ -781,6 +781,11 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void serverStopping(FMLServerStoppingEvent event) {
+        try {
+            com.miaokatze.gtit.trade.v2.NekoFavouritesTracker.INSTANCE.unloadAll();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("Failed to release world favourites; keeping old-directory data for retry", t);
+        }
         com.miaokatze.gtit.testlab.TestLabRuntime.serverStopping();
         com.miaokatze.gtit.trade.preset.ui.TradePresetAccessHandler.stop();
         com.miaokatze.gtit.gift.ui.GiftAccessHandler.stop();
@@ -851,6 +856,11 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void serverStopped(FMLServerStoppedEvent event) {
+        try {
+            com.miaokatze.gtit.trade.v2.NekoFavouritesTracker.INSTANCE.unloadAll();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("Failed to release world favourites; keeping old-directory data for retry", t);
+        }
         try {
             com.miaokatze.gtit.trade.v2.NekoHistoryManager.INSTANCE.unloadAll();
         } catch (Throwable t) {

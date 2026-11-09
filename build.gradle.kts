@@ -256,6 +256,19 @@ tasks.register<JavaExec>("runNekoMusicConfigTest") {
 
 tasks.named("check") { dependsOn("runNekoMusicConfigTest") }
 
+tasks.register<JavaExec>("runArchitectureBoundaryTest") {
+    group = "verification"
+    description = "Runs native team recovery, trade transaction, world-cache and magnet lifecycle regressions."
+    mainClass = "com.miaokatze.gtit.trade.ArchitectureBoundaryRegressionTest"
+    classpath = storeTestRuntimeClasspath + sourceSets.getByName("main").compileClasspath + neiTestRuntimeClasspath
+    val scratchDir = layout.buildDirectory.dir("architecture-boundary-test")
+    workingDir(scratchDir)
+    systemProperty("gtit.architecture.testScratch", "true")
+    doFirst { scratchDir.get().asFile.mkdirs() }
+}
+
+tasks.named("check") { dependsOn("runArchitectureBoundaryTest") }
+
 tasks.register<JavaExec>("runTestLabTest") {
     group = "verification"
     description = "Runs automation lab default gates, recovery bounds and report result invariants."
