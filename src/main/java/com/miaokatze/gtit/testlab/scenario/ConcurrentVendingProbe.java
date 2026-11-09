@@ -36,6 +36,7 @@ import com.miaokatze.gtit.trade.v2.NekoTrade;
 import com.miaokatze.gtit.trade.v2.NekoTradeCategory;
 import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
 import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
+import com.miaokatze.gtit.trade.v2.NekoTradeResult;
 import com.miaokatze.gtit.util.PlayerLookup;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
@@ -46,6 +47,15 @@ import gregtech.api.metatileentity.implementations.MTEMultiBlockBase;
 final class ConcurrentVendingProbe {
 
     private ConcurrentVendingProbe() {}
+
+    /** Match the production detailed explanation, including the current localized material name. */
+    static boolean matchesInsufficientInput(String actual, NekoTradeResult expected) {
+        return expected != null && expected.getStatus() == NekoTradeResult.Status.INSUFFICIENT_ITEMS
+            && expected.getMessage() != null
+            && !expected.getMessage()
+                .isEmpty()
+            && (net.minecraft.util.EnumChatFormatting.RED + expected.getDisplayMessage()).equals(actual);
+    }
 
     static void run(ProbeContext context, FakePlayer a, FakePlayer b, ItemStack terminal, NekoVendingTarget target,
         BaseMetaTileEntity base) throws Exception {
@@ -325,6 +335,7 @@ final class ConcurrentVendingProbe {
 
         private void observeCompetitionAndEdit() {
             String loserResult = result(second);
+            NekoTradeResult expectedFailure = machine.checkTrade(b.getUniqueID(), group.getId(), 0);
             firstSucceeded = initiallyReady && sameTick()
                 && fundsStable()
                 && inputCount() == 0
@@ -332,11 +343,15 @@ final class ConcurrentVendingProbe {
                 && outputCount(Items.diamond) == 1
                 && history(a) == 1
                 && history(b) == 0
-                && loserResult.contains("输入物品不足");
+                && matchesInsufficientInput(loserResult, expectedFailure);
             context.check(
                 "concurrent-last-input-history",
                 firstSucceeded,
                 "Both admitted GUI callbacks consumed; B reaches insufficient-input result=" + loserResult
+                    + "; expectedStatus="
+                    + expectedFailure.getStatus()
+                    + ", expectedDetail="
+                    + expectedFailure.getDisplayMessage()
                     + "; "
                     + facts());
             // Only this run-owned definition and input are edited, after the competition is observed.
