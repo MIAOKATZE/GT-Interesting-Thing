@@ -71,6 +71,10 @@ public class NekoPageRegistry {
      * 保存当前标签页到配置
      */
     public static synchronized void savePages() {
+        NekoPageConfig.save(pageData(PAGES));
+    }
+
+    private static NekoPageConfig.NekoPageData pageData(Map<Integer, NekoPageEntry> pages) {
         NekoPageConfig.NekoPageData data = new NekoPageConfig.NekoPageData();
         Map<Integer, NekoPageEntry> stored = new LinkedHashMap<>();
         if (!DefaultContentConfig.loadDefaultTradeGroups()) {
@@ -79,9 +83,18 @@ public class NekoPageRegistry {
                 if (page.isPresetBuiltin()) stored.put(page.getId(), page);
             }
         }
-        stored.putAll(PAGES);
+        stored.putAll(pages);
         data.setPages(new ArrayList<>(stored.values()));
-        NekoPageConfig.save(data);
+        return data;
+    }
+
+    private static Map<Integer, NekoPageEntry> copyPages() {
+        NekoPageConfig.NekoPageData snapshot = new NekoPageConfig.NekoPageData();
+        snapshot.setPages(new ArrayList<>(PAGES.values()));
+        Map<Integer, NekoPageEntry> copy = new LinkedHashMap<>();
+        for (NekoPageEntry page : NekoPageConfig.fromJson(NekoPageConfig.toJson(snapshot))
+            .getPages()) copy.put(page.getId(), page);
+        return copy;
     }
 
     /**
@@ -104,7 +117,8 @@ public class NekoPageRegistry {
         }
 
         boolean isOverwrite = PAGES.containsKey(id);
-        NekoPageEntry entry = PAGES.get(id);
+        Map<Integer, NekoPageEntry> prepared = copyPages();
+        NekoPageEntry entry = prepared.get(id);
         if (entry == null) {
             entry = new NekoPageEntry();
             entry.setId(id);
@@ -115,9 +129,11 @@ public class NekoPageRegistry {
         entry.setName(name);
         entry.setIconFromItemStack(iconStack);
 
-        PAGES.put(id, entry);
+        prepared.put(id, entry);
+        NekoPageConfig.save(pageData(prepared));
+        PAGES.clear();
+        PAGES.putAll(prepared);
         version++;
-        savePages();
 
         if (isOverwrite) {
             return "已覆盖标签页 #" + id + " (" + name + ")";
@@ -146,22 +162,24 @@ public class NekoPageRegistry {
             return "此标签页被配置为不可删除";
         }
 
-        PAGES.remove(id);
-        version++;
+        Map<Integer, NekoPageEntry> prepared = copyPages();
+        prepared.remove(id);
 
         // 将该标签页的交易移动到标签页3（其他）
         NekoTradeConfig.NekoTradeData tradeData = NekoTradeConfig.load();
         int fallback = id == 3 ? 1000 : 3;
-        while (fallback == id || PAGES.containsKey(fallback) && id == 3) fallback++;
+        while (fallback == id || prepared.containsKey(fallback) && id == 3) fallback++;
         for (NekoTradeEntry trade : tradeData.getTrades()) {
             if (trade.getTabId() == id) {
-                if (!PAGES.containsKey(fallback))
-                    PAGES.put(fallback, new NekoPageEntry(fallback, "其他", "minecraft:chest", 0, false));
+                if (!prepared.containsKey(fallback))
+                    prepared.put(fallback, new NekoPageEntry(fallback, "其他", "minecraft:chest", 0, false));
                 trade.setTabId(fallback);
             }
         }
-        savePages();
-        NekoTradeConfig.save(tradeData);
+        NekoPageConfig.saveWithTrades(pageData(prepared), tradeData);
+        PAGES.clear();
+        PAGES.putAll(prepared);
+        version++;
         // V1 的 NekoTradeRegistry.reload() 已移除，改为调用 V2 的 reload
         // V2 从 NekoTradeConfig 加载配置并注册到 NekoTradeDatabase（V2 独立数据库）
         NekoTradeRegistryV2.reload();

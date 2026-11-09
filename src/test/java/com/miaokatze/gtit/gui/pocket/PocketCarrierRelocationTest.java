@@ -17,6 +17,7 @@ import com.cleanroommc.modularui.factory.inventory.InventoryType;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.miaokatze.gtit.common.items.pocket.PocketCarrierIdentity;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
+import com.miaokatze.gtit.common.items.pocket.PocketRuntimeSession;
 import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
 
 /** Retained closed sessions must follow native inventory copies without granting another carrier write authority. */
@@ -87,10 +88,16 @@ public final class PocketCarrierRelocationTest {
             set("data", new PlayerInventoryGuiData(player, MAIN, 0));
             set("syncManager", allocate(Sync.class));
             set("inventory", inventory);
-            set("pocket", original);
-            set("carrierIdentity", PocketCarrierIdentity.capture(original, true));
-            set("server", new NekoPocketServerHandler(panel));
-            set("closed", true); // A short channel or distillation input keeps the closed session alive.
+            set(
+                "runtime",
+                new PocketRuntimeSession(
+                    () -> player,
+                    () -> player.inventory.mainInventory[0],
+                    0,
+                    original,
+                    false,
+                    false,
+                    inventory));
         }
 
         void set(String name, Object value) throws Exception {

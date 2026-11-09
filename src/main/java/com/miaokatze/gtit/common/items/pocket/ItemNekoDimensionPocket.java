@@ -64,28 +64,27 @@ import gregtech.api.metatileentity.BaseMetaTileEntity;
  * 戒指格，UNIVERSAL 才让它落到空着的格上）。渲染零成本：本仓的 Baubles fork（Baubles-Expanded）
  * 已删 {@code IBaubleRender}，穿上不需要任何客户端渲染器。
  * <p>
- * <b>★R96 S11-fix：需求 8 的「符文护盾 +20」那一半不在本类（S11 原写法已撤销）</b>。
- * S11 原本让常驻类直接 {@code implements} 神秘时代的护盾接口，判据是「{@code @Optional.Interface}
- * 会让 FML 在 mod 缺席时把接口从 {@code interfaces} 数组里擦掉」——★这条兜底<b>靠不住</b>：
- * 神秘时代在本仓是 {@code compileOnly}（{@code dependencies.gradle:73}），把它的类型写进
- * {@code implements} 位就是让<b>常驻类</b>的类型层次在运行期要求一个可选件在场，而接口解析发生在
- * JVM 加载本类的那一刻；写全限定名只绕得过 {@code import} 行的文本检查，绕不过类型层次。
- * 于是「没装神秘时代的实例」这一格上，本类一被加载就 {@code NoClassDefFoundError} ⇒ 整个 mod 起不来，
- * 撞的正是 {@code TaumCompat:15-19} 那条「会被正常加载的类不得静态引用 TC」的类污染红线。
- * <p>
- * ⇒ 那一半现在住在 {@code mixin/thaum/MixinItemNekoDimensionPocket_RunicArmor}：mixin 类只由
- * Mixin transformer 通道消费、mod 的常规类加载器按名不可见（口径与取证见 {@code r96-ret10.md §6}），
- * 所以 TC 类型进 mixin 不算进常驻面。注入走 {@code GtitThaumLateMixinLoader} 的 LateMixin，
- * <b>施加条件 = TC 在场</b> ⇒ ★没装神秘时代时这一半<b>自然缺席</b>：口袋照常可穿戴、照常跑七条被动，
- * 只是不给符文护盾加容量（这正是需求 8 想要的「可选」语义，也是 {@code @Optional} 本来该给的行为）。
+ * 符文接口与方法由 Forge Optional 在缺少 TC/API 时剥离。Item 只在 FML 完成 Optional 表初始化后的
+ * 注册阶段创建；API-only 环境保留接口但返回 0，真正 TC 在场时贡献 20。原版 TC 只统计其扫描到的穿戴格，
+ * 本物品不另造穿戴范围或 tooltip 生效判断。
  * <p>
  * <b>★R96 S11 双宿主桥（硬要求 7）</b>：穿戴态下 vanilla <b>不再</b>调 {@code Item.onUpdate}
  * （{@code InventoryPlayer.java:341-348} 只扫主背包 36 格），被动改由 {@link #onWornTick} 驱动
  * （{@code EventHandlerEntity.playerTick}，★双端都发）。两枚宿主共用同一段
  * {@link #runPassives} ⇒ ★加一条被动只需要改一处，结构上不存在"只挂了一个宿主"的那种漏。
  */
-@Optional.InterfaceList(value = { @Optional.Interface(iface = "baubles.api.IBauble", modid = "Baubles") })
-public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerInventoryGuiData>, IBauble {
+@Optional.InterfaceList(
+    value = { @Optional.Interface(iface = "baubles.api.IBauble", modid = "Baubles"),
+        @Optional.Interface(iface = "thaumcraft.api.IRunicArmor", modid = "Thaumcraft") })
+public class ItemNekoDimensionPocket extends Item
+    implements IGuiHolder<PlayerInventoryGuiData>, IBauble, thaumcraft.api.IRunicArmor {
+
+    /** Optional recognizes API-only jars too; gameplay still requires the actual Thaumcraft mod. */
+    @Override
+    @Optional.Method(modid = "Thaumcraft")
+    public int getRunicCharge(ItemStack stack) {
+        return cpw.mods.fml.common.Loader.isModLoaded("Thaumcraft") ? 20 : 0;
+    }
 
     /**
      * 物品 ID 单源：{@code unlocalized}、{@code setTextureName} 的默认贴图名、四态图标基名<b>全部</b>
@@ -363,16 +362,6 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
     }
 
     // ------------------------------------------------------------------ 穿戴面（R96 S11 · 需求 8）
-
-    // ★R96 S11-fix：本段现在<b>只有 Baubles 那一侧</b>（六法 + 槽型）。需求 8 的另一半「符文护盾 +20」
-    // 原先也住这里（常驻类 implements 神秘时代的护盾接口 + getRunicCharge 返回 20），★已整段搬进
-    // mixin/thaum/MixinItemNekoDimensionPocket_RunicArmor —— 撤销理由（TC 缺席时常驻类的类型层次
-    // 解析不出那个接口 ⇒ 整个 mod 起不来）与「不穿戴不计入 / 只数前四格」那两条消费端事实，
-    // 都写在那枚 mixin 的类注释里（★判据跟着接口一起搬家，不留第二处真相）。
-    // ★本类因此不含任何 TC 类型引用：implements 位 / 字段类型 / 方法签名 / 返回类型 / 局部变量
-    // 五类位置全零，这条由 verify-pocket.sh 的 ★R96-S11-fix 门（整棵 src/main/java 除
-    // TaumBridge.java 外的 thaumcraft. 代码位计数）与用例
-    // wearable_mount_is_optional_universal_and_honest 各钉一遍。
 
     /** 穿戴侧没有"主手槽号"这个东西（{@code slot} 形参自 R95 起不参与任何门控，见 {@link #runPassives}）。 */
     private static final int WORN_SLOT = -1;
@@ -720,6 +709,10 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
         }
         appendDistillFastLine(tooltip, args);
         appendElementReserveLines(tooltip, stack);
+        if (stack != null && stack.hasTagCompound()
+            && stack.getTagCompound()
+                .hasKey(PocketTransferReservation.NBT_KEY))
+            tooltip.add(net.minecraft.util.StatCollector.translateToLocal("gtit.pocket.transfer.quarantined"));
         tooltip.add(GTITUtils.getAddedByLine());
     }
 

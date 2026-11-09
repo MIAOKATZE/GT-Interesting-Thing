@@ -6,7 +6,6 @@ import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
-import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.StatCollector;
@@ -28,7 +27,6 @@ import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.slot.SlotGroup;
 import com.miaokatze.gtit.common.items.pocket.ItemNekoDimensionPocket;
 import com.miaokatze.gtit.common.items.pocket.PocketAeChannelOps;
-import com.miaokatze.gtit.common.items.pocket.PocketCarrierIdentity;
 import com.miaokatze.gtit.common.items.pocket.PocketCellBindings;
 import com.miaokatze.gtit.common.items.pocket.PocketCellProbe;
 import com.miaokatze.gtit.common.items.pocket.PocketChannelManager;
@@ -41,13 +39,12 @@ import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
 import com.miaokatze.gtit.common.items.pocket.PocketMagnetFilter;
+import com.miaokatze.gtit.common.items.pocket.PocketRuntimeSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgrades;
-import com.miaokatze.gtit.common.items.pocket.PocketWornTapHandler;
-import com.miaokatze.gtit.common.items.pocket.channel.PocketChannelSessions;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
 import com.miaokatze.gtit.crossmod.taum.TaumCompat;
@@ -55,67 +52,7 @@ import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
-/**
- * 当前面板为 416×288：三栏分别预留 6px 滚动条，物品 207 格、流体 30 槽、源质 120 格。
- * 下述 R75–R81 尺寸描述为历史背景；当前几何以本类及三栏常量为准。
- * <p>
- * 猫猫次元口袋主面板（<b>398×360</b>，★R81④ 由 416 收到与主区实占同宽；<b>★R78① 起带玩家背包</b> =
- * 底部带中间段 9×4）。
- * <p>
- * <b>R32（本任务最高风险）的结构性处置</b>：{@link #assemble()} 是<b>一条线性装配</b>——双端同调用点、
- * 同一批列类、同一顺序 add，没有任何远程分支改变子节点的顺序或数量（同步键全部显式命名）。
- * 槽位布局由各列类的 {@code SlotGroupWidget.matrix(String...)} 字面量描述（R41a）⇒
- * 「双端 widget 树失序」不是靠纪律避免，而是结构上不可能发生。
- * ★R78③ 的"格序按首次入账顺序"确实是一次<b>数据驱动的显示变化</b>，它的落点被严格限制成
- * "恒定 72 个 widget 的内容层原位换图标"（{@link NekoEssenceGhostCell#setCellContent(String, int)}），
- * 映射由服务端算、随现有源质 blob 同步 ⇒ 两端各算各的这件事在结构上就不成立。
- * <p>
- * <b>宽度闭合（★R81④ 定稿，逐字照加总表，无富余）</b>：
- * {@code 6 + 108(流体 6 列) + 4 + 162(中栏 9 列) + 4 + 108(源质 6 列) + 6 = 398 = 面板宽} ⇒
- * 三列 root 固定 {@code x/宽 = 6/108 · 118/162 · 284/108}，不得再给任何列加宽
- * （R75 那版是 10 列中栏 ⇒ 实占与面板宽都更大，中栏收窄到 9 列后<b>面板宽跟着收</b>，
- * 见 {@link #WIDTH} 的 javadoc：右侧不留无主空白）。
- * <b>高度闭合</b>：{@code 6 + 270(15 行) + 6 + 72(底部带) + 6 = 360}，而 360 正是
- * <b>1080p / GUI Scale 3 的逻辑高度上限</b>（R75"为什么是 15 行"的全部理由）⇒
- * <b>任何加高方案都必须先重算这条账</b>，纵向已经没有一格余量。R78① 要的背包因此
- * <b>只能</b>横向挤（底部带拆三段），中栏 15 行一行不删。
- * <p>
- * <b>Container 口径 = 恰好 {@value PocketSlots#TOTAL_REAL_SLOTS}</b>（R78，覆盖 R75 的 175、
- * R74 的 185、§14.3/R43b 的 149）：中栏 <b>135</b> + 流体交互 <b>36</b>（3 组 × 6 列 × 进/出）
- * + 蒸馏 12 + 绑定 1 + <b>玩家背包 36</b>；72 源质格、18 个流体槽本体与全部 ghost 走显示侧，
- * <b>不进 Container</b>（R35）。
- * <p>
- * <b>★玩家背包那 36 格（R78① 撤销 R69-D2，代价 = E4 包放大风险回归，不得静默）</b>：
- * 旧实现预注册一个<b>空</b> {@code PlayerSlotGroup}，让框架的
- * {@code ModularSyncManager#construct} 跳过它默认的 36 格绑定（{@code ISyncRegistrar#bindPlayerInventory}
- * 的"已注册即跳过"分支）⇒ 面板不显示背包、Container 恰好等于本工厂产出。R78① 按用户裁决
- * <b>撤销</b>那一招：背包真实显示、可交互、可 shift。
- * 换回来的代价（README 第 5 条与本处同点名）：
- * <ol>
- * <li><b>首开同步 36 格</b>；</li>
- * <li>vanilla {@code Container#detectAndSendChanges} <b>每 tick</b> 对这 36 格做 {@code ItemStack}
- * 相等比较（<b>含整份 NBT 深比较</b>，见 {@code ItemStack#isItemStackEqual}），内容一变就把整枚
- * 口袋连同 135 格一起重发 —— 这正是 R53c 点名的包放大面（E4）。</li>
- * </ol>
- * 这条代价是<b>用户为"要玩家背包"明确换回来的</b>，不是实现走形；若日后要收回背包，
- * 收回的就是这两条。
- * <p>
- * <b>关屏写状态</b>：{@link NekoPocketContainer#onModularContainerClosed()}（R35，NEI 顶屏不误触发）。
- * <p>
- * <b>绑定信息的可见面（R74②/R75/R78 D-2）</b>：全部绑定条目由<b>绑定按钮的 tooltip</b>
- * 承载（{@link #bindTooltipText()}，超出 {@code NekoPocketBottomBand.TOOLTIP_ROWS} 条时
- * <b>显式</b>提示还有几条没列），解绑入口改为该按钮的<b>右键 = 解绑最后一条</b> /
- * <b>Shift 右键 = 清空全部</b>（{@link #dispatchBindButtonClick(int)}）。
- * 左栏那 7 段常驻说明同样撤进 tooltip（{@link #notesText()} 与其两个可见入口：
- * 左栏末行的 tooltip 与底部带右段的帮助按钮）。
- * <p>
- * <b>本类同时是 S6/S7 的活会话</b>（{@link PocketSession}）：通道一拍与蒸馏节拍的宿主是
- * {@code Item.onUpdate}，它读的就是这里持有的那一份内存对象（R53c 的"一次读一次写"因此不被打破）。
- * 服务端在 {@link #assemble()} 里把自己登记进 {@link PocketSessions}，关屏只把 {@link #closed}
- * 置真而<b>不摘登记</b>（R57c①：30 秒通道要活过关屏）；摘除点是
- * {@code PocketChannelDriver}（无活可干时回收）与 {@code PocketLifecycleHandler}（离线/停服）。
- * 客户端那份实例<b>从不登记</b>（登记动作整个包在 {@code !syncManager.isClient()} 里）。
- */
+/** 口袋的双端视图、固定 widget 树与同步镜像。权威库存、载体身份、关闭与持久化由 PocketRuntimeSession 持有；驱动登记只保留 runtime。 */
 public final class NekoPocketPanel implements PocketSession {
 
     /** 面板名（同步键前缀也用它，双端同串）。 */
@@ -410,6 +347,7 @@ public final class NekoPocketPanel implements PocketSession {
     private final UISettings settings;
     private final PocketSlots slots;
     private final PocketInventory inventory;
+    private final PocketRuntimeSession runtime;
     /**
      * ★R90 T2：服务端执行体宿主（动作实现 / ghost 执行体 / 防伪守卫 / PocketSession 驱动面实现，
      * 见 {@link NekoPocketServerHandler} 的类 javadoc）。本类降为<b>装配壳 + 委托</b>；
@@ -418,11 +356,7 @@ public final class NekoPocketPanel implements PocketSession {
      * 终态回滚簇、{@code moveToPlayer}/{@code drainEssence}）按原位留在本类，经同包直调，不构成耦合回退。
      */
     private final NekoPocketServerHandler server;
-    /** 打开瞬间的口袋栈引用（NBT 写回目标；关屏重定位见 {@link #relocateCarrier()}）。 */
-    private ItemStack pocket;
-    private final PocketCarrierIdentity carrierIdentity;
-    private boolean carrierLookupAmbiguous;
-    private final int carrierSlotIndex;
+
     /**
      * 中栏 {@code STORAGE_SLOTS} 个槽位 widget 的双端登记表（下标 = 槽号）。
      * <p>
@@ -553,31 +487,30 @@ public final class NekoPocketPanel implements PocketSession {
     private String receiptKey;
     private int receiptMoved;
     private int receiptRefused;
+
     /** 关屏幂等闩。 */
-    private boolean closed;
+
     /**
      * ★R88 B3：承载栈被塞进自家存储格（NBT 自环档）的<b>一次性</b>告警闩——只报一次，
      * 免得 driver 每拍重试重定位时把日志刷满（同 R62 的"每事件一条而不是每 tick 一条"口径）。
      */
-    private boolean nestedCarrierWarned;
 
     private NekoPocketPanel(PlayerInventoryGuiData data, PanelSyncManager syncManager, UISettings settings) {
         this.data = data;
         this.syncManager = syncManager;
         this.settings = settings;
         this.slots = new PocketSlots();
-        this.pocket = data.getUsedItemStack();
         if (!syncManager.isClient()) {
             // Flush the old model before parsing or replacing its token, including headless sessions.
-            final PocketSession previous = PocketSessions.peek(playerId());
-            if (previous != null) previous.persistFinal();
+            PocketSessions.flushBeforeReplacement(playerId());
         }
-        this.carrierIdentity = PocketCarrierIdentity.capture(this.pocket, !syncManager.isClient());
-        this.carrierSlotIndex = data.getSlotIndex();
-        // ★R100（免开背包）：解析走 PocketChannelSessions 那个<b>单一公共入口</b>（面板装配与
-        // driver 的 headless 复原腿共用同一份"取根 + readFrom"式子，禁第二份真相）；
-        // 下面那两条活查探针<b>留在本类</b>（门禁按"注入点恰 1 + lambda 恰 2"钉着）。
-        this.inventory = PocketChannelSessions.parseCarrierInventory(this.pocket);
+        this.runtime = new PocketRuntimeSession(
+            data::getPlayer,
+            data::getUsedItemStack,
+            data.getSlotIndex(),
+            data.getUsedItemStack(),
+            syncManager.isClient());
+        this.inventory = runtime.inventory();
         // ★R95 S5：升级位探针注入（活查载体栈版）——readFrom 已用档内位图自播种，这里换活查表版：
         // 覆盖"口袋原本无 NBT、会话期内才第一次固化升级"的那一支（install 写的是栈上现 NBT，可能不在
         // readFrom 捕获的那份根上）。注入点约定见 PocketInventory#setUpgradeProbes 的 javadoc。
@@ -585,11 +518,6 @@ public final class NekoPocketPanel implements PocketSession {
         // 注入会<b>覆盖</b> readFrom 的自播种，留成 hasUpgrade 就等于把整场面板会话里的开关旁路掉：
         // 玩家在配置面板上关掉容量/堆叠，tank 天花板与单格上限照旧走升级档（"切了开关但行为不变"，
         // 本轮 C3 的同型事故）。读法与 PocketInventory#readFrom 那两条逐字同形。
-        this.inventory.setUpgradeProbes(
-            this::capacityUpgradeActiveNow,
-            () -> PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.STACK));
-        this.inventory.setStackCountProbe(this::storageStackUpgradeCount);
-        this.inventory.setCapacityCountProbe(this::capacityUpgradeCountNow);
         // ★★<b>R97 R6：客户端 STACK 读侧换同步镜像</b>（服务端保持上面那条活查载体探针 = 执法链零改）。
         // 播种值与旧读法的开屏值<b>同源</b>（vanilla 已同步到客户端的载体档）⇒ 开屏首帧到
         // SYNC_UPGRADE_ACTIVE 首包之间读数不回退；之后每次升级位/开关位变化由服务端真值 ≤1 tick 推平。
@@ -621,9 +549,37 @@ public final class NekoPocketPanel implements PocketSession {
         // 同步过来的镜像，开屏时二者逐字节相同 ⇒ 起点一致；之后的每一次变化只由服务端推，见 composeMagnetBlob）。
         seedMagnetTracks();
         // ★R87-f：声明保格谓词（查询式直查现役声明表）：源质清零时声明中的 tag 保留格位；null = 与 R86 逐字一致。
-        inventory.essence()
-            .setDeclaredTagProbe(tag -> PocketEssenceIntake.isDeclaredEssenceTag(filters(), tag));
-        this.server = new NekoPocketServerHandler(this);
+        this.server = new NekoPocketServerHandler(runtime, new NekoPocketActionView() {
+
+            public boolean isCurrent() {
+                return player() != null && player().openContainer instanceof NekoPocketContainer container
+                    && container.belongsToPanel(NekoPocketPanel.this);
+            }
+
+            public void report(String key, int moved, int refused) {
+                NekoPocketPanel.this.putReceipt(key, moved, refused);
+            }
+
+            public void refreshGhosts() {
+                NekoPocketPanel.this.applyGhosts();
+            }
+
+            public void magnetChanged() {
+                NekoPocketPanel.this.invalidateMagnetSnapshot();
+            }
+
+            public void giveAway(ItemStack stack) {
+                NekoPocketPanel.this.giveToPlayer(stack);
+            }
+
+            public ItemStack cursor() {
+                return syncManager.getCursorItem();
+            }
+
+            public void setCursor(ItemStack stack) {
+                syncManager.setCursorItem(stack);
+            }
+        });
     }
 
     /**
@@ -697,9 +653,9 @@ public final class NekoPocketPanel implements PocketSession {
 
         // 6) open 位：只在服务端写（E1 §2 实测 addOpenListener 只跑客户端 ⇒ 不用 open listener）
         if (!syncManager.isClient()) {
-            ItemNekoDimensionPocket.setOpenFlag(pocket, true);
+            ItemNekoDimensionPocket.setOpenFlag(runtime.knownCarrier(), true);
             // 7) 活会话登记（S6/S7 的宿主读的就是这一份内存对象；关屏不摘，见类 javadoc）
-            PocketSessions.register(this);
+            PocketSessions.register(runtime);
         }
         return panel;
     }
@@ -1096,6 +1052,7 @@ public final class NekoPocketPanel implements PocketSession {
 
     /** ★开屏播种：双端都从<b>同一枚载体 NBT</b>出发（之后每一次变化都由服务端推 ⇒ 不存在两端各算各的）。 */
     private void seedMagnetTracks() {
+        final ItemStack pocket = runtime.knownCarrier();
         final PocketMagnetFilter seeded = PocketMagnetFilter.readFrom(pocket == null ? null : pocket.getTagCompound());
         final String blob = encodeMagnetBlob(seeded);
         serverMagnetBlob = blob;
@@ -1321,7 +1278,7 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     ItemStack pocketStack() {
-        return pocket;
+        return runtime.knownCarrier();
     }
 
     /**
@@ -1333,11 +1290,7 @@ public final class NekoPocketPanel implements PocketSession {
      * vanilla 槽同步过来的那份镜像（{@code ItemStack} 相等比较含整份 NBT ⇒ 位图变化 ≤1 tick 内到达）。
      */
     ItemStack carrierStackLive() {
-        final ItemStack atCarrier = data.getUsedItemStack();
-        if (syncManager.isClient()) {
-            return atCarrier;
-        }
-        return relocateCarrier();
+        return runtime.carrierStack();
     }
 
     /**
@@ -2077,129 +2030,7 @@ public final class NekoPocketPanel implements PocketSession {
      * 投进一部分 ⇒ <b>按真正落地的只数扣点</b>、差额原样退回盘（既不销毁价值也不多给瓶）。
      */
     void performEssenceOutToPhial(int packedArg) {
-        if (!server.serverGuardOk()) {
-            return;
-        }
-        final boolean shift = packedArg >= PocketConstants.ESSENCE_OUT_SHIFT_FLAG;
-        final int cell = shift ? packedArg - PocketConstants.ESSENCE_OUT_SHIFT_FLAG : packedArg;
-        // ★★<b>R91-j（越界 arg ⇒ 显式拒绝，不截断、不取模）</b>：shift 位与格号共用这一枚 int 通道。
-        // 接受该形状的理由：编码域是两段互不重叠的区间（非 shift [0, FLAG)、shift [FLAG, 2×FLAG)，
-        // 格号上界 71 < FLAG=72 ⇒ packed 最大 143，远小于动作通道的 arg 基数 ACTION_ARG_BASE=1024，
-        // 与同通道里最大格号 135（中栏 134 + 一位）同一形状，装得下）。但解出来的格号一旦越出
-        // [0, GHOST_ESSENCE_SLOT_LIMIT)，就是伪造/写歪的 arg ⇒ 整条不动（不扣点、不动游标、不标脏），
-        // ★也绝不"顺手 % 回一个合法格号"——截断会把"越界"读成"玩家点了那一格"（R70 防伪同族口径）。
-        // 位移区间不重叠 + 越界拒绝两条由用例 essence_out_packed_arg_bounds_rejected 钉住。
-        if (packedArg < 0 || cell < 0 || cell >= PocketConstants.GHOST_ESSENCE_SLOT_LIMIT) {
-            GTInterestingThing.LOG.debug(
-                "[PocketR89] L4 格→瓶取出拒收（R91-j 越界）：arg={} 解出格号 {} 不在 [{}, {}) ⇒ 拒绝，不截断",
-                packedArg,
-                cell,
-                0,
-                PocketConstants.GHOST_ESSENCE_SLOT_LIMIT);
-            return;
-        }
-        final ItemStack carried = syncManager.getCursorItem();
-        if (!PocketEssenceIntake.isEmptyPhialCarrier(carried, EssenceGate.TAUM)) {
-            // ★R91-④ 的正身：没有空瓶就没有任何东西可灌 ⇒ 零产出（旧形状在这里"无中生有"造一叠满瓶）
-            putReceipt("gtit.pocket.essence.need_phial", 0);
-            GTInterestingThing.LOG.debug("[PocketR89] L4 格→瓶取出拒收（R91-④ 零产出）：格 {} 游标不是空安瓿瓶 ⇒ 不产出任何物品、不扣一点数", cell);
-            return;
-        }
-        final PocketEssenceStore store = inventory.essence();
-        final String tag = store.tagAtCell(cell);
-        if (tag == null) {
-            // 该格没有归属 ⇒ 没东西可取（与 performEssenceOut 的空格回执同一条）
-            putReceipt("gtit.pocket.still.idle", 0);
-            return;
-        }
-        final int stock = store.get(tag);
-        final int bottles = PocketEssenceIntake.phialsToFill(carried.stackSize, stock, shift);
-        if (bottles <= 0) {
-            // 凑不满一瓶：一支都不产、一分都不扣，余数（=全部存量）留盘并说话
-            putReceipt("gtit.pocket.essence.not_enough_phial", stock);
-            GTInterestingThing.LOG
-                .debug("[PocketR89] L4 格→瓶取出拒收：格 {} tag={} stock={} shift={}（不足一瓶 ⇒ 零扣点）", cell, tag, stock, shift);
-            return;
-        }
-        final int points = store.extract(tag, bottles * PocketConstants.ESSENCE_OUT_UNIT_POINTS);
-        if (points <= 0) {
-            putReceipt("gtit.pocket.still.idle", 0);
-            return;
-        }
-        inventory.recordEssenceDelta(tag, -points);
-        final int attempts = points / PocketConstants.ESSENCE_OUT_UNIT_POINTS;
-        // ★灌装的是"玩家那几只空瓶的副本"：一叠载体共享一份 AspectList（TC 的形状），所以一次 addEssentia
-        // 就是把这一叠的<b>单件</b>内容写成整瓶（与入槽侧 scaledByStackSize 那条乘法正好互逆）。
-        final ItemStack filled = carried.copy();
-        filled.stackSize = attempts;
-        final int stored = TaumCompat.addEssentia(filled, tag, PocketConstants.ESSENCE_OUT_UNIT_POINTS);
-        if (stored < PocketConstants.ESSENCE_OUT_UNIT_POINTS) {
-            // 灌不进（TC 缺席 / 该 tag 不可物化 / 容器不吃这一档）：点数退回，绝不销毁价值，也不发一只空瓶
-            store.add(tag, points);
-            inventory.recordEssenceDelta(tag, points);
-            inventory.markDirty();
-            putReceipt("gtit.pocket.still.idle", 0);
-            logOnce(
-                "L4-phial-refund",
-                "[PocketR89] L4 格→瓶取出退点（U3 裁决样本，本形态首例升 INFO；R91-④ 改走 addEssentia）：tag={} 扣 {} 点、只回 {} 点 ⇒ 已原样退回",
-                tag,
-                points,
-                stored);
-            return;
-        }
-        final int landed;
-        if (carried.stackSize <= 1) {
-            // 单只空瓶 ⇒ 就地换成满瓶回游标（最常见的手感，与 R90 E3 交付的那一支逐字同形）
-            syncManager.setCursorItem(filled);
-            landed = attempts;
-        } else {
-            final int got = depositToPlayerFirst(filled);
-            if (got <= 0) {
-                // 背包/中栏一件都收不下：整笔回滚（点数退回、游标不动、满瓶不产出）
-                store.add(tag, points);
-                inventory.recordEssenceDelta(tag, points);
-                inventory.markDirty();
-                // ★R88 债②（R90 T2 拆键）+ ★R91-g 收敛：换瓶语义的"落点满"——独立于通道 Report 的
-                // target_full；旧"取出支"的 target_full_take 随自造瓶支失去调用方，两份 lang 已删干净
-                // （不留注释尸）。文案明说"点数已退回源质盘"（无占位：整笔回滚，全额留盘）。
-                putReceipt("gtit.pocket.receipt.target_full_put", 0);
-                return;
-            }
-            landed = got;
-            final int left = carried.stackSize - got;
-            if (left > 0) {
-                final ItemStack rest = carried.copy();
-                rest.stackSize = left;
-                syncManager.setCursorItem(rest);
-            } else {
-                syncManager.setCursorItem(null);
-            }
-        }
-        // ★只按<b>真正落地</b>的只数记账：多扣的那部分原样退回盘（landed ≤ attempts ⇒ spent ≤ points）。
-        final int spent = landed * PocketConstants.ESSENCE_OUT_UNIT_POINTS;
-        if (spent < points) {
-            final int returned = points - spent;
-            store.add(tag, returned);
-            inventory.recordEssenceDelta(tag, returned);
-        }
-        inventory.markDirty();
-        final int leftover = PocketEssenceIntake.leftoverOnFloor(stock, shift);
-        if (leftover > 0) {
-            putReceipt("gtit.pocket.essence.partial_leftover", spent, leftover);
-        } else {
-            putReceipt("gtit.pocket.receipt.ok", spent);
-        }
-        GTInterestingThing.LOG.debug(
-            "[PocketR89] L4 格→瓶取出：格 {} tag={} stock={} shift={} 请求 {} 只 ⇒ 落地 {} 只（扣 {} 点、游标原 {} 只、留盘余数 {} 点）",
-            cell,
-            tag,
-            stock,
-            shift,
-            attempts,
-            landed,
-            spent,
-            carried.stackSize,
-            leftover);
+        server.performEssenceOutToPhial(packedArg);
     }
 
     // ------------------------------------------------------------------ S5 · ghost 就地转换（NEI 拖入 / 右键解绑）
@@ -2791,11 +2622,11 @@ public final class NekoPocketPanel implements PocketSession {
 
     /**
      * 源质 blob 的<b>三段</b>机读形状（★R78③；段间 {@code ';'}，段内 {@code ','}）：
-     * 
+     *
      * <pre>
      *   72 个点数（下标 = 格号，无主格写 0） ';' 72 个 tag（无主格写空串） ';' 有货但无格位的 tag 数
      * </pre>
-     * 
+     *
      * 单函数编解码的理由与 {@link #ghostBlobOf} 同一条：编解码各一份实现就会在同步里静默变形；
      * ★这里同时是"格序由服务端算、随现有 blob 同步"这条裁定的<b>唯一</b>落点
      * （R32 双端同树：格数恒定 72，变的只是每格归属哪个 tag）。
@@ -3041,6 +2872,7 @@ public final class NekoPocketPanel implements PocketSession {
         if (syncManager.isClient()) {
             return instantRemainSeconds + "|" + timedRemainSeconds;
         }
+        final ItemStack pocket = runtime.knownCarrier();
         final NBTTagCompound root = pocket == null ? null : pocket.getTagCompound();
         final long nowMs = System.currentTimeMillis();
         final UUID uuid = playerId();
@@ -3121,7 +2953,7 @@ public final class NekoPocketPanel implements PocketSession {
     //
     // 客户端那份实例<b>从不</b>登记进 PocketSessions（登记包在 assemble 的 !isClient 分支里），
     // 因此下面这批方法只在服务端被 driver 调用。
-    // ★R90 T2：本类仍 implements PocketSession（PocketSessions.register(this) 语义不动），接口身份
+    // 本类保留 PocketSession 兼容调用面，登记表使用独立 runtime，接口身份
     // 不变；实现体逐条一行委托 {@link NekoPocketServerHandler}（"装配壳 + 委托"）。例外是带<b>实现体</b>
     // 留在本类的少数几条——它们被离线套件的源码机检按方法体锚定（drainEssence 的置脏守卫）或闭包在
     // 被锚定的私有方法周围（persistIdle/persistFinal → writeSessionToCarrier、depositItem → moveToPlayer、
@@ -3129,17 +2961,17 @@ public final class NekoPocketPanel implements PocketSession {
 
     @Override
     public ItemStack carrierStack() {
-        return server.carrierStack();
+        return runtime.carrierStack();
     }
 
     @Override
     public NBTTagCompound carrierTag() {
-        return server.carrierTag();
+        return runtime.carrierTag();
     }
 
     @Override
     public boolean isOpen() {
-        return !closed;
+        return runtime.isOpen();
     }
 
     /**
@@ -3150,205 +2982,58 @@ public final class NekoPocketPanel implements PocketSession {
      */
     @Override
     public boolean isHeldByOwner() {
-        return server.isHeldByOwner();
+        return runtime.isHeldByOwner();
     }
 
     @Override
     public void markDirty() {
-        server.markDirty();
+        runtime.markDirty();
     }
 
     @Override
     public void persistIdle() {
-        if (!closed) {
-            // 界面还开着 ⇒ 写权属面板的关屏钩子（R35），此处一个字节都不动
-            return;
-        }
-        writeSessionToCarrier();
+        runtime.persistIdle();
     }
 
     @Override
     public void persistFinal() {
-        writeSessionToCarrier();
+        runtime.persistFinal();
     }
 
     /** Vanilla right-click outside splits the cursor before dropping it; persist before that copy. */
     boolean persistBeforeCursorDrop(EntityPlayer actor) {
-        if (syncManager.isClient() || closed || actor != player() || actor.inventory == null) {
-            return true;
-        }
-        if (carrierIdentity.matches(actor.inventory.getItemStack())) {
-            if (relocateCarrier() != actor.inventory.getItemStack()) {
-                return false;
-            }
-            writeSessionToCarrier();
-            return !inventory.isDirty();
-        }
-        return true;
-    }
-
-    /**
-     * 会话内存 → 承载栈 NBT（脏标记才序列化，R53c）。
-     * <p>
-     * 与关屏落盘共用同一段代码 ⇒ "谁在写档"只有一个答案。
-     * <p>
-     * ★★<b>R88 B3（关屏不落盘 ⇒ 扣点整批丢弃）的兜底</b>：旧实现在重定位失败时<b>只 warn、一个字都不写</b>，
-     * 于是"扣点只在内存、序列化只在落盘时发生"这条链一断，本轮所有扣点/入账就永久丢失（而玩家手里的
-     * 容器已经发出去了 = 复制）。现在补两档兜底，顺序固定：
-     * <ol>
-     * <li><b>按对象身份写回内存认得的那一枚</b>（{@code pocket}）——这<b>不是</b>"写到别的栈上"
-     * （R35 防御③真正防的是那个）：NBT 跟着 ItemStack 对象走，只要那一枚还活在任意未被扫到的位置
-     * （游标 / 护甲 / Baubles / 交易给对方 / 快捷栏外），写它的 tagCompound 就随它落档；</li>
-     * <li><b>自嵌档拒绝写</b>：承载栈此刻就在<b>本会话自己的存储格</b>里（复现手势：把口袋自己
-     * shift 点进自家非声明格）⇒ 写它必然形成 {@code root → storage → 该栈 → root} 的 NBT 自环，
-     * 序列化当场 StackOverflow。这一档<b>不写</b>、<b>不清 dirty</b>（让 driver 的
-     * {@link #persistIdle()} 每拍重试重定位），并只告警一次。★<b>本档不在本片闭合</b>：正解在入口面
-     * （禁止口袋进它自己的存储格），落点 {@code PocketInventory#isItemValid} 与
-     * {@code PocketSlots} 的 storage 格 filter，两者都在本片的禁写清单外 ⇒ 已上报主代理排片。</li>
-     * </ol>
-     */
-    private void writeSessionToCarrier() {
-        if (!inventory.isDirty()) {
-            return;
-        }
-        ItemStack carrier = relocateCarrier();
-        if (carrier == null && !carrierLookupAmbiguous && carrierIdentity.matches(pocket)) {
-            // ★R88 B3 兜底一档：重定位三级全落空 ⇒ 退回"本会话认得的那一枚对象"
-            carrier = pocket;
-            if (carrier != null) {
-                GTInterestingThing.LOG.warn("[pocket] 承载格重定位失败（原格 {}），改按对象身份写回会话认得的承载栈", carrierSlotIndex);
-            }
-        }
-        if (carrier == null) {
-            // ★R90 S2（终态回滚）：三级重定位与对象身份兜底<b>全部</b>落空 ⇒ 本轮源质增减再也等不到
-            // 落盘点。对增量日志逐 tag 逆施（−x ⇒ 回补 +x、+x ⇒ 回扣 −x），让内存源质回到
-            // 「最后一次成功落盘」的基线 —— 不留"AE2 侧已收瓶、口袋档仍有点数"的半提交态（D2 的刷源质面）。
-            // ★回滚后<b>不</b>主动清 dirty（保守约束）：dirty 还承载着物品/流体等其它未落盘状态，
-            // 在这里清掉等于把它们一并吞掉；增量日志已清空 ⇒ 后续即便重定位成功、重写发生，写出的
-            // 也是回滚后的基线态，不会把已逆施的账再写回去（回滚幂等：日志空 ⇒ 后续重试零动作）。
-            rollbackEssenceToPersistedBaseline();
-            GTInterestingThing.LOG.warn("[pocket] 落盘时找不到承载口袋的槽位（原格 {}），本次内容暂不落档", carrierSlotIndex);
-            return;
-        }
-        if (isNestedInOwnStorage(carrier)) {
-            // ★R88 B3 兜底二档：自嵌 ⇒ 见方法 javadoc 的第 2 条，不写也不清 dirty
-            if (!nestedCarrierWarned) {
-                nestedCarrierWarned = true;
-                GTInterestingThing.LOG.warn(
-                    "[pocket] 承载口袋被放进了它自己的存储格（原格 {}）⇒ 写档会形成 NBT 自环，本次不落档；" + "脏标记保留，等它被移回可寻址的格子后由 driver 重试",
-                    carrierSlotIndex);
-            }
-            return;
-        }
-        pocket = carrier;
-        NBTTagCompound root = carrier.getTagCompound();
-        if (root == null) {
-            root = new NBTTagCompound();
-            carrier.setTagCompound(root);
-        }
-        inventory.writeTo(root);
-        inventory.markClean();
-    }
-
-    /**
-     * ★R90 S2：把源质增量日志逐 tag <b>逆施</b>回「最后一次成功落盘」的基线并清空日志（终态兜底，
-     * 仅由 {@link #writeSessionToCarrier} 的"找不到承载栈"分支调用）。
-     * <p>
-     * 逆施用 {@code inventory.essence()} 的对称 API（{@code add} / {@code extract}）：日志里的 −x
-     * 回补 +x、+x 回扣 −x，回滚后内存源质 ≡ 上一次 {@code PocketInventory#writeTo} 成功那一刻的快照。
-     * 逆施<b>不</b>走 {@code recordEssenceDelta}（那是登记侧的打点口，回滚是消费侧；基点由
-     * {@code clearEssenceDeltas} 直接重置，同一笔不会回灌进新日志）。
-     * <p>
-     * ★日志为空 ⇒ 零动作（幂等）：本分支会被 driver 每拍重试，回滚与 [PocketR89] WARN 都只在
-     * 「真有未落盘增减」的那一次发生，不会刷屏。
-     */
-    private void rollbackEssenceToPersistedBaseline() {
-        final Map<String, Integer> deltas = inventory.essenceDeltas();
-        if (deltas.isEmpty()) {
-            return;
-        }
-        int restored = 0;
-        int reclaimed = 0;
-        final StringBuilder perTag = new StringBuilder();
-        for (final Map.Entry<String, Integer> entry : deltas.entrySet()) {
-            final int delta = entry.getValue();
-            if (delta == 0) {
-                continue;
-            }
-            if (delta < 0) {
-                inventory.essence()
-                    .add(entry.getKey(), -delta);
-                restored += -delta;
-            } else {
-                inventory.essence()
-                    .extract(entry.getKey(), delta);
-                reclaimed += delta;
-            }
-            if (perTag.length() > 0) {
-                perTag.append(", ");
-            }
-            perTag.append(entry.getKey())
-                .append(delta > 0 ? "+" : "")
-                .append(delta);
-        }
-        inventory.clearEssenceDeltas();
-        // L11：逆施回滚 = 守恒类事件 ⇒ WARN（一次性：日志清空后重试分支不再进入这里）
-        GTInterestingThing.LOG.warn(
-            "[PocketR89] 承载栈终态丢失 ⇒ 源质增量日志已逐 tag 逆施回滚（{}），共回补 {} 点、回扣 {} 点；" + "内存源质回到最后落盘基线，日志已清空（dirty 位按保守约束保留）",
-            perTag,
-            restored,
-            reclaimed);
-    }
-
-    /**
-     * 这一枚栈是否正躺在<b>本会话自己的</b>中栏存储格里（★R88 B3 的自环判据）。
-     * <p>
-     * 只按<b>对象身份</b>认（{@code ==}）：会话的 {@code PocketInventory.storage()} 与承载栈的
-     * {@code tagCompound} 若互为祖先前代，序列化就会自环；按 {@code isItemEqual} 认会把"另一枚同款
-     * 口袋"误判成自嵌，故不得放宽。
-     */
-    private boolean isNestedInOwnStorage(final ItemStack candidate) {
-        if (candidate == null || inventory == null) {
-            return false;
-        }
-        final com.cleanroommc.modularui.utils.item.ItemStackHandler storage = inventory.storage();
-        for (int index = 0, slots = storage.getSlots(); index < slots; index++) {
-            if (storage.getStackInSlot(index) == candidate) {
-                return true;
-            }
-        }
-        return false;
+        return runtime.persistBeforeCursorDrop(actor);
     }
 
     @Override
     public PocketCellBindings bindings() {
-        return server.bindings();
+        return runtime.bindings();
     }
 
     @Override
     public PocketFilterConfig filters() {
-        return server.filters();
+        return runtime.filters();
     }
 
     @Override
     public PocketEssenceStore essence() {
-        return server.essence();
+        return runtime.essence();
     }
 
     @Override
     public ItemStack distillInputStack(int index) {
-        return server.distillInputStack(index);
+        return runtime.distillInputStack(index);
     }
 
     @Override
     public int distillInputSlots() {
-        return server.distillInputSlots();
+        return runtime.distillInputSlots();
     }
 
     /** 一轮蒸馏对<b>每个非空格</b>各做一次"减 1"（★R84：对象是格不是组，同物多格并行各扣 1 件；R28：5 秒是节拍不是产量）。 */
     @Override
     public void consumeOneDistillInput(int index) {
-        server.consumeOneDistillInput(index);
+        runtime.consumeOneDistillInput(index);
     }
 
     /**
@@ -3374,13 +3059,7 @@ public final class NekoPocketPanel implements PocketSession {
     /** 先口袋中栏（跳过 ghost 格）、再玩家背包兜底；<b>不</b>掉地下（拉取是自动行为）。 */
     @Override
     public int depositItem(ItemStack stack) {
-        if (stack == null || stack.stackSize <= 0) {
-            return 0;
-        }
-        final int want = stack.stackSize;
-        final int moved = inventory.depositIntoStorage(stack);
-        final int left = want - moved;
-        return left <= 0 ? moved : moved + moveToPlayer(sizedCopy(stack, left));
+        return runtime.depositItem(stack);
     }
 
     /**
@@ -3395,14 +3074,7 @@ public final class NekoPocketPanel implements PocketSession {
      * @return 真正进入玩家背包的件数（余量仍留在 {@code toPlayer} 那份副本上，不影响调用方账目）
      */
     private int moveToPlayer(ItemStack toPlayer) {
-        final EntityPlayer target = player();
-        if (target == null || toPlayer == null || toPlayer.stackSize <= 0) {
-            return 0;
-        }
-        final int want = toPlayer.stackSize;
-        // ★整个方法里 addItemStackToInventory 只出现<b>一次</b>（R83 那版 while(剩余>0) 的循环就是死循环本体）
-        final boolean accepted = target.inventory.addItemStackToInventory(toPlayer);
-        return movedByVanillaContract(accepted, want, toPlayer.stackSize);
+        return runtime.moveToPlayer(toPlayer);
     }
 
     /**
@@ -3432,13 +3104,7 @@ public final class NekoPocketPanel implements PocketSession {
      * @param restAfterCall 原版调用<b>之后</b>同一份副本上的件数（余量）
      */
     public static int movedByVanillaContract(boolean accepted, int want, int restAfterCall) {
-        if (want <= 0) {
-            return 0;
-        }
-        if (accepted) {
-            return want;
-        }
-        return Math.max(0, want - Math.max(0, restAfterCall));
+        return PocketRuntimeSession.movedByVanillaContract(accepted, want, restAfterCall);
     }
 
     /** 只改件数的浅拷贝副本（原版会在入参上就地改写 {@code stackSize}，故任何"探路"都必须先断开别名）。 */
@@ -3450,29 +3116,29 @@ public final class NekoPocketPanel implements PocketSession {
 
     @Override
     public int fluidBarRoom(int tank, FluidStack probe) {
-        return server.fluidBarRoom(tank, probe);
+        return runtime.fluidBarRoom(tank, probe);
     }
 
     @Override
     public int depositFluid(int tank, FluidStack fluid) {
-        return server.depositFluid(tank, fluid);
+        return runtime.depositFluid(tank, fluid);
     }
 
     // ------------------ ★R95 S5：16G 双轨的 long 面 + STACK 位查询（PocketSession 扩面，实现照 int 版同一条转发）
 
     @Override
     public long fluidBarRoomL(int tank, FluidStack probe) {
-        return server.fluidBarRoomL(tank, probe);
+        return runtime.fluidBarRoomL(tank, probe);
     }
 
     @Override
     public long depositFluidL(int tank, Fluid fluid, long amount) {
-        return server.depositFluidL(tank, fluid, amount);
+        return runtime.depositFluidL(tank, fluid, amount);
     }
 
     @Override
     public long drainOwnTankL(int tank, long amount) {
-        return server.drainOwnTankL(tank, amount);
+        return runtime.drainOwnTankL(tank, amount);
     }
 
     @Override
@@ -3501,119 +3167,57 @@ public final class NekoPocketPanel implements PocketSession {
 
     @Override
     public int fluidTankCount() {
-        return server.fluidTankCount();
+        return runtime.fluidTankCount();
     }
 
     @Override
     public FluidStack fluidInTank(int tank) {
-        return server.fluidInTank(tank);
+        return runtime.fluidInTank(tank);
     }
 
     @Override
     public int drainOwnTank(int tank, int milliBuckets) {
-        return server.drainOwnTank(tank, milliBuckets);
+        return runtime.drainOwnTank(tank, milliBuckets);
     }
 
     @Override
     public Map<String, Integer> essenceStock() {
-        return server.essenceStock();
+        return runtime.essenceStock();
     }
 
-    // ★本方法带实现体留在本类：离线套件按方法体锚定（extract → removed>0 守卫 → recordEssenceDelta
-    // → markDirty 的行序机检），委托会搬走判据本体 ⇒ 红。实现仍是 inventory 的薄包装。
+    // 兼容旧调用面；权威扣点与补偿登记由 runtime 单点实现。
 
     @Override
     public int drainEssence(String tag, int points) {
-        final int removed = inventory.essence()
-            .extract(tag, points);
-        if (removed > 0) {
-            // ★R90 S1（D2「上传变瓶+刷源质」的缺陷本体）：扣点只改内存、不置脏 ⇒ writeSessionToCarrier
-            // 的 isDirty 门禁放行早退 ⇒ 序列化永远不发生 ⇒ 承载栈 NBT 里点数原样、AE2 侧瓶已到手 = 净复制。
-            // 登记进增量日志（S2 终态回滚的输入）并置脏（与 performEssenceOut 的 markDirty 同口径）。
-            inventory.recordEssenceDelta(tag, -removed);
-            inventory.markDirty();
-        }
-        return removed;
+        return runtime.drainEssence(tag, points);
     }
 
     // ------------------------------------------------------------ R84：中栏既是注入来源也是抽取落点
 
     @Override
     public int storageSlots() {
-        return server.storageSlots();
+        return runtime.storageSlots();
     }
 
     @Override
     public ItemStack storageStackAt(int slot) {
-        return server.storageStackAt(slot);
+        return runtime.storageStackAt(slot);
     }
 
     @Override
     public void setStorageStackAt(int slot, ItemStack stack) {
-        server.setStorageStackAt(slot, stack);
+        runtime.setStorageStackAt(slot, stack);
     }
 
     @Override
     public boolean isStorageGhostDeclared(int slot) {
-        return server.isStorageGhostDeclared(slot);
+        return runtime.isStorageGhostDeclared(slot);
     }
 
     // ------------------------------------------------------------------ 关屏（R35 四道防御）
 
-    /**
-     * 承载格是否仍可交互（R35 防御②）。★<b>每 tick 被调一次，返回 false 即服务端当场关容器</b>：
-     * {@code UISettings#canPlayerInteractWithUI} → {@code ModularContainer#canInteractWith}
-     * → {@code EntityPlayerMP.java:249}（{@code ForgeHooks.canInteractWith} 为假就 {@code closeContainer}），
-     * 客户端随后用 {@code ReopenGui} 重开 ⇒ 玩家侧只看到"右键没反应"的开关死循环。
-     * <p>
-     * ★<b>判据不得用对象身份</b>：{@code PlayerInventoryGuiData#getUsedItemStack()} 是
-     * {@code InventoryType#getStackInSlot} 的<b>活查表</b>（每次现读背包），而堆叠合并、
-     * 跨维重建 {@code EntityPlayerMP} 都会让"同一枚口袋"变成<b>另一个引用 / 另一个 player 对象</b>
-     * ⇒ 用 {@code ==} 比引用或比 player 引用会把合法持有者也判成丢失。
-     * 这里按服务端首次开屏时写入的载体 token 判同一枚；原版副本保留 token，另一枚同物品口袋不匹配（关屏与 driver 都走
-     * {@link #relocateCarrier()} 重定位，不会写到别的栈上）。
-     * ★R90 T2：包内可见——{@link NekoPocketServerHandler#serverGuardOk} 的回落判据与它同源。
-     */
     boolean carrierStillPresent(EntityPlayer testPlayer) {
-        if (closed || testPlayer == null || pocket == null) {
-            return false;
-        }
-        // Server owns carrier authority; a newly opened client may not have its token packet yet.
-        if (syncManager.isClient()) return true;
-        final EntityPlayer owner = player();
-        if (owner != null && (owner.getUniqueID() == null || !owner.getUniqueID()
-            .equals(testPlayer.getUniqueID()))) {
-            return false;
-        }
-        final ItemStack atCarrier = data.getUsedItemStack();
-        if (!carrierIdentity.matches(atCarrier)) {
-            // ★R96 S11：读不到承载格 ≠ 口袋不见了。穿戴态开屏时 data 的 InventoryType 是 BAUBLES
-            // （本来就读 mainInventory），而会话中途把口袋从手上拖进饰品栏时 data 还钉在 PLAYER 那一格
-            // ⇒ 这里补一条 bauble 腿，找到就把写权钉过去；★找不到仍照原样返回 false
-            // （失效判定本身一个字没放宽）。
-            return repinFromBaubles();
-        }
-        final ItemStack unique = relocateCarrier();
-        if (unique == null) return false;
-        pocket = unique;
-        return true;
-    }
-
-    /**
-     * ★R96 S11：{@link #carrierStillPresent(EntityPlayer)} 的 bauble 腿（★判据与
-     * {@link #relocateCarrier()} 的第四级同源 —— 同一载体 token 才认，不另立第二套认人标准）。
-     * ★两道判空都是必需的：owner/baubles 拿不到 ⇒ 按"没穿戴"处理，绝不让 Baubles 侧的漂移变成崩溃。
-     */
-    private boolean repinFromBaubles() {
-        if (pocket == null || pocket.getItem() == null) {
-            return false;
-        }
-        final ItemStack relocated = relocateCarrier();
-        if (relocated == null) {
-            return false;
-        }
-        pocket = relocated;
-        return true;
+        return runtime.canInteract(testPlayer);
     }
 
     /**
@@ -3625,43 +3229,8 @@ public final class NekoPocketPanel implements PocketSession {
      * {@code PocketChannelDriver}（无活可干即回收）与 {@code PocketLifecycleHandler}（离线/停服）。
      */
     void onContainerClosed() {
-        if (closed) {
-            return;
-        }
-        GTInterestingThing.LOG.debug("[pocket][diag] 关屏钩子触发（若紧跟在 createScreen 之后 ⇒ 界面是被立刻关掉，不是没建）");
-        // ★R88 C3：摘掉本面板的回执登记，槽件侧此后写来的回执一律丢弃（不再有现役面板可投）
         RECEIPT_HOSTS.remove(syncManager);
-        final ItemStack carrier = relocateCarrier();
-        if (carrier == null) {
-            // ★R88 B3：旧写法在这里直接 return ⇒ "只 warn、一个字都不写"，而扣点只在内存里、
-            // 序列化只在本方法发生 ⇒ 本轮所有扣点/入账整批丢弃（玩家手里的容器已发出 = 复制）。
-            // 现在仍然走一次 writeSessionToCarrier()：它自带两档兜底（按对象身份写回会话认得的栈；
-            // 自嵌则拒绝并保留 dirty 等 driver 重试），只有两档都不成立时才剩下那条 warn。
-            GTInterestingThing.LOG.warn("[pocket] 关屏时找不到承载口袋的槽位（原格 {}），改走兜底落盘", carrierSlotIndex);
-            closed = true;
-            writeSessionToCarrier();
-            return;
-        }
-        ItemNekoDimensionPocket.setOpenFlag(carrier, false);
-        closed = true;
-        writeSessionToCarrier();
-    }
-
-    /** Resolve only this session's token across its original slot, cursor, inventory and Baubles. */
-    private ItemStack relocateCarrier() {
-        final EntityPlayer target = player();
-        carrierLookupAmbiguous = false;
-        if (target == null || target.inventory == null) {
-            return null;
-        }
-        final IInventory baubles = PocketWornTapHandler.safeBaubles(target);
-        final PocketCarrierIdentity.Resolution found = carrierIdentity
-            .locate(data.getUsedItemStack(), target.inventory.getItemStack(), target.inventory.mainInventory, baubles);
-        carrierLookupAmbiguous = found.ambiguous;
-        if (found.carrier != null) {
-            pocket = found.carrier;
-        }
-        return found.carrier;
+        runtime.close();
     }
 
     // ------------------------------------------------------------------ 客户端显示出口

@@ -608,6 +608,7 @@ public class CommonProxy {
         com.miaokatze.gtit.util.ServerTaskScheduler.startRequests();
         com.miaokatze.gtit.lottery.LotteryHandler.clearDelayedTasks();
         event.registerServerCommand(new GTITGiftCommand());
+        event.registerServerCommand(new com.miaokatze.gtit.command.PocketTransferCommand());
         event.registerServerCommand(new com.miaokatze.gtit.command.GiftLibraryCommand());
         com.miaokatze.gtit.testlab.TestLabRuntime.serverStarting(event);
     }

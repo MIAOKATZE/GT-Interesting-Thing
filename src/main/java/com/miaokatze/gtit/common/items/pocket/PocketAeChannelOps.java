@@ -4,10 +4,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
@@ -625,22 +623,25 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         final boolean writable = handler.getAccess()
             .hasPermission(AccessRestriction.WRITE);
         final boolean acceptable = handler.canAccept(request);
-        final IAEItemStack leftover = (IAEItemStack) handler.injectItems(request, Actionable.MODULATE, SOURCE);
-        final long leftoverSize = leftover == null ? 0L : leftover.getStackSize();
-        final PocketReceipt receipt = PocketReceipt.classify(true, writable, acceptable, requested, leftoverSize);
-        final int moved = (int) Math.max(0L, requested - leftoverSize);
-        if (moved > 0 && !shrinkSource(source.slot, slotStack, moved)) {
-            // ★R85 小项 2：来源格因为槽号越界没扣成 ⇒ 这份<b>原路注回元件</b>（与流体支那条
-            // "落点又变小了就原路注回"同一条纪律），并按 0 件成交。发 NO_ACCESS 而不是任何"成功"码：
-            // 本次改写来源格被拒（越界），本批后面的来源同形必败 ⇒ 让它 stopsBatch 并计入 failures()，
-            // 比"元件收了货、来源没扣件"的复制好一万倍。
-            final IAEItemStack back = AEItemStack.create(copyOf(slotStack, moved));
-            if (back != null) {
-                handler.injectItems(back, Actionable.MODULATE, SOURCE);
-            }
+        if (!writable || !acceptable)
+            return new Outcome(PocketReceipt.classify(true, writable, acceptable, requested, requested), 0);
+        if (!(session instanceof PocketRuntimeSession runtime)) return new Outcome(PocketReceipt.NO_ACCESS, 0);
+        PocketTransferReservation reserved = runtime
+            .reserveOutgoingItem(source.slot, slotStack, requested, diskuuid + "#" + typeId);
+        if (reserved == null) return new Outcome(PocketReceipt.NO_ACCESS, 0);
+        try {
+            IAEItemStack leftover = (IAEItemStack) handler.injectItems(request, Actionable.MODULATE, SOURCE);
+            long left = leftover == null ? 0L : leftover.getStackSize();
+            if (left < 0 || left > requested || leftover != null && !leftover.isSameType(request))
+                throw new IllegalStateException("Invalid item injection remainder");
+            runtime.completeOutgoing(reserved, left);
+            return new Outcome(
+                PocketReceipt.classify(true, writable, acceptable, requested, left),
+                (int) (requested - left));
+        } catch (RuntimeException | LinkageError unknown) {
+            runtime.retainUnknownOutgoing(reserved, unknown);
             return new Outcome(PocketReceipt.NO_ACCESS, 0);
         }
-        return new Outcome(receipt, moved);
     }
 
     /**
@@ -767,53 +768,6 @@ public final class PocketAeChannelOps implements PocketChannelOps {
      * unitsForCarriers）与不可物化日志都在那边；原生通道判定单源在 {@link EssenceNativeChannels}；
      * 本类经 {@code inject}/{@code extract} 的分派口委派过去。
      */
-
-    /**
-     * 中栏来源格扣件（★R84：来源在中栏，不再是玩家背包）。写回走 {@code PocketSession#setStorageStackAt}
-     * 那条不打扰 ghost 判据的程序化面，并由会话自己打脏；这里刻意改副本而不动传入栈，避免与 handler
-     * 内那份别名互踩。
-     * <p>
-     * ★<b>R85 小项 2（取证档案 N7）：越界槽号必须显式判，不许静默丢件。</b>
-     * {@code setStorageStackAt} 的形状是"复制一份再写"，而它对越界槽号的行为是<b>静默 return</b>
-     * （连 dirty 都不打）⇒ 一旦 {@code slot} 与 {@code session.storageSlots()} 不匹配（读档收缩过的旧档、
-     * 或将来把来源面换成别的 handler），本方法的调用链就变成"<b>元件已收货、来源格未扣件</b>"，
-     * 那是<b>复制物品</b>而不是"UI 不动"。现在：越界 ⇒ 一条 WARN + 按 0 件成交返回 false，
-     * 由调用方（{@link #inject}）把这一笔退回元件侧。
-     * <p>
-     * ★节流口径照 {@code PocketFilterConfig#readFrom} 那条（<b>按区</b>一次，不是每拍打）：越界是
-     * 形状级问题，一旦成立就是每一批每一条都成立，每拍一行会把日志淹掉。
-     *
-     * @return true = 来源格确实扣到了件；false = 槽号越界（调用方必须把这份退回元件，不许白拿）
-     */
-    private boolean shrinkSource(int slot, ItemStack slotStack, int moved) {
-        if (slot < 0 || slot >= session.storageSlots()) {
-            warnShrinkOutOfRangeOnce(slot, session.storageSlots(), moved);
-            return false;
-        }
-        final int left = slotStack.stackSize - moved;
-        if (left <= 0) {
-            session.setStorageStackAt(slot, null);
-            return true;
-        }
-        final ItemStack rest = slotStack.copy();
-        rest.stackSize = left;
-        session.setStorageStackAt(slot, rest);
-        return true;
-    }
-
-    /** {@link #shrinkSource} 越界 WARN 的一次性闩（键 = 形状级，不按玩家分，理由见那里的★段）。 */
-    private static final Set<String> SHRINK_OUT_OF_RANGE_WARNED = new LinkedHashSet<>();
-
-    private static void warnShrinkOutOfRangeOnce(int slot, int slots, int dropped) {
-        if (!SHRINK_OUT_OF_RANGE_WARNED.add("storage")) {
-            return;
-        }
-        LOG.warn(
-            "[pocket] 通道注入要扣的来源格 {} 越出中栏形状（现有 {} 格），本次按 0 件成交并已把 {} 件退回元件" + "（宁可不搬，也不出现『元件收了货、来源没扣件』的复制；本条只报一次）",
-            slot,
-            slots,
-            dropped);
-    }
 
     // ------------------------------------------------------------------ 解析与通知
 

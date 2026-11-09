@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -25,20 +24,7 @@ public final class RewardConfigFile {
         Path parent = path.toAbsolutePath()
             .getParent();
         Files.createDirectories(parent);
-        Path temporary = Files.createTempFile(
-            parent,
-            path.getFileName()
-                .toString(),
-            ".tmp");
-        try {
-            Files.write(temporary, json.getBytes(StandardCharsets.UTF_8));
-            Files.move(
-                temporary,
-                path.toAbsolutePath(),
-                StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING);
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
+        com.miaokatze.miaokatzecore.api.io.AtomicFilePublisher
+            .publishAtomic(path, json.getBytes(StandardCharsets.UTF_8));
     }
 }

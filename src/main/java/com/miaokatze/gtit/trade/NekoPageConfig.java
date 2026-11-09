@@ -90,6 +90,11 @@ public class NekoPageConfig {
      */
     public static synchronized NekoPageData load() {
         try {
+            new com.miaokatze.gtit.trade.preset.PresetFileTransaction(TradeConfigPaths.gameRoot()).recover();
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException("Unresolved trade journal", failure);
+        }
+        try {
             com.miaokatze.gtit.trade.preset.PageSourceIdentity.migrate(TradeConfigPaths.gameRoot());
         } catch (java.io.IOException | RuntimeException failure) {
             LOG.error("标签页来源迁移失败；保留原文件并使用只读来源推导", failure);
@@ -137,28 +142,58 @@ public class NekoPageConfig {
      */
     public static synchronized void save(NekoPageData data) {
         try {
-            Path path = getConfigPath();
-            Files.createDirectories(path.getParent());
-            for (NekoPageEntry page : data.getPages()) page.ensureSource();
-            NekoPageData user = new NekoPageData();
-            NekoPageData managed = new NekoPageData();
-            com.miaokatze.gtit.trade.preset.DefaultTradeSources.savePages(data.getPages());
-            for (NekoPageEntry page : data.getPages()) {
-                if (TradePresetLayout.builtinId(page.getId()) != null) continue;
-                (TradePresetLayout.isManagedPage(page.getId()) ? managed : user).getPages()
-                    .add(page);
-            }
-            String json = pageFileJson(path, user);
-            Files.write(path, json.getBytes(StandardCharsets.UTF_8));
-            // Only touch the managed file when it exists or contains pages; normal first init remains user-only.
-            Path presetPath = TradeConfigPaths.resolve(TradePresetLayout.PAGES_PATH);
-            if (Files.exists(presetPath) || !managed.getPages()
-                .isEmpty()) {
-                Files.write(presetPath, pageFileJson(presetPath, managed).getBytes(StandardCharsets.UTF_8));
-            }
-            LOG.info("猫猫售货机标签页配置已保存");
-        } catch (Exception e) {
-            LOG.error("猫猫售货机标签页配置保存失败", e);
+            com.miaokatze.gtit.trade.preset.PresetFileTransaction files = new com.miaokatze.gtit.trade.preset.PresetFileTransaction(
+                TradeConfigPaths.gameRoot());
+            files.recover();
+            java.util.Map<String, byte[]> changes = new java.util.LinkedHashMap<>();
+            planChanges(data, changes);
+            files.commit(changes);
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException("Page configuration could not be committed", failure);
+        }
+    }
+
+    static synchronized void planChanges(NekoPageData data, java.util.Map<String, byte[]> changes)
+        throws java.io.IOException {
+        if (data == null || data.getPages() == null) throw new IllegalArgumentException("page data");
+        Path path = getConfigPath();
+        NekoPageData user = new NekoPageData();
+        NekoPageData managed = new NekoPageData();
+        for (NekoPageEntry page : data.getPages()) {
+            if (page == null) throw new IllegalArgumentException("null page");
+            page.ensureSource();
+            if (TradePresetLayout.builtinId(page.getId()) != null) continue;
+            (TradePresetLayout.isManagedPage(page.getId()) ? managed : user).getPages()
+                .add(page);
+        }
+        com.miaokatze.gtit.trade.preset.DefaultTradeSources.planPageChanges(data.getPages(), changes);
+        changes.put(CONFIG_PATH, pageFileJson(path, user).getBytes(StandardCharsets.UTF_8));
+        Path presetPath = TradeConfigPaths.resolve(TradePresetLayout.PAGES_PATH);
+        if (Files.exists(presetPath) || !managed.getPages()
+            .isEmpty())
+            changes
+                .put(TradePresetLayout.PAGES_PATH, pageFileJson(presetPath, managed).getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Delete/move operations publish page metadata, source overrides and relocated trades in one journal. */
+    public static synchronized void saveWithTrades(NekoPageData pages, NekoTradeConfig.NekoTradeData trades) {
+        saveWithTrades(pages, trades, java.util.Collections.emptyMap(), java.util.Collections.emptyMap());
+    }
+
+    /** Integration ownership receipts and watermarks share the same commit as their page/trade content. */
+    public static synchronized void saveWithTrades(NekoPageData pages, NekoTradeConfig.NekoTradeData trades,
+        java.util.Map<Integer, Integer> watermarks, java.util.Map<String, byte[]> metadata) {
+        try {
+            com.miaokatze.gtit.trade.preset.PresetFileTransaction files = new com.miaokatze.gtit.trade.preset.PresetFileTransaction(
+                TradeConfigPaths.gameRoot());
+            files.recover();
+            java.util.Map<String, byte[]> changes = NekoTradeConfig.planChanges(trades);
+            planChanges(pages, changes);
+            NekoTradeConfig.planOrderWatermarks(watermarks, changes);
+            changes.putAll(metadata);
+            files.commit(changes);
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException("Page/trade configuration could not be committed", failure);
         }
     }
 

@@ -80,7 +80,7 @@ public final class DefaultTradeSources {
         page.setSourcePresetIconNbt(supplied && definition.icon.nbtBase64 != null ? definition.icon.nbtBase64 : "");
     }
 
-    static TradePresetDefinition installed(String id, Path root) throws IOException {
+    private static TradePresetDefinition installedBaseline(String id) throws IOException {
         TradePresetDefinition result = bundled(id);
         for (TradePresetDefinition.Tab tab : result.tabs) {
             tab.page.setId(TradePresetLayout.pageId(id, tab.page.getId()));
@@ -94,6 +94,11 @@ public final class DefaultTradeSources {
                 entry.setStrictBq(!BASE_ID.equals(id));
             }
         }
+        return result;
+    }
+
+    static TradePresetDefinition installed(String id, Path root) throws IOException {
+        TradePresetDefinition result = installedBaseline(id);
         Path override = new PresetFileTransaction(root).checked(OVERRIDES + id + ".json");
         if (Files.exists(override)) {
             TradePresetDefinition edited = TradePresetStore.GSON.fromJson(read(override), TradePresetDefinition.class);
@@ -209,10 +214,25 @@ public final class DefaultTradeSources {
     }
 
     static void savePages(Path root, List<NekoPageEntry> pages) throws IOException {
-        if (!DefaultContentConfig.loadDefaultTradeGroups()) return;
         Map<String, byte[]> changes = new LinkedHashMap<>();
+        planPageChanges(root, pages, changes);
+        if (!changes.isEmpty()) new PresetFileTransaction(root).commit(changes);
+    }
+
+    /** Stage page metadata on top of already staged trade edits to the same builtin override. */
+    public static void planPageChanges(List<NekoPageEntry> pages, Map<String, byte[]> changes) throws IOException {
+        planPageChanges(TradeConfigPaths.gameRoot(), pages, changes);
+    }
+
+    private static void planPageChanges(Path root, List<NekoPageEntry> pages, Map<String, byte[]> changes)
+        throws IOException {
+        if (!DefaultContentConfig.loadDefaultTradeGroups()) return;
         for (String id : selected(root)) {
-            TradePresetDefinition edited = installed(id, root);
+            String path = OVERRIDES + id + ".json";
+            TradePresetDefinition edited = !changes.containsKey(path) ? installed(id, root)
+                : changes.get(path) == null ? installedBaseline(id)
+                    : TradePresetStore.GSON
+                        .fromJson(new String(changes.get(path), StandardCharsets.UTF_8), TradePresetDefinition.class);
             for (TradePresetDefinition.Tab tab : edited.tabs) {
                 for (NekoPageEntry page : pages) if (page.getId() == tab.page.getId()) {
                     tab.page = page;
@@ -224,25 +244,12 @@ public final class DefaultTradeSources {
                     .noneMatch(page -> page.getId() == tab.page.getId()));
             changedOverride(id, edited, root, changes);
         }
-        if (!changes.isEmpty()) new PresetFileTransaction(root).commit(changes);
     }
 
     private static void changedOverride(String id, TradePresetDefinition edited, Path root, Map<String, byte[]> changes)
         throws IOException {
         // Generate the jar baseline without reading the override, using its local source identities.
-        TradePresetDefinition baseline = bundled(id);
-        for (TradePresetDefinition.Tab tab : baseline.tabs) {
-            tab.page.setId(TradePresetLayout.pageId(id, tab.page.getId()));
-            tab.page.setDefault(false);
-            source(tab.page, baseline, true);
-            for (NekoTradeEntry trade : tab.trades) {
-                trade.setId(TradePresetLayout.tradeId(id, trade.getId()));
-                trade.setTabId(tab.page.getId());
-                trade.setDefaultEntry(true);
-                trade.setPresetBuiltin(true);
-                trade.setStrictBq(!BASE_ID.equals(id));
-            }
-        }
+        TradePresetDefinition baseline = installedBaseline(id);
         String path = OVERRIDES + id + ".json";
         byte[] value = TradePresetStore.GSON.toJsonTree(baseline)
             .equals(TradePresetStore.GSON.toJsonTree(edited)) ? null : bytes(edited);

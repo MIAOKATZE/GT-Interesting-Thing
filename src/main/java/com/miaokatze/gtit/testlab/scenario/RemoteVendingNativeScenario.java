@@ -365,6 +365,13 @@ final class RemoteVendingNativeScenario implements ProbeScenario {
                         && RemoteVendingSession
                             .resolveCurrent(player, target.dimension, target.x + 1, target.y, target.z) == null,
                     "Current authoritative session permits its exact address only");
+                context.check(
+                    "shared-machine-resolution-remote",
+                    com.miaokatze.gtit.common.machine.v2.AuthorizedVendingMachine
+                        .resolve(player, target.dimension, target.x, target.y, target.z) == machine
+                        && com.miaokatze.gtit.common.machine.v2.AuthorizedVendingMachine
+                            .resolve(player, target.dimension, target.x + 1, target.y, target.z) == null,
+                    "Mail and lottery share the same remote authority without changing caller failure policies");
                 Runnable swapped = RemoteVendingSession.guard(session, main, () -> actions[0]++);
                 Runnable wrappedSwap = vendingGuard(session, main, base, machine, () -> wrappedActions[0]++);
                 player.inventory.currentItem = 1;
@@ -374,6 +381,11 @@ final class RemoteVendingNativeScenario implements ProbeScenario {
                     "remote-hand-swap-guard",
                     actions[0] == 1 && !container.canInteractWith(player),
                     "Changing held slot invalidates the real container and queued action");
+                context.check(
+                    "shared-machine-resolution-stale",
+                    com.miaokatze.gtit.common.machine.v2.AuthorizedVendingMachine
+                        .resolve(player, target.dimension, target.x, target.y, target.z) == null,
+                    "Shared machine resolver refuses a stale held-slot lease");
                 context.check(
                     "vending-wrapper-hand-swap",
                     wrappedActions[0] == 1,

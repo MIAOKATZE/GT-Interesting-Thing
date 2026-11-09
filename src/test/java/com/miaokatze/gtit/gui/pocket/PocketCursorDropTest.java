@@ -18,6 +18,7 @@ import com.cleanroommc.modularui.factory.inventory.InventoryType;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.miaokatze.gtit.common.items.pocket.PocketCarrierIdentity;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
+import com.miaokatze.gtit.common.items.pocket.PocketRuntimeSession;
 import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
 
 /** Native MUI -> vanilla cursor drop, using an explicitly constructed server-session fixture. */
@@ -117,8 +118,16 @@ public final class PocketCursorDropTest {
             set("data", new PlayerInventoryGuiData(player, MAIN, 0));
             set("syncManager", sync);
             set("inventory", inventory);
-            set("pocket", carrier);
-            set("carrierIdentity", PocketCarrierIdentity.capture(carrier, true));
+            set(
+                "runtime",
+                new PocketRuntimeSession(
+                    () -> player,
+                    () -> player.inventory.mainInventory[0],
+                    0,
+                    carrier,
+                    false,
+                    true,
+                    inventory));
             container = new Container(panel);
             player.openContainer = container;
         }
@@ -193,6 +202,9 @@ public final class PocketCursorDropTest {
 
         Fixture client = new Fixture();
         client.sync.client = true;
+        client.set(
+            "runtime",
+            new PocketRuntimeSession(() -> client.player, () -> null, 0, client.carrier, true, true, client.inventory));
         client.drop(1);
         check(
             client.inventory.isDirty() && PocketInventory.readFrom(client.player.dropped.getTagCompound())

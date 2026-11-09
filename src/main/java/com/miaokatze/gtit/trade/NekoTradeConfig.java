@@ -258,39 +258,46 @@ public class NekoTradeConfig {
      * 写入前清理当前已不存在交易的 tab 文件，避免删除操作后旧文件残留。
      */
     public static synchronized void save(NekoTradeData data) {
-        if (data == null) return;
+        try {
+            PresetFileTransaction files = new PresetFileTransaction(TradeConfigPaths.gameRoot());
+            files.recover();
+            Map<String, byte[]> changes = planChanges(data);
+            if (!changes.isEmpty()) files.commit(changes);
+        } catch (IOException failure) {
+            throw new IllegalStateException("Trade configuration could not be committed", failure);
+        }
+    }
+
+    /** Detached preparation shared by ordinary edits and combined page/trade edits. */
+    static synchronized Map<String, byte[]> planChanges(NekoTradeData data) throws IOException {
+        if (data == null) return new LinkedHashMap<>();
         if (!data.isComplete()) throw new IllegalStateException(
             "Cannot save partially loaded trade configuration: " + data.getLoadFailures());
         if (data.getTrades() != null) for (NekoTradeEntry entry : data.getTrades()) {
             if (entry != null) NekoTradeEntry.validateCooldown(entry.getCooldown());
         }
-        try {
-            List<NekoTradeEntry> trades = data.getTrades() == null ? new ArrayList<>() : data.getTrades();
-            // Stage every override, write and removal before the first disk mutation. The same
-            // journal already used by presets rolls back a failed multi-file ordinary edit.
-            Map<String, byte[]> changes = new LinkedHashMap<>(DefaultTradeSources.planTradeChanges(trades));
-            Map<Integer, List<NekoTradeEntry>> groups = new HashMap<>();
-            for (NekoTradeEntry entry : trades) {
-                if (entry == null || TradePresetLayout.builtinId(entry.getTabId()) != null) continue;
-                groups.computeIfAbsent(entry.getTabId(), k -> new ArrayList<>())
-                    .add(entry);
-            }
-            stageRemovedTabs(getTradeDirPath(), groups, changes, false);
-            stageRemovedTabs(TradeConfigPaths.resolve(TradePresetLayout.TRADES_PATH), groups, changes, true);
-            for (Map.Entry<Integer, List<NekoTradeEntry>> group : groups.entrySet()) {
-                TabFileData tab = new TabFileData();
-                tab.setTabId(group.getKey());
-                tab.setTrades(group.getValue());
-                changes.put(
-                    relativePath(getTabFilePath(group.getKey())),
-                    GSON.toJson(tab)
-                        .getBytes(StandardCharsets.UTF_8));
-            }
-            if (!changes.isEmpty()) new PresetFileTransaction(TradeConfigPaths.gameRoot()).commit(changes);
-            LOG.info("Trade configuration committed ({} tab files)", groups.size());
-        } catch (IOException failure) {
-            throw new IllegalStateException("Trade configuration could not be committed", failure);
+        List<NekoTradeEntry> trades = data.getTrades() == null ? new ArrayList<>() : data.getTrades();
+        // Stage every override, write and removal before the first disk mutation. The same
+        // journal already used by presets rolls back a failed multi-file ordinary edit.
+        Map<String, byte[]> changes = new LinkedHashMap<>(DefaultTradeSources.planTradeChanges(trades));
+        Map<Integer, List<NekoTradeEntry>> groups = new HashMap<>();
+        for (NekoTradeEntry entry : trades) {
+            if (entry == null || TradePresetLayout.builtinId(entry.getTabId()) != null) continue;
+            groups.computeIfAbsent(entry.getTabId(), k -> new ArrayList<>())
+                .add(entry);
         }
+        stageRemovedTabs(getTradeDirPath(), groups, changes, false);
+        stageRemovedTabs(TradeConfigPaths.resolve(TradePresetLayout.TRADES_PATH), groups, changes, true);
+        for (Map.Entry<Integer, List<NekoTradeEntry>> group : groups.entrySet()) {
+            TabFileData tab = new TabFileData();
+            tab.setTabId(group.getKey());
+            tab.setTrades(group.getValue());
+            changes.put(
+                relativePath(getTabFilePath(group.getKey())),
+                GSON.toJson(tab)
+                    .getBytes(StandardCharsets.UTF_8));
+        }
+        return changes;
     }
 
     private static void stageRemovedTabs(Path directory, Map<Integer, List<NekoTradeEntry>> groups,
@@ -410,21 +417,35 @@ public class NekoTradeConfig {
     public static synchronized void raiseOrderWatermark(int tabId, int orderId) {
         if ((tabId <= 0 && !TradePresetLayout.isManagedPage(tabId)) || orderId < 0) return;
         try {
-            OrderWatermarkData data = loadOrderWatermarks();
-            Integer current = data.getWatermarks()
-                .get(tabId);
-            if (current != null && current >= orderId) return;
-            data.getWatermarks()
-                .put(tabId, orderId);
-            Path path = TradeConfigPaths.resolve(ORDER_WATERMARK_PATH);
-            Files.createDirectories(path.getParent());
-            Files.write(
-                path,
-                GSON.toJson(data)
-                    .getBytes(StandardCharsets.UTF_8));
+            PresetFileTransaction files = new PresetFileTransaction(TradeConfigPaths.gameRoot());
+            files.recover();
+            Map<String, byte[]> changes = new LinkedHashMap<>();
+            planOrderWatermarks(Collections.singletonMap(tabId, orderId), changes);
+            if (!changes.isEmpty()) files.commit(changes);
         } catch (Exception e) {
-            LOG.error("orderId 高水位写入失败（tab={}，order={}）", tabId, orderId, e);
+            throw new IllegalStateException("Order watermark could not be committed", e);
         }
+    }
+
+    static synchronized void planOrderWatermarks(Map<Integer, Integer> requested, Map<String, byte[]> changes) {
+        if (requested.isEmpty()) return;
+        OrderWatermarkData data = loadOrderWatermarks();
+        boolean changed = false;
+        for (Map.Entry<Integer, Integer> entry : requested.entrySet()) {
+            int tab = entry.getKey(), order = entry.getValue();
+            if ((tab <= 0 && !TradePresetLayout.isManagedPage(tab)) || order < 0) continue;
+            Integer previous = data.getWatermarks()
+                .get(tab);
+            if (previous == null || previous < order) {
+                data.getWatermarks()
+                    .put(tab, order);
+                changed = true;
+            }
+        }
+        if (changed) changes.put(
+            ORDER_WATERMARK_PATH,
+            GSON.toJson(data)
+                .getBytes(StandardCharsets.UTF_8));
     }
 
     /** 读取 orderId 高水位（文件缺失/损坏时返回空记录） */
@@ -437,9 +458,10 @@ public class NekoTradeConfig {
                 if (data != null && data.getWatermarks() != null) {
                     return data;
                 }
+                throw new IllegalStateException("Invalid existing order watermark");
             }
         } catch (Exception e) {
-            LOG.warn("orderId 高水位读取失败，按空记录处理", e);
+            throw new IllegalStateException("Existing order watermark is unreadable; allocation denied", e);
         }
         return new OrderWatermarkData();
     }

@@ -4,19 +4,14 @@ import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.inventory.Container;
-import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
-import net.minecraft.world.World;
-import net.minecraftforge.common.DimensionManager;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import com.cleanroommc.modularui.factory.PosGuiData;
-import com.cleanroommc.modularui.screen.ModularContainer;
 import com.miaokatze.gtit.common.items.terminal.RemoteVendingContainer;
-import com.miaokatze.gtit.common.items.terminal.RemoteVendingSession;
+import com.miaokatze.gtit.common.machine.v2.AuthorizedVendingMachine;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
@@ -24,8 +19,6 @@ import cpw.mods.fml.common.network.ByteBufUtils;
 import cpw.mods.fml.common.network.simpleimpl.IMessage;
 import cpw.mods.fml.common.network.simpleimpl.IMessageHandler;
 import cpw.mods.fml.common.network.simpleimpl.MessageContext;
-import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
-import gregtech.api.metatileentity.BaseMetaTileEntity;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -280,7 +273,7 @@ public class MailActionPacket implements IMessage {
          * <li>距离上限：发送者与机器距离 ≤ 8 格
          * （{@link #MAX_MACHINE_DISTANCE_SQ}，对齐 MUI2 容器交互距离与 SWN 校验范式）</li>
          * <li>GUI 会话绑定：发送者当前打开的 MUI2 容器必须是这台机器的 GUI
-         * （{@link #isMachineGuiOpen}，坐标一致才视为有效会话）</li>
+         * （{@link AuthorizedVendingMachine#resolve}，坐标一致才视为有效会话）</li>
          * </ol>
          * 任一校验失败即返回 null（邮件按无附件发送，机器输入槽不动）。
          *
@@ -288,50 +281,12 @@ public class MailActionPacket implements IMessage {
          */
         private MTENekoVendingMachineV2 findMachine(EntityPlayerMP player, MailActionPacket message) {
             try {
-                if (player.openContainer instanceof RemoteVendingContainer) {
-                    return RemoteVendingSession.resolveCurrent(
-                        player,
-                        message.machineDim,
-                        message.machineX,
-                        message.machineY,
-                        message.machineZ);
-                }
-                World world = DimensionManager.getWorld(message.machineDim);
-                if (world == null || world != player.worldObj) return null;
-                // 距离上限（防恶意包隔空/跨维度指定他人机器取物）
-                if (player.getDistanceSq(message.machineX + 0.5D, message.machineY + 0.5D, message.machineZ + 0.5D)
-                    > MAX_MACHINE_DISTANCE_SQ) return null;
-                // GUI 会话绑定（发送者必须正打开这台机器的 GUI，仅持坐标不允许取物）
-                if (!isMachineGuiOpen(player, message)) return null;
-                if (!world.getChunkProvider()
-                    .chunkExists(message.machineX >> 4, message.machineZ >> 4)) return null;
-                TileEntity te = world.getTileEntity(message.machineX, message.machineY, message.machineZ);
-                if (!(te instanceof BaseMetaTileEntity) || !((BaseMetaTileEntity) te).isUseableByPlayer(player))
-                    return null;
-                if (te instanceof IGregTechTileEntity) {
-                    if (((IGregTechTileEntity) te).getMetaTileEntity() instanceof MTENekoVendingMachineV2) {
-                        return (MTENekoVendingMachineV2) ((IGregTechTileEntity) te).getMetaTileEntity();
-                    }
-                }
+                return AuthorizedVendingMachine
+                    .resolve(player, message.machineDim, message.machineX, message.machineY, message.machineZ);
             } catch (Exception e) {
-                LOG.error("定位写邮件触发机器失败", e);
+                LOG.error("Failed to resolve authorized vending machine", e);
+                return null;
             }
-            return null;
-        }
-
-        /**
-         * GUI 会话绑定校验：发送者当前打开的容器是否为请求坐标机器的 MUI2 GUI
-         * <p>
-         * 机器 GUI 由 GT5U {@code MetaTileEntityGuiHandler.open} 以控制器 baseTE 坐标构建
-         * {@code PosGuiData} 打开，{@code MailGui} 写邮件页发送按钮携带的正是同一坐标；
-         * 因此服务端比对 {@code player.openContainer} 的 {@code PosGuiData} 与请求坐标，
-         * 即可确认"玩家真的开着这台机器的 GUI"，未开 GUI/开着其他 GUI/坐标不符一律拒绝。
-         */
-        private static boolean isMachineGuiOpen(EntityPlayerMP player, MailActionPacket message) {
-            if (!(player.openContainer instanceof ModularContainer container)) return false;
-            if (!(container.getGuiData() instanceof PosGuiData guiData)) return false;
-            return guiData.getX() == message.machineX && guiData.getY() == message.machineY
-                && guiData.getZ() == message.machineZ;
         }
 
         /** 字符串限长截断（null 安全；maxLength 内原样返回） */

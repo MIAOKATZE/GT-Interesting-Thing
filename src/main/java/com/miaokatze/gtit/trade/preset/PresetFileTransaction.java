@@ -1,15 +1,10 @@
 package com.miaokatze.gtit.trade.preset;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -42,6 +37,9 @@ public final class PresetFileTransaction {
             || relative.matches(
                 "MiaoTrade/builtin_updates/[0-9a-f]{8}-[0-9a-f]{4}-3[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/(gtit-ae-basic|gtit-ae-advanced|gtit-base-decoration)\\.json")
             || relative.equals("config/gtit/trade/preset_state.json")
+            || relative.equals("config/gtit/trade/order_watermark.json")
+            || relative.matches("config/gtit/trade/integrated/[a-z0-9][a-z0-9.-]{0,63}\\.json")
+                && !relative.contains("..")
             || relative.equals("config/gtit/trade/default_storage_v3.json")
             || relative.equals("config/gtit/nekovm_trades.json")
             || relative.equals("config/gtit/nekovm_pages.json")
@@ -66,6 +64,12 @@ public final class PresetFileTransaction {
     }
 
     public void recover() throws IOException {
+        synchronized (PresetFileTransaction.class) {
+            recoverLocked();
+        }
+    }
+
+    private void recoverLocked() throws IOException {
         Path journal = checked(JOURNAL);
         if (!Files.exists(journal, LinkOption.NOFOLLOW_LINKS)) return;
         if (Files.size(journal) > 96L * 1024 * 1024) throw new IOException("预设事务日志过大，需人工检查");
@@ -74,18 +78,43 @@ public final class PresetFileTransaction {
         Journal data = GSON.fromJson(json, Journal.class);
         if (data == null || data.before == null) throw new IOException("预设事务日志损坏");
         // Validate all paths before touching any file, including a manually edited journal.
+        if (data.before.size() > 4096) throw new IOException("Too many journal entries");
+        long decodedTotal = 0;
         for (String path : data.before.keySet()) {
+            if (path == null) throw new IOException("Null journal path");
             if (path.equals(JOURNAL)) throw new IOException("预设事务日志不能修改自身");
             checked(path);
+            String value = data.before.get(path);
+            if (value != null) {
+                try {
+                    byte[] bytes = Base64.getDecoder()
+                        .decode(value);
+                    decodedTotal += bytes.length;
+                    if (bytes.length > 32L * 1024 * 1024 || decodedTotal > 64L * 1024 * 1024)
+                        throw new IOException("Journal restoration exceeds bounded size");
+                } catch (IllegalArgumentException malformed) {
+                    throw new IOException("Invalid journal base64; no files were restored", malformed);
+                }
+            }
         }
         rollback(data);
         Files.delete(journal);
     }
 
     public void commit(Map<String, byte[]> changes) throws IOException {
-        recover();
+        synchronized (PresetFileTransaction.class) {
+            commitLocked(changes);
+        }
+    }
+
+    private void commitLocked(Map<String, byte[]> changes) throws IOException {
+        recoverLocked();
+        if (changes.size() > 4096) throw new IOException("Too many transaction entries");
         Journal journal = new Journal();
+        long beforeTotal = 0, afterTotal = 0;
         for (Map.Entry<String, byte[]> change : changes.entrySet()) {
+            if (change.getValue() != null && change.getValue().length > 32L * 1024 * 1024)
+                throw new IOException("Transaction target exceeds bounded size");
             if (change.getKey()
                 .equals(JOURNAL)) throw new IOException("事务目标非法");
             Path path = checked(change.getKey());
@@ -93,6 +122,10 @@ public final class PresetFileTransaction {
                 throw new IOException("预设目标文件过大");
             }
             byte[] before = Files.exists(path) ? Files.readAllBytes(path) : null;
+            beforeTotal += before == null ? 0 : before.length;
+            afterTotal += change.getValue() == null ? 0 : change.getValue().length;
+            if (beforeTotal > 64L * 1024 * 1024 || afterTotal > 64L * 1024 * 1024)
+                throw new IOException("Transaction exceeds bounded restoration size");
             journal.before.put(
                 change.getKey(),
                 before == null ? null
@@ -146,22 +179,7 @@ public final class PresetFileTransaction {
 
     static void writeAtomic(Path path, byte[] bytes) throws IOException {
         Files.createDirectories(path.getParent());
-        Path temporary = Files.createTempFile(path.getParent(), ".gtit-preset-", ".tmp");
-        try {
-            try (FileChannel output = FileChannel
-                .open(temporary, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
-                ByteBuffer buffer = ByteBuffer.wrap(bytes);
-                while (buffer.hasRemaining()) output.write(buffer);
-                output.force(true);
-            }
-            try {
-                Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
+        com.miaokatze.miaokatzecore.api.io.AtomicFilePublisher.publish(path, bytes);
     }
 
     private static final class Journal {

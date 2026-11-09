@@ -34,10 +34,26 @@ public final class PocketSessions {
         if (session == null || session.playerId() == null) {
             return;
         }
-        final PocketSession previous = LIVE.put(session.playerId(), session);
+        final PocketSession previous = LIVE.get(session.playerId());
         if (previous != null && previous != session) {
             previous.persistFinal();
+            requireFlushed(previous);
         }
+        LIVE.put(session.playerId(), session);
+    }
+
+    /** Call before capturing a new carrier token, so an unresolved old writer cannot be silently revoked. */
+    public static void flushBeforeReplacement(UUID player) {
+        PocketSession previous = peek(player);
+        if (previous == null) return;
+        previous.persistFinal();
+        requireFlushed(previous);
+    }
+
+    private static void requireFlushed(PocketSession session) {
+        if (session instanceof PocketRuntimeSession runtime && runtime.inventory()
+            .isDirty())
+            throw new IllegalStateException("Previous pocket session has unpersisted state; replacement denied");
     }
 
     /** 只读取（tick 宿主每 tick 一次，绝不建条目）。 */
@@ -50,9 +66,11 @@ public final class PocketSessions {
         if (player == null) {
             return;
         }
-        final PocketSession removed = LIVE.remove(player);
+        final PocketSession removed = LIVE.get(player);
         if (removed != null) {
             removed.persistFinal();
+            requireFlushed(removed);
+            LIVE.remove(player);
         }
     }
 
@@ -60,6 +78,7 @@ public final class PocketSessions {
     public static void clearAll() {
         for (PocketSession session : new ArrayList<>(LIVE.values())) {
             session.persistFinal();
+            requireFlushed(session);
         }
         LIVE.clear();
     }
@@ -77,8 +96,9 @@ public final class PocketSessions {
             // 已被更新的会话替换：不碰，避免把新会话当成旧的摘掉
             return;
         }
-        LIVE.remove(player);
         session.persistFinal();
+        requireFlushed(session);
+        LIVE.remove(player);
     }
 
     /**
@@ -104,6 +124,8 @@ public final class PocketSessions {
                 continue;
             }
             session.persistFinal();
+            if (session instanceof PocketRuntimeSession runtime && runtime.inventory()
+                .isDirty()) continue;
             it.remove();
             reaped++;
         }

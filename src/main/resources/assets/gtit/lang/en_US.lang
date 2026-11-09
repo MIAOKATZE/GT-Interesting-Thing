@@ -980,3 +980,5 @@ gtit.trade.tooltip.slot=Slot %s · fixed item
 gtit.trade.tooltip.ore_output=Ore [%s] · random item
 gtit.trade.tooltip.ore_input=Ore [%s]
 gtit.trade.tooltip.more_options=  · %s more candidates (ONE per slot)
+
+gtit.pocket.transfer.quarantined=Upload receipt pending verification; automatic uploads paused. Ask an administrator to inspect.
