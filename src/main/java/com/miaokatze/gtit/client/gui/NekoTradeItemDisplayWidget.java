@@ -436,8 +436,7 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
 
     public static String fit(String text, int width, float scale) {
         net.minecraft.client.gui.FontRenderer font = Minecraft.getMinecraft().fontRenderer;
-        if (font.getStringWidth(text) * scale <= width) return text;
-        return font.trimStringToWidth(text, Math.max(0, (int) (width / scale) - font.getStringWidth("…"))) + "…";
+        return NekoTextFit.fit(text, width, scale, font::getStringWidth);
     }
 
     public static String nativeStatus(NekoTradeItemDisplay display) {

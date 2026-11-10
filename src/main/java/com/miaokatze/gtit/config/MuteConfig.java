@@ -8,6 +8,10 @@ import java.io.IOException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
 /**
  * 机器工作音效静音配置管理
  * 配置文件路径: config/gtit/gtit_mute.json
@@ -102,30 +106,26 @@ public class MuteConfig {
     }
 
     private static void parseConfig(String json) {
-        String trimmed = json.trim();
-        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
-            muteMachineWorkingSounds = false;
-            extraMute = false;
-            return;
+        // Parse both switches before publishing either one. Invalid JSON uses defaults.
+        boolean mute = false;
+        boolean extra = false;
+        try {
+            JsonObject object = new JsonParser().parse(json)
+                .getAsJsonObject();
+            mute = booleanValue(object, "mute_machine_working_sounds");
+            extra = booleanValue(object, "extra_mute");
+        } catch (RuntimeException failure) {
+            LOG.warn("Invalid machine mute JSON; both switches default to false", failure);
         }
-
-        String muteValue = extractJsonValue(trimmed, "mute_machine_working_sounds");
-        muteMachineWorkingSounds = muteValue != null && Boolean.parseBoolean(muteValue.trim());
-
-        String extraValue = extractJsonValue(trimmed, "extra_mute");
-        extraMute = extraValue != null && Boolean.parseBoolean(extraValue.trim());
+        muteMachineWorkingSounds = mute;
+        extraMute = extra;
     }
 
-    private static String extractJsonValue(String json, String key) {
-        String searchKey = "\"" + key + "\":";
-        int start = json.indexOf(searchKey);
-        if (start < 0) return null;
-        start += searchKey.length();
-        int end = start;
-        while (end < json.length() && json.charAt(end) != ',' && json.charAt(end) != '}' && json.charAt(end) != '\n') {
-            end++;
-        }
-        return json.substring(start, end)
-            .trim();
+    private static boolean booleanValue(JsonObject object, String key) {
+        JsonElement value = object.get(key);
+        return value != null && value.isJsonPrimitive()
+            && value.getAsJsonPrimitive()
+                .isBoolean()
+            && value.getAsBoolean();
     }
 }

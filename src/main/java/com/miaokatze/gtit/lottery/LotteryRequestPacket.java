@@ -5,19 +5,14 @@ import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.inventory.Container;
-import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
-import net.minecraft.world.World;
-import net.minecraftforge.common.DimensionManager;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import com.cleanroommc.modularui.factory.PosGuiData;
-import com.cleanroommc.modularui.screen.ModularContainer;
 import com.miaokatze.gtit.common.items.terminal.RemoteVendingContainer;
-import com.miaokatze.gtit.common.items.terminal.RemoteVendingSession;
+import com.miaokatze.gtit.common.machine.v2.AuthorizedVendingMachine;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
@@ -25,8 +20,6 @@ import cpw.mods.fml.common.network.ByteBufUtils;
 import cpw.mods.fml.common.network.simpleimpl.IMessage;
 import cpw.mods.fml.common.network.simpleimpl.IMessageHandler;
 import cpw.mods.fml.common.network.simpleimpl.MessageContext;
-import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
-import gregtech.api.metatileentity.BaseMetaTileEntity;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -192,7 +185,7 @@ public class LotteryRequestPacket implements IMessage {
          * <li>同维度：请求维度必须与请求者当前世界一致（拒绝跨维度指定他人机器）</li>
          * <li>距离上限：请求者与机器距离 ≤ 8 格（{@link #MAX_MACHINE_DISTANCE_SQ}）</li>
          * <li>GUI 会话绑定：请求者当前打开的 MUI2 容器必须是这台机器的 GUI
-         * （{@link #isMachineGuiOpen}）</li>
+         * （{@link AuthorizedVendingMachine#resolve}）</li>
          * </ol>
          * 任一失败返回 null（调用方整包拒绝）。延迟出货路径（{@code LotteryManager.scheduleDelayedSync}）
          * 仍用无校验静态版——出货时玩家可能已关 GUI/离线，此处验证过的坐标快照即可信。
@@ -201,48 +194,12 @@ public class LotteryRequestPacket implements IMessage {
          */
         private MTENekoVendingMachineV2 findMachine(EntityPlayerMP player, LotteryRequestPacket request) {
             try {
-                if (player.openContainer instanceof RemoteVendingContainer) {
-                    return RemoteVendingSession.resolveCurrent(
-                        player,
-                        request.machineDim,
-                        request.machineX,
-                        request.machineY,
-                        request.machineZ);
-                }
-                World world = DimensionManager.getWorld(request.machineDim);
-                if (world == null || world != player.worldObj) return null;
-                // 距离上限（防恶意包隔空指定他人机器扣物/塞奖）
-                if (player.getDistanceSq(request.machineX + 0.5D, request.machineY + 0.5D, request.machineZ + 0.5D)
-                    > MAX_MACHINE_DISTANCE_SQ) return null;
-                // GUI 会话绑定（请求者必须正打开这台机器的 GUI，仅持坐标不允许抽奖）
-                if (!isMachineGuiOpen(player, request)) return null;
-                if (!world.getChunkProvider()
-                    .chunkExists(request.machineX >> 4, request.machineZ >> 4)) return null;
-                TileEntity te = world.getTileEntity(request.machineX, request.machineY, request.machineZ);
-                if (!(te instanceof BaseMetaTileEntity) || !((BaseMetaTileEntity) te).isUseableByPlayer(player))
-                    return null;
-                if (te instanceof IGregTechTileEntity) {
-                    if (((IGregTechTileEntity) te).getMetaTileEntity() instanceof MTENekoVendingMachineV2) {
-                        return (MTENekoVendingMachineV2) ((IGregTechTileEntity) te).getMetaTileEntity();
-                    }
-                }
+                return AuthorizedVendingMachine
+                    .resolve(player, request.machineDim, request.machineX, request.machineY, request.machineZ);
             } catch (Exception e) {
-                LOG.error("定位抽奖触发机器失败", e);
+                LOG.error("Failed to resolve authorized vending machine", e);
+                return null;
             }
-            return null;
-        }
-
-        /**
-         * GUI 会话绑定校验：请求者当前打开的容器是否为请求坐标机器的 MUI2 GUI
-         * <p>
-         * 比对 {@code player.openContainer} 携带的 {@code PosGuiData} 与请求坐标，
-         * 未开 GUI/开着其他 GUI/坐标不符一律拒绝（与 {@code MailActionPacket} 同型）。
-         */
-        private static boolean isMachineGuiOpen(EntityPlayerMP player, LotteryRequestPacket request) {
-            if (!(player.openContainer instanceof ModularContainer container)) return false;
-            if (!(container.getGuiData() instanceof PosGuiData guiData)) return false;
-            return guiData.getX() == request.machineX && guiData.getY() == request.machineY
-                && guiData.getZ() == request.machineZ;
         }
 
         /**

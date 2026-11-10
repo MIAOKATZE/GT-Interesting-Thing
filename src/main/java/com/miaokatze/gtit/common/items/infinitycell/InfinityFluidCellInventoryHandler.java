@@ -2,8 +2,6 @@ package com.miaokatze.gtit.common.items.infinitycell;
 
 import static appeng.util.item.AEFluidStackType.FLUID_STACK_TYPE;
 
-import java.lang.reflect.Field;
-
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.fluids.FluidStack;
@@ -17,25 +15,9 @@ import appeng.api.storage.data.IItemList;
 import appeng.me.storage.MEInventoryHandler;
 import appeng.me.storage.MEPassThrough;
 import appeng.util.item.AEFluidStack;
-import appeng.util.prioitylist.DefaultPriorityList;
-import appeng.util.prioitylist.IPartitionList;
 import appeng.util.prioitylist.PrecisePriorityList;
 
 public class InfinityFluidCellInventoryHandler extends MEInventoryHandler<IAEFluidStack> implements ICellCacheRegistry {
-
-    private static final Field fPartitionList;
-    private static final Field fInternal;
-
-    static {
-        try {
-            fPartitionList = MEInventoryHandler.class.getDeclaredField("myPartitionList");
-            fPartitionList.setAccessible(true);
-            fInternal = MEPassThrough.class.getDeclaredField("internal");
-            fInternal.setAccessible(true);
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to reflect MEInventoryHandler/MEPassThrough fields", e);
-        }
-    }
 
     public InfinityFluidCellInventoryHandler(final IMEInventory<IAEFluidStack> c) {
         super(c, FLUID_STACK_TYPE);
@@ -69,22 +51,18 @@ public class InfinityFluidCellInventoryHandler extends MEInventoryHandler<IAEFlu
     public ITFluidCellInventory getCellInv() {
         Object o = this.getInternal();
         if (o instanceof MEPassThrough<?>mpt) {
-            try {
-                o = fInternal.get(mpt);
-            } catch (Exception e) {
-                return null;
-            }
+            o = mpt.getInternal();
         }
         return (o instanceof ITFluidCellInventory) ? (ITFluidCellInventory) o : null;
     }
 
     @SuppressWarnings("unchecked")
     public Iterable<IAEFluidStack> getPartitionInv() {
-        return (Iterable<IAEFluidStack>) getPartitionList(this).getItems();
+        return (Iterable<IAEFluidStack>) getPartitionList().getItems();
     }
 
     public boolean isPreformatted() {
-        return !getPartitionList(this).isEmpty();
+        return !getPartitionList().isEmpty();
     }
 
     public IncludeExclude getIncludeExcludeMode() {
@@ -143,11 +121,4 @@ public class InfinityFluidCellInventoryHandler extends MEInventoryHandler<IAEFlu
         return TYPE.FLUID;
     }
 
-    private static IPartitionList<?> getPartitionList(MEInventoryHandler<?> handler) {
-        try {
-            return (IPartitionList<?>) fPartitionList.get(handler);
-        } catch (Exception e) {
-            return new DefaultPriorityList<>();
-        }
-    }
 }

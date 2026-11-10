@@ -85,23 +85,28 @@ final class PocketFluidChannelOps {
         final boolean writable = handler.getAccess()
             .hasPermission(AccessRestriction.WRITE);
         final boolean acceptable = handler.canAccept(request);
-        final IAEFluidStack leftover = (IAEFluidStack) handler
-            .injectItems(request, Actionable.MODULATE, PocketAeChannelOps.actionSource());
-        final long leftoverSize = leftover == null ? 0L : leftover.getStackSize();
-        final PocketReceipt receipt = PocketReceipt.classify(true, writable, acceptable, requested, leftoverSize);
-        // ★R95 S5：moved 留在 long 域（requested ≤ 头值 ≤ int 顶 ⇒ Outcome 的 int 收口无损）；
-        // 扣 tank 走 long 原语（真值域），注回仍按 AE2 的 FluidStack 探针造（int 种子 + setStackSize）。
-        final long moved = Math.max(0L, requested - leftoverSize);
-        if (moved > 0 && ops.session()
-            .drainOwnTankL(source.slot, moved) < moved) {
-            final IAEFluidStack back = request.copy();
-            back.setStackSize(moved);
-            if (back != null) {
-                handler.injectItems(back, Actionable.MODULATE, PocketAeChannelOps.actionSource());
-            }
+        if (!writable || !acceptable) return new PocketChannelOps.Outcome(
+            PocketReceipt.classify(true, writable, acceptable, requested, requested),
+            0);
+        if (!(ops.session() instanceof PocketRuntimeSession runtime))
+            return new PocketChannelOps.Outcome(PocketReceipt.NO_ACCESS, 0);
+        PocketTransferReservation reserved = runtime
+            .reserveOutgoingFluid(source.slot, offered, requested, diskuuid + "#" + typeId);
+        if (reserved == null) return new PocketChannelOps.Outcome(PocketReceipt.NO_ACCESS, 0);
+        try {
+            IAEFluidStack leftover = (IAEFluidStack) handler
+                .injectItems(request, Actionable.MODULATE, PocketAeChannelOps.actionSource());
+            long left = leftover == null ? 0L : leftover.getStackSize();
+            if (left < 0 || left > requested || leftover != null && !offered.isFluidEqual(leftover.getFluidStack()))
+                throw new IllegalStateException("Invalid fluid injection remainder");
+            runtime.completeOutgoing(reserved, left);
+            return new PocketChannelOps.Outcome(
+                PocketReceipt.classify(true, writable, acceptable, requested, left),
+                (int) (requested - left));
+        } catch (RuntimeException | LinkageError unknown) {
+            runtime.retainUnknownOutgoing(reserved, unknown);
             return new PocketChannelOps.Outcome(PocketReceipt.NO_ACCESS, 0);
         }
-        return new PocketChannelOps.Outcome(receipt, (int) moved);
     }
 
     /**

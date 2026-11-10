@@ -106,6 +106,32 @@ final class TeamWalletNativeScenario implements ProbeScenario {
                 "rejoin-preserves-team-funds",
                 manager.getWallet(member) == shared && shared.getCount(coin) == 20,
                 "Rejoin neither duplicates funds nor imports the personal snapshot");
+            Team damagedTeam = createOwnedTeam(context, outsider);
+            com.miaokatze.gtit.trade.NekoTeamData damaged = TeamDataProvider.getData(damagedTeam);
+            net.minecraft.nbt.NBTTagCompound rejected = new net.minecraft.nbt.NBTTagCompound();
+            rejected.setString("wallet", "damaged-wallet");
+            rejected.setString("repair-note", "native-preflight");
+            damaged.readFromNBT(rejected);
+            boolean denied = false;
+            try {
+                TeamManager.mergeTeams(damagedTeam, team);
+            } catch (IllegalStateException expected) {
+                denied = true;
+            }
+            context.check(
+                "merge-rejected-before-members",
+                denied && !damagedTeam.isMember(owner)
+                    && !damagedTeam.isMember(member)
+                    && TeamManager.getTeamByPlayer(owner) == team
+                    && TeamManager.getTeamByPlayer(member) == team
+                    && shared.getCount(coin) == 20,
+                "Actual transformed TeamManager rejects bad GTIT data before migrating members or ledger assets");
+            net.minecraft.nbt.NBTTagCompound kept = new net.minecraft.nbt.NBTTagCompound();
+            damaged.writeToNBT(kept);
+            context.check(
+                "merge-rejected-raw-data-kept",
+                rejected.equals(kept),
+                "Rejected datum remains repairable byte-for-byte");
             context.skip(
                 "team-command-network",
                 "Team invite UI, permission packets and real player connections require client probes");

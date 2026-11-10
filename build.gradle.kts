@@ -256,6 +256,19 @@ tasks.register<JavaExec>("runNekoMusicConfigTest") {
 
 tasks.named("check") { dependsOn("runNekoMusicConfigTest") }
 
+tasks.register<JavaExec>("runArchitectureBoundaryTest") {
+    group = "verification"
+    description = "Runs native team recovery, trade transaction, world-cache and magnet lifecycle regressions."
+    mainClass = "com.miaokatze.gtit.trade.ArchitectureBoundaryRegressionTest"
+    classpath = storeTestRuntimeClasspath + sourceSets.getByName("main").compileClasspath + neiTestRuntimeClasspath
+    val scratchDir = layout.buildDirectory.dir("architecture-boundary-test")
+    workingDir(scratchDir)
+    systemProperty("gtit.architecture.testScratch", "true")
+    doFirst { scratchDir.get().asFile.mkdirs() }
+}
+
+tasks.named("check") { dependsOn("runArchitectureBoundaryTest") }
+
 tasks.register<JavaExec>("runTestLabTest") {
     group = "verification"
     description = "Runs automation lab default gates, recovery bounds and report result invariants."
@@ -303,6 +316,11 @@ mapOf(
     "runPocketCursorDropTest" to "com.miaokatze.gtit.gui.pocket.PocketCursorDropTest",
     "runPocketCarrierRelocationTest" to "com.miaokatze.gtit.gui.pocket.PocketCarrierRelocationTest",
     "runPocketHeadlessCarrierTest" to "com.miaokatze.gtit.common.items.pocket.channel.PocketHeadlessCarrierTest",
+    "runGiftHostPlayerFileTest" to "com.miaokatze.gtit.gift.GiftHostPlayerFileTest",
+    "runPocketInjectionFailureTest" to "com.miaokatze.gtit.common.items.pocket.PocketInjectionFailureTest",
+    "runPocketRuntimeSessionTest" to "com.miaokatze.gtit.common.items.pocket.PocketRuntimeSessionTest",
+    "runPocketActionRuntimeTest" to "com.miaokatze.gtit.gui.pocket.PocketActionRuntimeTest",
+    "runPocketOptionalClassloadingTest" to "com.miaokatze.gtit.common.items.pocket.PocketOptionalClassloadingTest",
     "runVendingRequestAdmissionTest" to "com.miaokatze.gtit.gui.vm.VendingRequestAdmissionTest",
     "runHistoryPersistenceTest" to "com.miaokatze.gtit.trade.v2.HistoryPersistenceTest",
     "runGiftSystemTest" to "com.miaokatze.gtit.gift.GiftSystemTest",
@@ -315,6 +333,7 @@ mapOf(
     "runLootRegistrarTest" to "com.miaokatze.gtit.common.loot.LootRegistrarTest",
     "runTradePresetStoreTest" to "com.miaokatze.gtit.trade.preset.TradePresetStoreTest",
     "runTradePageSourceTest" to "com.miaokatze.gtit.trade.preset.TradePageSourceTest",
+    "runTradeEditTransactionTest" to "com.miaokatze.gtit.trade.TradeEditTransactionTest",
     "runGTITCommandTest" to "com.miaokatze.gtit.command.GTITCommandTest",
     "runStarterGiftAuditNbtTest" to "com.miaokatze.gtit.terminal.StarterGiftAuditNbtTest",
     "runTradePresetAccessTest" to "com.miaokatze.gtit.trade.preset.ui.TradePresetAccessTest"

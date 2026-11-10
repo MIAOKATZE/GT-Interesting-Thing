@@ -3,17 +3,16 @@ package com.miaokatze.gtit.crossmod.bq;
 import java.io.File;
 import java.io.IOException;
 import java.io.Reader;
-import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
+import com.miaokatze.miaokatzecore.api.io.AtomicFilePublisher;
 
 /** Filesystem-only stamp persistence, independent of the optional BetterQuesting runtime. */
 final class BqStampFile {
@@ -61,34 +60,23 @@ final class BqStampFile {
      * Atomic visibility is provided, not a power-loss/fsync durability guarantee.
      */
     static void write(File file, JsonObject stamp) throws IOException {
-        write(
-            file,
-            stamp,
-            (temporary, target) -> Files
-                .move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING));
+        write(file, stamp, (target, bytes) -> AtomicFilePublisher.publishAtomic(target, bytes));
     }
 
     @FunctionalInterface
     interface AtomicPublisher {
 
-        void publish(Path temporary, Path target) throws IOException;
+        void publish(Path target, byte[] bytes) throws IOException;
     }
 
     /** Package-local publication seam permits deterministic unsupported-atomic-move failure checks. */
     static void write(File file, JsonObject stamp, AtomicPublisher publisher) throws IOException {
         Path target = file.toPath()
             .toAbsolutePath();
-        Path directory = target.getParent();
-        // Also rejects a parent that exists as a regular file instead of a directory.
-        Files.createDirectories(directory);
-        Path temporary = Files.createTempFile(directory, file.getName() + ".", ".tmp");
-        try {
-            try (Writer writer = Files.newBufferedWriter(temporary, StandardCharsets.UTF_8)) {
-                new Gson().toJson(stamp, writer);
-            }
-            publisher.publish(temporary, target);
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
+        Files.createDirectories(target.getParent());
+        publisher.publish(
+            target,
+            new Gson().toJson(stamp)
+                .getBytes(StandardCharsets.UTF_8));
     }
 }

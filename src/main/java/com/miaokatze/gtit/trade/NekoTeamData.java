@@ -38,6 +38,14 @@ public class NekoTeamData implements ITeamData {
     /** Keep stale team callbacks and new history lookups attached to the surviving owner. */
     private NekoTeamData successor;
     private boolean legacyHistoryMigrated;
+    /** Keep a rejected datum attached: GTNHLib otherwise drops it on the next team save. */
+    private NBTTagCompound rejectedData;
+
+    public synchronized void requireUsable() {
+        if (rejectedData != null) throw new IllegalStateException(
+            "GTIT team data is damaged; repair the saved datum before using the team ledger");
+    }
+
     /** Receipts are persisted with history; reset retains them so migration replay cannot undo an admin reset. */
     private final Set<UUID> legacyHistoryReceipts = new HashSet<>();
 
@@ -50,6 +58,7 @@ public class NekoTeamData implements ITeamData {
     }
 
     private boolean applyLegacyHistory(UUID playerId, Map<UUID, NekoTradeHistory> records, boolean consume) {
+        requireUsable();
         if (successor != null) return consume ? successor.consumeLegacyHistory(playerId, records)
             : successor.applyLegacyHistory(playerId, records);
         if (legacyHistoryReceipts.contains(playerId)) return false;
@@ -65,11 +74,13 @@ public class NekoTeamData implements ITeamData {
     /**
      * 获取团队共享钱包
      */
-    public NekoWallet getWallet() {
+    public synchronized NekoWallet getWallet() {
+        requireUsable();
         return wallet;
     }
 
     public synchronized NekoTradeHistory getTradeHistory(UUID tradeGroupId) {
+        requireUsable();
         if (successor != null) return successor.getTradeHistory(tradeGroupId);
         if (tradeGroupId == null) {
             return new NekoTradeHistory();
@@ -78,6 +89,7 @@ public class NekoTeamData implements ITeamData {
     }
 
     public synchronized Map<UUID, NekoTradeHistory> getTradeHistoriesSnapshot() {
+        requireUsable();
         if (successor != null) return successor.getTradeHistoriesSnapshot();
         Map<UUID, NekoTradeHistory> snapshot = new HashMap<>();
         for (Map.Entry<UUID, NekoTradeHistory> entry : tradeHistories.entrySet()) {
@@ -97,6 +109,7 @@ public class NekoTeamData implements ITeamData {
     }
 
     public synchronized void resetAllTradeHistories() {
+        requireUsable();
         if (successor != null) {
             successor.resetAllTradeHistories();
             return;
@@ -107,11 +120,13 @@ public class NekoTeamData implements ITeamData {
     }
 
     public synchronized boolean isLegacyHistoryMigrated() {
+        requireUsable();
         if (successor != null) return successor.isLegacyHistoryMigrated();
         return legacyHistoryMigrated;
     }
 
     public synchronized void setLegacyHistoryMigrated(boolean migrated) {
+        requireUsable();
         if (successor != null) {
             successor.setLegacyHistoryMigrated(migrated);
             return;
@@ -121,6 +136,15 @@ public class NekoTeamData implements ITeamData {
 
     @Override
     public synchronized void writeToNBT(NBTTagCompound tag) {
+        if (rejectedData != null) {
+            for (String key : (Set<String>) rejectedData.func_150296_c()) {
+                tag.setTag(
+                    key,
+                    rejectedData.getTag(key)
+                        .copy());
+            }
+            return;
+        }
         NBTTagCompound walletTag = wallet.writeToNBT();
         tag.setTag("wallet", walletTag);
         tag.setBoolean("legacyHistoryMigrated", legacyHistoryMigrated);
@@ -147,6 +171,16 @@ public class NekoTeamData implements ITeamData {
     @Override
     public synchronized void readFromNBT(NBTTagCompound tag) {
         if (successor != null) throw new IllegalStateException("Cannot reload consumed team data");
+        try {
+            readValidated(tag);
+            rejectedData = null;
+        } catch (RuntimeException failure) {
+            rejectedData = tag == null ? new NBTTagCompound() : (NBTTagCompound) tag.copy();
+            LOG.error("Rejected GTIT team datum retained unchanged; wallet/history access disabled", failure);
+        }
+    }
+
+    private void readValidated(NBTTagCompound tag) {
         if (tag != null && tag.hasKey("wallet") && !tag.hasKey("wallet", 10)) {
             throw new IllegalArgumentException("Invalid team wallet compound");
         }
@@ -203,6 +237,8 @@ public class NekoTeamData implements ITeamData {
             synchronized (other) {
                 if (other.successor != null) return;
                 synchronized (target) {
+                    other.requireUsable();
+                    target.requireUsable();
                     // A stale target names an already consumed team; do not relabel the actual root.
                     if (target == this && surviving != null) target.wallet.setTeamId(surviving.getTeamId());
                     other.wallet.transferAllTo(target.wallet);
@@ -240,6 +276,8 @@ public class NekoTeamData implements ITeamData {
             if (source == target) return;
             synchronized (source) {
                 synchronized (target) {
+                    source.requireUsable();
+                    target.requireUsable();
                     for (Map.Entry<UUID, NekoTradeHistory> entry : source.tradeHistories.entrySet()) {
                         target.mergeTradeHistory(entry.getKey(), entry.getValue());
                     }

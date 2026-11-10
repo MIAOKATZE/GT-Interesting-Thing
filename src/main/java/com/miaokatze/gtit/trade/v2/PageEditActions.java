@@ -194,11 +194,10 @@ final class PageEditActions {
                 if (moved) {
                     if (findPageEntry(data, fallback) == null) data.getPages()
                         .add(new NekoPageEntry(fallback, "其他", "minecraft:chest", 0, false));
-                    NekoTradeConfig.save(tradeData);
                 }
             }
 
-            NekoPageConfig.save(data);
+            NekoPageConfig.saveWithTrades(data, tradeData);
             NekoPageRegistry.reload();
             NekoTradeRegistryV2.initialize();
             NekoTradeNetworkManager.sendSyncToAll();

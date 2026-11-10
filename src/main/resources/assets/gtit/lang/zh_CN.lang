@@ -956,3 +956,5 @@ gtit.trade.tooltip.slot=槽 %s · 固定项目
 gtit.trade.tooltip.ore_output=矿词 [%s] · 随机物品
 gtit.trade.tooltip.ore_input=矿词 [%s]
 gtit.trade.tooltip.more_options=  … 另 %s 个候选（同槽任选一项）
+
+gtit.pocket.transfer.quarantined=上传回执待核定；自动上传已暂停，请管理员检查。

@@ -5,9 +5,11 @@ import java.util.UUID;
 import net.minecraft.entity.player.EntityPlayer;
 
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
+import com.miaokatze.gtit.common.items.pocket.magnet.PocketMagnetClaims;
 
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.PlayerEvent;
+import cpw.mods.fml.common.gameevent.TickEvent;
 
 /**
  * 口袋服务端内存状态的<b>真挂钩</b>（R57c④：没有它，{@code PocketChannelManager} 自己承诺的
@@ -42,6 +44,7 @@ public final class PocketLifecycleHandler {
         PocketSessions.forget(uuid);
         PocketChannelManager.INSTANCE.forget(uuid);
         PocketDistillDriver.forget(uuid);
+        PocketMagnetClaims.forget(uuid);
         // 兜底：口袋被塞进箱子（不再被 tick）的会话，driver 永远等不到它的那一拍 ⇒ 只能这样收。
         // 以"有人离线"为节拍（低频事件），代价是一次 O(在线会话数) 扫描，且每条都是先落盘再摘。
         PocketSessions.sweepOrphans();
@@ -58,6 +61,12 @@ public final class PocketLifecycleHandler {
         PocketChannelManager.INSTANCE.reset();
         PocketDistillDriver.reset();
         PocketCellProbe.INSTANCE.reset();
+        PocketMagnetClaims.reset();
+    }
+
+    @SubscribeEvent
+    public void onServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase == TickEvent.Phase.END) PocketMagnetClaims.advanceTick();
     }
 
     private static UUID playerId(EntityPlayer player) {

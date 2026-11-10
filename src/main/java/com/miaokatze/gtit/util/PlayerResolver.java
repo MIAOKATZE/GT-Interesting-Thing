@@ -43,15 +43,9 @@ public final class PlayerResolver {
         return findUuidFromUserCache(playerName, getUserCacheFile());
     }
 
-    /**
-     * 当前世界的 usercache.json 文件（世界目录的上级 = 服务器根目录）
-     */
+    /** Same file passed to the native PlayerProfileCache, independent of world save layout. */
     public static File getUserCacheFile() {
-        File worldDir = MinecraftServer.getServer()
-            .getEntityWorld()
-            .getSaveHandler()
-            .getWorldDirectory();
-        return new File(worldDir.getParentFile(), "usercache.json");
+        return MinecraftServer.field_152367_a;
     }
 
     /**

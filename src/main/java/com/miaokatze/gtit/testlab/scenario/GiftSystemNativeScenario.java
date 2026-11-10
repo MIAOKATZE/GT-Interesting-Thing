@@ -924,7 +924,7 @@ final class GiftSystemNativeScenario implements ProbeScenario {
     }
 
     /** Scope never spans a tick; no live registry/ledger path is written and every reference is restored in finally. */
-    private static final class GiftScope implements AutoCloseable {
+    static final class GiftScope implements AutoCloseable {
 
         private final Field file = field(GiftRegistry.class, "file");
         private final Field state = field(GiftRegistry.class, "state");
@@ -942,6 +942,10 @@ final class GiftSystemNativeScenario implements ProbeScenario {
 
         @SuppressWarnings("unchecked")
         GiftScope(Path root) throws Exception {
+            this(root, false);
+        }
+
+        GiftScope(Path root, boolean resume) throws Exception {
             oldFile = file.get(GiftRegistry.INSTANCE);
             oldState = state.get(GiftRegistry.INSTANCE);
             oldDirectory = directory.get(GiftService.INSTANCE);
@@ -950,13 +954,21 @@ final class GiftSystemNativeScenario implements ProbeScenario {
             oldLedgers = new HashMap<>(ledgers);
             Path grants = root.resolve("grants");
             Files.createDirectories(grants);
-            GiftRegistry.Snapshot snapshot = new GiftRegistry.Snapshot();
-            snapshot.defaultsEnabled = false;
+            GiftRegistry.Snapshot snapshot;
             Path config = root.resolve("gifts.json");
-            Files.write(
-                config,
-                new Gson().toJson(snapshot)
-                    .getBytes(StandardCharsets.UTF_8));
+            if (resume) {
+                snapshot = new Gson().fromJson(
+                    new String(Files.readAllBytes(config), StandardCharsets.UTF_8),
+                    GiftRegistry.Snapshot.class);
+                if (snapshot == null) throw new IllegalStateException("Missing host probe registry");
+            } else {
+                snapshot = new GiftRegistry.Snapshot();
+                snapshot.defaultsEnabled = false;
+                Files.write(
+                    config,
+                    new Gson().toJson(snapshot)
+                        .getBytes(StandardCharsets.UTF_8));
+            }
             file.set(GiftRegistry.INSTANCE, config);
             state.set(GiftRegistry.INSTANCE, snapshot);
             directory.set(GiftService.INSTANCE, grants);

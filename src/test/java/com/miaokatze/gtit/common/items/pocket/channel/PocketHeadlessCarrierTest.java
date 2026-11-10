@@ -1,6 +1,5 @@
 package com.miaokatze.gtit.common.items.pocket.channel;
 
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.util.UUID;
 
@@ -18,6 +17,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketCarrierIdentity;
 import com.miaokatze.gtit.common.items.pocket.PocketChannelManager;
 import com.miaokatze.gtit.common.items.pocket.PocketChannelState;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
+import com.miaokatze.gtit.common.items.pocket.PocketRuntimeSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
 import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
@@ -79,11 +79,14 @@ public final class PocketHeadlessCarrierTest {
         inventory.writeTo(original.getTagCompound());
         inventory.markClean();
         // Exercise the real session without requiring a launched world or a configured AE grid.
-        Class<?> type = Class.forName(PocketChannelSessions.class.getName() + "$HeadlessSession");
-        Constructor<?> constructor = type
-            .getDeclaredConstructor(UUID.class, EntityPlayer.class, ItemStack.class, PocketInventory.class);
-        constructor.setAccessible(true);
-        PocketSession session = (PocketSession) constructor.newInstance(uuid, player, original, inventory);
+        PocketSession session = new PocketRuntimeSession(
+            () -> player,
+            () -> null,
+            -1,
+            original,
+            false,
+            false,
+            inventory);
         PocketSessions.register(session);
         try {
             PocketChannelState state = PocketChannelManager.INSTANCE.stateOf(uuid);
@@ -123,6 +126,8 @@ public final class PocketHeadlessCarrierTest {
                 session.carrierStack() == null && !session.isHeldByOwner() && state.ticksUntilDue() == ticks - 1,
                 "duplicate tokens fail closed before driver mutation");
             player.inventory.mainInventory[2] = null;
+            NBTTagCompound previousAuthority = (NBTTagCompound) moved.getTagCompound()
+                .copy();
             PocketCarrierIdentity.capture(moved, true);
             inventory.drainOwnTank(0, 100);
             session.persistFinal();
@@ -131,6 +136,22 @@ public final class PocketHeadlessCarrierTest {
                     && PocketInventory.readFrom(moved.getTagCompound())
                         .tankTruthAt(0) == 600,
                 "a reopened carrier revokes the old headless writer without losing its dirty marker");
+            boolean retirementDenied = false;
+            try {
+                PocketSessions.forget(uuid);
+            } catch (IllegalStateException expected) {
+                retirementDenied = true;
+            }
+            check(
+                retirementDenied && PocketSessions.peek(uuid) == session,
+                "failed final persistence retains the old model instead of silently dropping pending contents");
+            // Restore only this synthetic fixture's authority to exercise recovery and release the test session.
+            moved.setTagCompound(previousAuthority);
+            session.persistFinal();
+            check(
+                !inventory.isDirty() && PocketInventory.readFrom(moved.getTagCompound())
+                    .tankTruthAt(0) == 500,
+                "repairing this fixture permits the pending state to persist exactly once");
         } finally {
             PocketSessions.forget(uuid);
             PocketChannelManager.INSTANCE.reset();

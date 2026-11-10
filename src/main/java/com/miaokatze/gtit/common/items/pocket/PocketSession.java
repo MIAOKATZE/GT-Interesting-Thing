@@ -15,7 +15,7 @@ import net.minecraftforge.fluids.FluidStack;
  * （每 tick 一次），而口袋的全部内容（135 格物品、12 格蒸馏输入、六个流体槽、源质表、绑定表、ghost 配置）
  * 平时只活在面板会话的内存对象里，<b>关屏才写 NBT</b>（R22/R53c 的"一次读一次写"）。
  * 于是两头都不通：tick 侧要读就得每 tick 现解 NBT（明令禁止），不读就只能读会话。
- * 本接口就是"tick 侧允许读的那一个东西"，实现者是面板（{@code gui/pocket/NekoPocketPanel}），
+ * 本接口就是"tick 侧允许读的那一个东西"，实现者是独立 {@link PocketRuntimeSession}（面板与免 GUI 通道共用），
  * 因此<b>内存里始终只有一份真相</b>。
  * <p>
  * <b>会话在界面关闭后继续存活</b>是刻意的（R57c①：30 秒通道要求关掉界面仍继续；需求 2 的蒸馏

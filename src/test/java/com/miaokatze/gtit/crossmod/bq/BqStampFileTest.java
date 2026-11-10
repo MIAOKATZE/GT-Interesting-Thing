@@ -135,19 +135,20 @@ public final class BqStampFileTest {
         JsonObject replacement = new JsonObject();
         replacement.addProperty("gtit", "new");
         int[] attempts = { 0 };
-        expectIOException(() -> BqStampFile.write(stamp, replacement, (temporary, target) -> {
+        expectIOException(() -> BqStampFile.write(stamp, replacement, (target, bytes) -> {
             attempts[0]++;
-            check(Files.isRegularFile(temporary), "complete sibling temp exists before publication");
             check(
-                read(temporary.toFile()).get("gtit")
+                new JsonParser().parse(new String(bytes, StandardCharsets.UTF_8))
+                    .getAsJsonObject()
+                    .get("gtit")
                     .getAsString()
                     .equals("new"),
-                "temporary JSON fully written and closed");
+                "complete JSON prepared before shared publisher is called");
             check(
                 Arrays.equals(original, Files.readAllBytes(target)),
                 "old regular stamp untouched before publication");
             throw new AtomicMoveNotSupportedException(
-                temporary.toString(),
+                target.toString(),
                 target.toString(),
                 "synthetic filesystem refusal");
         }));

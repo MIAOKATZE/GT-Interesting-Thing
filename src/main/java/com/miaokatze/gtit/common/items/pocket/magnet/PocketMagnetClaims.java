@@ -3,6 +3,7 @@ package com.miaokatze.gtit.common.items.pocket.magnet;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -10,44 +11,21 @@ import java.util.UUID;
 import net.minecraft.item.ItemStack;
 
 /**
- * 磁力位移的<b>进程内认领表</b>（★R96 S6，候选 B 的<b>唯一</b>新状态；计划 §5 S6 允许清单里的"磁力支撑件"）。
- * <p>
- * <b>为什么非要有跨拍状态</b>（取证结论，不是偏好）：服务端<b>同一拍</b>内 {@code setPosition} + {@code setDead()}
- * 客户端<b>什么都看不见</b>——实体本来就在它的视野里，服务端只发一条"移除"，位置更新不会单独成帧
- * （{@code r96-eva2.md §2.3} 的"关键物理事实"）。所以"东西飞到我身上"这个观感<b>在结构上必须跨拍</b>：
- * 先位移（本表登记），下一拍再收口（入账 + 摘除同一拍做完）。
- * <p>
- * <b>为什么它不是第二份存档真相</b>——三条同时成立才允许它存在：
- * <ol>
- * <li><b>不落 NBT</b>：整张表一个字节都不写档（R53c 禁每 tick 写档；S6 明令禁止把认领状态塞进栈 NBT）。</li>
- * <li><b>可整体重建且丢掉无害</b>：被认领的实体在认领期间<b>内容一个字节都没被改过</b>（入账只发生在收口那一拍，
- * 且入账与 {@code setDead()} 同拍）。条目丢了最坏的结果是那件掉落物留在原地由原版重新判拾取 ⇒
- * <b>既不丢件也不复制</b>。这是它和"写死的绝对到期"（R59e 要消灭的形态）的本质区别：本表不持有任何到期<b>时刻</b>，
- * 只有逐拍递减的<b>整数</b>，跨维重建至多让某一拍早到或晚到。</li>
- * <li><b>有界</b>：每人最多 {@value #MAX_CLAIMS_PER_OWNER} 条（超了就这一轮不吸，下一轮再说），
- * 每条最长 {@value #CLAIM_STALE_TICKS} 拍（载体栈消失／玩家离线时靠它自然淘汰，防残留）。
- * 本类不提供 {@code clearAll} 这类"承诺了但没人调"的收口口——按 {@code PocketSessions} 的纪律，
- * 淘汰必须由调用路径自己完成（见 {@link #ripeClaims}）。</li>
- * </ol>
- * <p>
- * <b>成本口径</b>：驱动每拍问一次 {@link #ripeClaims}；无认领时是一次 {@code Map.get} + 空表判，
- * <b>零分配、零遍历、零 NBT</b>。有认领时按条 aging，条数上界见上。
- * <p>
- * <b>多人／多枚口袋的仲裁</b>：条目按<b>载体栈的对象身份</b>归属——A 口袋吸的东西只由 A 口袋那一拍收口，
- * 不因为同玩家另一枚口袋先跑到就把东西塞进另一枚。跨玩家的重复抓取由 {@link #isClaimed} 的全局 id 索引挡住
- * （配合驱动侧 {@code getClosestPlayerToEntity} 的最近玩家判据，S6 验收 4）。
- * <p>
- * 单线程访问（服务器主线程），与 {@code PocketSessions}／{@code PocketChannelManager} 同口径，不加锁。
+ * Server-thread runtime claims for the two-stage magnet transfer. Claims contain no inventory
+ * truth and never change entity contents; loss/release merely leaves the drop to native pickup.
+ * Each owner has at most MAX_CLAIMS_PER_OWNER claims. Server END ticks expire them independently
+ * of carrier activity; logout and world shutdown explicitly release the owner's runtime state.
+ * Hover progress belongs to the claiming carrier, so another pocket cannot accelerate it.
  */
 public final class PocketMagnetClaims {
 
     /** 单人同时在飞的认领上限（★有界：GTNH 矿机一次吐几千件时本表不跟着长）。 */
     public static final int MAX_CLAIMS_PER_OWNER = 64;
 
-    /** 一条认领的最长寿命（tick）：载体栈消失／玩家离线时靠它自然淘汰。 */
+    /** 一条认领的最长寿命（服务端 END tick），与载体是否继续 tick 无关。 */
     public static final int CLAIM_STALE_TICKS = 100;
 
-    /** 一条认领：实体 id + 归属载体（对象身份）+ 两个逐拍递减的整数。 */
+    /** 一条认领：实体 id、归属载体及各由载体/服务端推进的悬停与寿命计数。 */
     public static final class Claim {
 
         private final int entityId;
@@ -77,13 +55,10 @@ public final class PocketMagnetClaims {
             return hoverLeft <= 0;
         }
 
-        /** 推进一拍：悬停与寿命各减一（★递减的是整数，不是"和绝对时刻比大小"）。 */
+        /** 归属载体推进悬停；寿命由 advanceTick 独立推进。 */
         private void advance() {
             if (hoverLeft > 0) {
                 hoverLeft--;
-            }
-            if (staleLeft > 0) {
-                staleLeft--;
             }
         }
     }
@@ -132,12 +107,41 @@ public final class PocketMagnetClaims {
         return LIVE_IDS.contains(entityId);
     }
 
+    /** Server END tick owns expiry, including when no carrier is ticking. No entity/NBT is touched. */
+    public static void advanceTick() {
+        Iterator<Map.Entry<UUID, Owner>> owners = OWNERS.entrySet()
+            .iterator();
+        while (owners.hasNext()) {
+            Owner owner = owners.next()
+                .getValue();
+            for (int i = owner.claims.size() - 1; i >= 0; i--) {
+                Claim claim = owner.claims.get(i);
+                if (--claim.staleLeft <= 0) {
+                    owner.claims.remove(i);
+                    LIVE_IDS.remove(claim.entityId);
+                }
+            }
+            if (owner.claims.isEmpty() && owner.backoffScans <= 0) owners.remove();
+        }
+    }
+
+    /** Runtime claims own no items. Releasing an owner leaves every dropped entity unchanged. */
+    public static void forget(UUID owner) {
+        Owner removed = OWNERS.remove(owner);
+        if (removed != null) for (Claim claim : removed.claims) LIVE_IDS.remove(claim.entityId);
+    }
+
+    public static void reset() {
+        OWNERS.clear();
+        LIVE_IDS.clear();
+    }
+
     /**
-     * 推进某一玩家的全部认领（悬停与寿命各减一拍），把<b>本拍该收口</b>且<b>归属这枚载体栈</b>的条目
+     * 推进这枚载体的悬停，把<b>本拍该收口</b>且<b>归属这枚载体栈</b>的条目
      * 追加进 {@code out}（★追加而非返回新表：调用方复用一份缓冲，热路径零分配）。
      * <p>
-     * 寿命耗尽的条目在这里被<b>就地淘汰</b>（载体栈已被丢掉／玩家离线 ⇒ 没人会再收口它）；
-     * 归属别的栈的条目只 aging，由那一枚自己收口。
+     * 寿命由 {@link #advanceTick()} 在服务端 END 推进，载体停止 tick 仍会过期。
+     * 另一枚口袋既不能收取，也不能加速本载体的悬停。
      *
      * @return {@code out} 里的条数（空表早退返回 0，且不碰 {@code out}）
      */
@@ -156,15 +160,10 @@ public final class PocketMagnetClaims {
         }
         for (int i = entry.claims.size() - 1; i >= 0; i--) {
             final Claim claim = entry.claims.get(i);
-            claim.advance();
-            if (claim.staleLeft <= 0) {
-                entry.claims.remove(i);
-                LIVE_IDS.remove(claim.entityId);
-                continue;
-            }
             if (claim.carrier != carrier) {
                 continue;
             }
+            claim.advance();
             if (claim.isRipe()) {
                 out.add(claim);
             }

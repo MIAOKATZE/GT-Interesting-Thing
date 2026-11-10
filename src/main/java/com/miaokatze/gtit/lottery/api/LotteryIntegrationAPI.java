@@ -44,7 +44,7 @@ import cpw.mods.fml.common.registry.GameRegistry;
  * 与贸易整合 API（{@code NekoTradeIntegrationAPI}）同构的三通道注册，收敛到同一应用路径：
  * <ul>
  * <li>直连：其它 mod 类路径调用 {@link #registerLotteryPool(LotteryPoolGroupDef)}
- * （线程安全——入队，服务器就绪时应用；运行期注册则立即应用）</li>
+ * （入队快照；服务器运行期必须在主线程调用，随后立即应用）</li>
  * <li>IMC：{@code FMLInterModComms.sendMessage("gtit", "gtit:registerLotteryPool", nbt)}，
  * NBT 载荷含 {@code groupJson} 字符串（{@link LotteryPoolGroupDef} 的 JSON），
  * 由 mod 主类的 IMC 事件处理器路由进 {@link #handleImcMessages}</li>
@@ -149,7 +149,7 @@ public final class LotteryIntegrationAPI {
     // ==================== 注册入口（三通道） ====================
 
     /**
-     * 注册一个外部抽奖池组（线程安全）。
+     * 注册一个外部抽奖池组。运行期必须在服务器主线程调用；队列持有定义快照。
      * <p>
      * 服务器未就绪（无世界）时仅入队，由 {@link #applyQueuedPools()} 在
      * serverStarted（抽奖配置装载之后）消费；服务器运行期调用则立即应用（热注册，
@@ -162,7 +162,7 @@ public final class LotteryIntegrationAPI {
             LOG.warn("[LotteryAPI] 抽奖池组定义无效（groupId 缺失或不合法），已丢弃");
             return;
         }
-        PENDING.offer(def);
+        PENDING.offer(GSON.fromJson(GSON.toJson(def), LotteryPoolGroupDef.class));
         LOG.info(
             "[LotteryAPI] 抽奖池组已入队等待应用: {}（version={}，pools={}）",
             def.getGroupId(),

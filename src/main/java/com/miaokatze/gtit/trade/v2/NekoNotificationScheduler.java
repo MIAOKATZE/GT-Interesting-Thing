@@ -15,7 +15,6 @@ import com.gtnewhorizon.gtnhlib.teams.Team;
 import com.miaokatze.gtit.trade.TeamDataProvider;
 import com.miaokatze.gtit.util.PlayerLookup;
 
-import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 
@@ -88,13 +87,7 @@ public class NekoNotificationScheduler {
      */
     private void checkAllNotifications() {
         try {
-            // 防御性检查：客户端逻辑跳过（服务器未启动由 PlayerLookup 内部静默跳过）
-            if (FMLCommonHandler.instance()
-                .getSide()
-                .isClient()) {
-                return;
-            }
-
+            // 已由 ServerTickEvent.END 调用；集成服的物理 CLIENT 也必须执行。
             // 遍历所有在线玩家（O2-12：PlayerLookup 统一遍历）
             PlayerLookup.forEachOnlinePlayer(player -> {
                 UUID playerId = player.getUniqueID();

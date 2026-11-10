@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.NBTTagList;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -26,6 +27,21 @@ public final class BqQuestPackTest {
 
     public static void main(String[] args) throws Exception {
         if (!MinecraftTestBootstrap.enter(BqQuestPackTest.class, args)) return;
+        // Detached preflight now exercises the same registered parsers as postInit in game.
+        betterquesting.core.BetterQuesting.logger = org.apache.logging.log4j.LogManager.getLogger("BQ-test");
+        bq_standard.core.BQ_Standard.logger = betterquesting.core.BetterQuesting.logger;
+        betterquesting.questing.tasks.TaskRegistry.INSTANCE
+            .register(bq_standard.tasks.factory.FactoryTaskCheckbox.INSTANCE);
+        betterquesting.questing.tasks.TaskRegistry.INSTANCE
+            .register(bq_standard.tasks.factory.FactoryTaskCrafting.INSTANCE);
+        betterquesting.questing.tasks.TaskRegistry.INSTANCE
+            .register(bq_standard.tasks.factory.FactoryTaskRetrieval.INSTANCE);
+        betterquesting.questing.rewards.RewardRegistry.INSTANCE
+            .register(bq_standard.rewards.factory.FactoryRewardItem.INSTANCE);
+        betterquesting.questing.rewards.RewardRegistry.INSTANCE
+            .register(bq_standard.rewards.factory.FactoryRewardChoice.INSTANCE);
+        betterquesting.questing.rewards.RewardRegistry.INSTANCE
+            .register(bq_standard.rewards.factory.FactoryRewardQuestCompletion.INSTANCE);
         Map<String, Runnable> cases = new LinkedHashMap<>();
         cases.put("front-row identifiers match shipped full UUID high bits", BqQuestPackTest::frontRowIdentifiers);
         cases.put("complete pack caches each resource once", BqQuestPackTest::completePack);
@@ -59,6 +75,11 @@ public final class BqQuestPackTest {
             "all shipped pack identities and intentional empty pack pass preflight",
             BqQuestPackTest::shippedPacks);
         cases.put("unrecognized pack roots retain arbitrary UUID namespaces", BqQuestPackTest::customPack);
+        cases.put("nested malformed prerequisite rejected before live refresh", BqQuestPackTest::invalidPrerequisite);
+        cases.put(
+            "nested JSON UUID type aliases rejected before NBT conversion",
+            BqQuestPackTest::nestedResourceIdentity);
+        cases.put("native nested reward parser failure rejects the pack", BqQuestPackTest::invalidNativeReward);
         TestRunner.run(BqQuestPackTest.class, cases);
     }
 
@@ -104,6 +125,44 @@ public final class BqQuestPackTest {
         });
         require(resources.size() == 4 && calls.size() == 4, "all resource types must be preflighted");
         for (int count : calls.values()) require(count == 1, "resource was read twice");
+    }
+
+    private static void invalidPrerequisite() {
+        rejected(() -> BqQuestInjector.prepareResources(lines(), path -> {
+            NBTTagCompound definition = tag();
+            if ("quest".equals(path)) {
+                NBTTagList prerequisites = new NBTTagList();
+                NBTTagCompound missingLow = new NBTTagCompound();
+                missingLow.setLong("questIDHigh", 1);
+                prerequisites.appendTag(missingLow);
+                definition.setTag("preRequisites", prerequisites);
+            }
+            return definition;
+        }));
+    }
+
+    private static void nestedResourceIdentity() {
+        JsonObject resource = new JsonObject();
+        JsonObject nested = new JsonObject();
+        nested.addProperty("questIDHigh:3", 1);
+        resource.add("nested", nested);
+        rejected(() -> BqQuestInjector.validateResourceIds(resource));
+    }
+
+    private static void invalidNativeReward() {
+        rejected(() -> BqQuestInjector.prepareResources(lines(), path -> {
+            NBTTagCompound definition = tag();
+            if ("quest".equals(path)) {
+                NBTTagCompound reward = new NBTTagCompound();
+                reward.setInteger("index", 0);
+                reward.setString("rewardID", "bq_standard:questcompletion");
+                reward.setString("questID", "this-is-not-a-valid-uuid-value-for-any-quest");
+                NBTTagList rewards = new NBTTagList();
+                rewards.appendTag(reward);
+                definition.setTag("rewards", rewards);
+            }
+            return definition;
+        }));
     }
 
     private static void missing(String missing) {

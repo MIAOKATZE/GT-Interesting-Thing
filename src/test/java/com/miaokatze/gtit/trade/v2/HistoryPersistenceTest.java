@@ -1,5 +1,7 @@
 package com.miaokatze.gtit.trade.v2;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.File;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -13,6 +15,7 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.UUID;
 
+import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.nbt.NBTTagString;
@@ -20,6 +23,7 @@ import net.minecraft.nbt.NBTTagString;
 import com.miaokatze.gtit.testutil.SimpleAssert;
 import com.miaokatze.gtit.testutil.TestRunner;
 import com.miaokatze.gtit.trade.NekoTeamData;
+import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.util.AtomicNbtFile;
 
 /** Actual manager, NBT, files, team-data receipts and failed replacement paths; no model ledger. */
@@ -626,27 +630,70 @@ public final class HistoryPersistenceTest {
     private static void teamLoadIsTransactional() {
         NekoTeamData data = new NekoTeamData();
         UUID group = UUID.randomUUID();
-        data.getWallet()
-            .addCount("neko", 19);
-        data.getTradeHistory(group)
-            .recordTrade(0);
-        NBTTagCompound invalid = new NBTTagCompound();
-        data.writeToNBT(invalid);
+        NekoWallet previousWallet = data.getWallet();
+        NekoTradeHistory previousHistory = data.getTradeHistory(group);
+        previousWallet.addCount("neko", 19);
+        previousHistory.recordTrade(0);
+        NBTTagCompound valid = new NBTTagCompound();
+        data.writeToNBT(valid);
+        NBTTagCompound invalid = (NBTTagCompound) valid.copy();
         invalid.getCompoundTag("wallet")
             .setInteger("neko", 0);
         invalid.getTagList("tradeHistory", 10)
             .getCompoundTagAt(0)
             .setString("groupId", "broken");
-        rejected(() -> data.readFromNBT(invalid), "malformed team history rejected");
+        invalid.setByteArray("repair-evidence", new byte[] { 0, 7, -1, 19 });
+        byte[] rejectedBytes = encodedTeamData(invalid);
+
+        // GTNHLib TeamDataSaver attaches the datum only after readFromNBT returns. Throwing
+        // here drops the whole GTIT section on its next save. Retain it, but fence services.
+        data.readFromNBT(invalid);
+        rejected(data::getWallet, "malformed team datum cannot expose a wallet or trigger personal fallback");
+        rejected(() -> data.getTradeHistory(group), "malformed team datum cannot expose fresh restrictions");
+        rejected(data::resetAllTradeHistories, "malformed team datum cannot reset restriction history");
+        SimpleAssert.eq(19, previousWallet.getCount("neko"), "failed history decode never partly replaces team wallet");
+        SimpleAssert.eq(1L, previousHistory.getTradeCount(), "previous team history retained transactionally");
+
+        // The caller may reuse/mutate its input after loading; preservation must own a copy.
+        invalid.removeTag("repair-evidence");
+        invalid.getCompoundTag("wallet")
+            .setInteger("neko", 77);
+        NBTTagCompound saved = new NBTTagCompound();
+        data.writeToNBT(saved);
+        SimpleAssert.that(
+            Arrays.equals(rejectedBytes, encodedTeamData(saved)),
+            "save preserves exact rejected NBT bytes, including unknown repair evidence");
+        NekoTeamData reloaded = new NekoTeamData();
+        reloaded.readFromNBT(saved);
+        rejected(reloaded::getWallet, "save and reload cannot turn damaged team data into a new wallet");
+        rejected(() -> reloaded.getTradeHistory(group), "save and reload cannot reopen a redemption");
+        NBTTagCompound savedAgain = new NBTTagCompound();
+        reloaded.writeToNBT(savedAgain);
+        SimpleAssert.that(
+            Arrays.equals(rejectedBytes, encodedTeamData(savedAgain)),
+            "repeated saves retain the original rejected bytes");
+
+        data.readFromNBT(valid);
+        SimpleAssert.that(data.getWallet() == previousWallet, "valid repair keeps the canonical wallet object");
         SimpleAssert.eq(
             19,
             data.getWallet()
                 .getCount("neko"),
-            "failed history decode never partly replaces team wallet");
+            "valid repair restores wallet service");
         SimpleAssert.eq(
             1L,
             data.getTradeHistory(group)
                 .getTradeCount(),
-            "previous team history retained transactionally");
+            "valid repair restores prior restrictions");
+    }
+
+    private static byte[] encodedTeamData(NBTTagCompound tag) {
+        try {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            CompressedStreamTools.write(tag, new DataOutputStream(bytes));
+            return bytes.toByteArray();
+        } catch (java.io.IOException failure) {
+            throw new AssertionError(failure);
+        }
     }
 }

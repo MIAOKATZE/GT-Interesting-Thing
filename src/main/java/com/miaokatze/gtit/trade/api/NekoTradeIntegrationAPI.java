@@ -103,7 +103,7 @@ public final class NekoTradeIntegrationAPI {
     // ==================== 注册入口（双通道） ====================
 
     /**
-     * 注册一个外部贸易组（线程安全）。
+     * 注册一个外部贸易组。运行期必须在服务器主线程调用；入队会复制定义，调用方后续修改不会改变待应用内容。
      * <p>
      * 服务器未就绪（无世界）时仅入队，由 {@link #applyQueuedGroups()} 在
      * serverStarted 消费；服务器运行期调用则立即应用（热注册，
@@ -116,7 +116,7 @@ public final class NekoTradeIntegrationAPI {
             LOG.warn("[TradeAPI] 贸易组定义无效（groupId 缺失或不合法），已丢弃");
             return;
         }
-        PENDING.offer(def);
+        PENDING.offer(deepCopy(def, NekoTradeGroupDef.class));
         LOG.info(
             "[TradeAPI] 贸易组已入队等待应用: {}（version={}，trades={}，pages={}）",
             def.getGroupId(),
@@ -368,7 +368,7 @@ public final class NekoTradeIntegrationAPI {
     }
 
     /**
-     * 消费待应用队列（serverStarted 在内置组之后调用，或运行期注册时内部触发）。
+     * 在服务器主线程消费待应用队列（serverStarted 或运行期注册）；锁只串行化配置编辑，不代替世界线程约束。
      */
     public static void applyQueuedGroups() {
         if (PENDING.isEmpty()) return;
@@ -411,17 +411,8 @@ public final class NekoTradeIntegrationAPI {
                 LOG.info("[TradeAPI] 贸易组 {} 已注册且源版本未变（{}），跳过（尊重玩家对 tab 文件的编辑）", def.getGroupId(), def.getVersion());
                 return false;
             }
-            if (record != null) {
-                LOG.info(
-                    "[TradeAPI] 贸易组 {} 源版本变化（{} -> {}），按记账移除旧组后重注册",
-                    def.getGroupId(),
-                    record.version,
-                    def.getVersion());
-                unregisterFromDisk(record);
-            }
-            GroupRecord newRecord = registerToDisk(def);
+            GroupRecord newRecord = registerToDisk(def, record);
             if (newRecord == null) return false;
-            newRecord.save();
             reloadAndSync();
             LOG.info(
                 "[TradeAPI] 贸易组 {} 注册完成：{} 条交易，{} 个页面（version={}）",
@@ -470,8 +461,9 @@ public final class NekoTradeIntegrationAPI {
         synchronized (APPLY_LOCK) {
             GroupRecord record = GroupRecord.load(def.getGroupId());
             if (record != null) {
-                unregisterFromDisk(record);
-                record.delete();
+                unregisterFromDisk(record, def);
+                reloadAndSync();
+                return;
             }
             NekoTradeConfig.NekoTradeData data = NekoTradeConfig.load();
             boolean removed = false;
@@ -506,7 +498,6 @@ public final class NekoTradeIntegrationAPI {
                 return false;
             }
             unregisterFromDisk(record);
-            record.delete();
             reloadAndSync();
             LOG.info("[TradeAPI] 贸易组 {} 已按记账注销", groupId);
             return true;
@@ -528,7 +519,7 @@ public final class NekoTradeIntegrationAPI {
      *
      * @return 新记账（失败返回 null）
      */
-    private static GroupRecord registerToDisk(NekoTradeGroupDef def) {
+    private static GroupRecord registerToDisk(NekoTradeGroupDef def, GroupRecord previous) {
         if (def.getTrades() == null || def.getTrades()
             .isEmpty()) {
             LOG.warn("[TradeAPI] 贸易组 {} 缺少 trades，拒绝注册", def.getGroupId());
@@ -541,6 +532,13 @@ public final class NekoTradeIntegrationAPI {
         NekoTradeConfig.NekoTradeData data = NekoTradeConfig.load();
         if (data.getTrades() == null) {
             data.setTrades(new ArrayList<>());
+        }
+        NekoPageConfig.NekoPageData pageData = NekoPageConfig.load();
+        if (previous != null) {
+            data.getTrades()
+                .removeIf(entry -> entry != null && previous.tradeIds.contains(entry.getId()));
+            pageData.getPages()
+                .removeIf(page -> page != null && previous.pageIds.contains(page.getId()) && !page.isDefault());
         }
         Map<Integer, Integer> tabMaxOrder = new HashMap<>();
         for (NekoTradeEntry src : def.getTrades()) {
@@ -578,16 +576,9 @@ public final class NekoTradeIntegrationAPI {
             }
             tabMaxOrder.merge(entry.getTabId(), entry.getOrderId(), Math::max);
         }
-        NekoTradeConfig.save(data);
-        // 各页 orderId 抬升高水位：删除后的 ID 位置不复用（含被删除的默认条目）
-        for (Map.Entry<Integer, Integer> tabMax : tabMaxOrder.entrySet()) {
-            NekoTradeConfig.raiseOrderWatermark(tabMax.getKey(), tabMax.getValue());
-        }
-
         // 2. 页面合并：按 id upsert（默认页 1-3 的定义覆盖同样允许，仅删除受限）
         if (def.getPages() != null && !def.getPages()
             .isEmpty()) {
-            NekoPageConfig.NekoPageData pageData = NekoPageConfig.load();
             if (pageData.getPages() == null) {
                 pageData.setPages(new ArrayList<>());
             }
@@ -617,9 +608,16 @@ public final class NekoTradeIntegrationAPI {
                     record.pageIds.add(page.getId());
                 }
             }
-            NekoPageConfig.save(pageData);
         }
 
+        NekoPageConfig.saveWithTrades(
+            pageData,
+            data,
+            tabMaxOrder,
+            java.util.Collections.singletonMap(
+                INTEGRATED_DIR + "/" + record.groupId + ".json",
+                GSON.toJson(record)
+                    .getBytes(StandardCharsets.UTF_8)));
         return record;
     }
 
@@ -693,32 +691,24 @@ public final class NekoTradeIntegrationAPI {
      * 按记账移除磁盘上的组内容（trades 按 id，pages 按 id 且跳过默认页）。
      */
     private static void unregisterFromDisk(GroupRecord record) {
-        // 交易移除
+        unregisterFromDisk(record, null);
+    }
+
+    private static void unregisterFromDisk(GroupRecord record, NekoTradeGroupDef additional) {
         NekoTradeConfig.NekoTradeData data = NekoTradeConfig.load();
-        if (data.getTrades() != null && !record.tradeIds.isEmpty()) {
-            boolean removed = data.getTrades()
-                .removeIf(entry -> entry != null && record.tradeIds.contains(entry.getId()));
-            if (removed) {
-                NekoTradeConfig.save(data);
-            }
-        }
-        // 页面移除（默认页不可删除，与 NekoPageRegistry.deletePage 不变量对齐）
         NekoPageConfig.NekoPageData pageData = NekoPageConfig.load();
-        if (pageData.getPages() != null && !record.pageIds.isEmpty()) {
-            boolean removed = false;
-            Iterator<NekoPageEntry> it = pageData.getPages()
-                .iterator();
-            while (it.hasNext()) {
-                NekoPageEntry page = it.next();
-                if (page != null && record.pageIds.contains(page.getId()) && !page.isDefault()) {
-                    it.remove();
-                    removed = true;
-                }
-            }
-            if (removed) {
-                NekoPageConfig.save(pageData);
-            }
-        }
+        java.util.Set<String> ids = new java.util.HashSet<>(record.tradeIds);
+        if (additional != null && additional.getTrades() != null) for (NekoTradeEntry entry : additional.getTrades())
+            if (entry != null && entry.getId() != null) ids.add(entry.getId());
+        if (data.getTrades() != null) data.getTrades()
+            .removeIf(entry -> entry != null && ids.contains(entry.getId()));
+        if (pageData.getPages() != null) pageData.getPages()
+            .removeIf(page -> page != null && record.pageIds.contains(page.getId()) && !page.isDefault());
+        NekoPageConfig.saveWithTrades(
+            pageData,
+            data,
+            java.util.Collections.emptyMap(),
+            java.util.Collections.singletonMap(INTEGRATED_DIR + "/" + record.groupId + ".json", null));
     }
 
     /**
@@ -815,42 +805,43 @@ public final class NekoTradeIntegrationAPI {
         }
 
         void save() {
-            try {
-                Path path = path();
-                Files.createDirectories(path.getParent());
-                Files.write(
-                    path,
-                    GSON.toJson(this)
-                        .getBytes(StandardCharsets.UTF_8));
-            } catch (Exception e) {
-                LOG.error("[TradeAPI] 贸易组记账写入失败: " + groupId, e);
-            }
+            publishRecord(
+                GSON.toJson(this)
+                    .getBytes(StandardCharsets.UTF_8));
         }
 
         void delete() {
+            publishRecord(null);
+        }
+
+        private void publishRecord(byte[] bytes) {
             try {
-                Files.deleteIfExists(path());
-            } catch (Exception e) {
-                LOG.error("[TradeAPI] 贸易组记账删除失败: " + groupId, e);
+                new com.miaokatze.gtit.trade.preset.PresetFileTransaction(TradeConfigPaths.gameRoot())
+                    .commit(java.util.Collections.singletonMap(INTEGRATED_DIR + "/" + groupId + ".json", bytes));
+            } catch (java.io.IOException failure) {
+                throw new IllegalStateException("Integration receipt could not be committed: " + groupId, failure);
             }
         }
 
         static GroupRecord load(String groupId) {
             try {
+                if (!JarAssetManifest.isValidGroupId(groupId)) throw new IllegalArgumentException("Invalid group ID");
+                new com.miaokatze.gtit.trade.preset.PresetFileTransaction(TradeConfigPaths.gameRoot()).recover();
                 Path path = TradeConfigPaths.resolve(INTEGRATED_DIR + "/" + groupId + ".json");
-                if (!Files.exists(path)) return null;
+                if (Files.notExists(path)) return null;
+                if (Files.size(path) > 4L * 1024 * 1024) throw new java.io.IOException("Integration receipt too large");
                 String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+                com.miaokatze.gtit.trade.NekoTradeJson.validateDepth(json);
                 GroupRecord record = GSON.fromJson(json, GroupRecord.class);
                 // 关键字段缺失视为无效记账（等同强制重注册）
                 if (record == null || !groupId.equals(record.groupId)
                     || record.tradeIds == null
                     || record.pageIds == null) {
-                    return null;
+                    throw new IllegalStateException("Invalid integration ownership receipt: " + groupId);
                 }
                 return record;
             } catch (Exception e) {
-                LOG.warn("[TradeAPI] 贸易组记账读取失败，按未注册处理: " + groupId, e);
-                return null;
+                throw new IllegalStateException("Unreadable integration ownership receipt: " + groupId, e);
             }
         }
     }

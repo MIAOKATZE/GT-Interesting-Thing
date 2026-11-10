@@ -134,37 +134,30 @@ final class PocketEssenceChannelOps {
         final boolean writable = handler.getAccess()
             .hasPermission(AccessRestriction.WRITE);
         final boolean acceptable = handler.canAccept(probe);
-        final IAEStack<?> leftover = handler.injectItems(probe, Actionable.MODULATE, PocketAeChannelOps.actionSource());
-        final long leftoverUnits = leftover == null ? 0L : leftover.getStackSize();
-        final PocketReceipt receipt = PocketReceipt.classify(true, writable, acceptable, requestedUnits, leftoverUnits);
-        // ★R92-①：元件收不下多少点就退多少点 ⇒ 零头<b>留在盘里且不扣点</b>（旧形状是"不足一瓶的单位不收"，
-        // 换档不换纪律）——与抽取支"零头留元件侧"是同一条纪律的两面。
-        final int refusedPoints = pointsFromUnits(leftoverUnits, unit);
-        final int moved = Math.max(0, wantPoints - refusedPoints);
-        final int drained = moved <= 0 ? 0
-            : ops.session()
-                .drainEssence(tag, moved);
-        // ★R90 E2 L5（debug）：扣点后的落账读数——storeVersion 是源质盘自己的单调写计数
-        // （非消费式"脏"读数），置脏单点化（E1）之后这里只留观测，不参与任何判定。
-        GTInterestingThing.LOG.debug(
-            "[PocketR89] L5 源质上传扣点：tag={} want={} moved={} drained={} storeVersion={}",
-            tag,
-            wantPoints,
-            moved,
-            drained,
-            ops.session()
-                .essence() == null ? -1L
-                    : ops.session()
-                        .essence()
-                        .contentVersion());
-        if (moved > 0 && drained < moved) {
-            // 扣点少于搬运量 ⇒ 把<b>差额</b>原路注回元件。★R88 修正一处旧形状：旧代码回补的是整笔
-            // {@code moved}（而不是 {@code moved - drained}），等于凭空多塞给元件一份源质；
-            // 换成瓶之后这条更明显（回补单位必须按整瓶折算），故一并收口，见报告"自报偏离"。
-            refundUnits(handler, type, tag, moved - drained, unit);
+        if (!writable || !acceptable) return new PocketChannelOps.Outcome(
+            PocketReceipt.classify(true, writable, acceptable, requestedUnits, requestedUnits),
+            0);
+        if (!(ops.session() instanceof PocketRuntimeSession runtime))
+            return new PocketChannelOps.Outcome(PocketReceipt.NO_ACCESS, 0);
+        PocketTransferReservation ticket = runtime.reserveOutgoingEssence(tag, wantPoints, diskuuid + "#" + typeId);
+        if (ticket == null) return new PocketChannelOps.Outcome(PocketReceipt.NO_ACCESS, 0);
+        try {
+            final IAEStack<?> leftover = handler
+                .injectItems(probe, Actionable.MODULATE, PocketAeChannelOps.actionSource());
+            final long left = leftover == null ? 0L : leftover.getStackSize();
+            final int refusedPoints = pointsFromUnits(left, unit);
+            if (left < 0 || left > requestedUnits
+                || (leftover != null && !leftover.isSameType(probe))
+                || channelUnitsForPoints(refusedPoints, unit) != left)
+                throw new IllegalStateException("Invalid or inexact essence transfer remainder");
+            runtime.completeOutgoing(ticket, refusedPoints);
+            return new PocketChannelOps.Outcome(
+                PocketReceipt.classify(true, writable, acceptable, requestedUnits, left),
+                wantPoints - refusedPoints);
+        } catch (RuntimeException | LinkageError failure) {
+            runtime.retainUnknownOutgoing(ticket, failure);
             return new PocketChannelOps.Outcome(PocketReceipt.NO_ACCESS, 0);
         }
-        return new PocketChannelOps.Outcome(receipt, moved);
     }
 
     /**

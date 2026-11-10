@@ -66,6 +66,11 @@ public class NekoWalletHandler {
         } catch (Throwable t) {
             LOG.error("登出保存交易历史失败: " + event.player.getUniqueID(), t);
         }
+        try {
+            com.miaokatze.gtit.trade.v2.NekoFavouritesTracker.INSTANCE.unloadPlayer(event.player.getUniqueID());
+        } catch (Throwable t) {
+            LOG.error("Failed to save player favourites at logout: " + event.player.getUniqueID(), t);
+        }
     }
 
     @SubscribeEvent
