@@ -180,14 +180,8 @@ public final class PocketCellProbe {
         return locations.size();
     }
 
-    /**
-     * 换掉世界触点（仅测试用；传 null 复位回生产实现）。
-     * <p>
-     * 之所以需要它：本类的核心语义（登记 → 复验 → 转 GONE）全靠 {@code World}/{@code TileEntity}，
-     * 纯 JVM 里拿不到真世界，没有这条缝就只能"实机才能验"，而这条链一旦不验就是
-     * "注册表恒空 ⇒ 通道恒不可开且无报错"的静默死路。
-     */
-    static void useHostResolverForTest(HostResolver next) {
+    /** Selects the host lookup adapter; null restores Minecraft's normal world lookup. */
+    static void useHostResolver(HostResolver next) {
         resolver = next == null ? MC_RESOLVER : next;
     }
 

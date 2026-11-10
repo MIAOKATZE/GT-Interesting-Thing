@@ -38,12 +38,16 @@ final class TestLabVendingFixture implements ProbeScenario {
     }
 
     static String command(EntityPlayerMP player, String command) {
+        return command(player, command, null);
+    }
+
+    static String command(EntityPlayerMP player, String command, String requestId) {
         requirePlayer(player);
         if ("vending".equals(command)) {
             TestLabUiNetwork.requireEmptyInventory(player);
             requestedPlayer = player.getUniqueID();
             try {
-                return "run=" + TestLabRuntime.INSTANCE.run("ui", "client-ui-vending", 1);
+                return "run=" + TestLabRuntime.INSTANCE.run("ui", "client-ui-vending", 1, requestId);
             } catch (RuntimeException error) {
                 requestedPlayer = null;
                 throw error;
@@ -70,11 +74,14 @@ final class TestLabVendingFixture implements ProbeScenario {
     private static void requirePlayer(EntityPlayerMP player) {
         if (!TestLabConfig.enabled || !TestLabConfig.clientUiEnabled
             || !TestLabUiNetwork.validPlayer(player)
-            || !player.capabilities.isCreativeMode
             || !MinecraftServer.getServer()
                 .isSinglePlayer())
-            throw new IllegalStateException(
-                "Requires enabled + clientUiEnabled, local singleplayer creative OP test client");
+            throw new IllegalStateException("Requires enabled + clientUiEnabled, local singleplayer OP test client");
+    }
+
+    static void stop() {
+        requestedPlayer = null;
+        active = null;
     }
 
     @Override
@@ -87,6 +94,7 @@ final class TestLabVendingFixture implements ProbeScenario {
         requestedPlayer = null;
         requirePlayer(player);
         TestLabUiNetwork.requireEmptyInventory(player);
+        context.metric("actorCreativeMode", player.capabilities.isCreativeMode ? 1 : 0);
         Session session = new Session(player, context);
         active = session;
         context.onCleanup(() -> {
@@ -161,9 +169,7 @@ final class TestLabVendingFixture implements ProbeScenario {
                 context.skip("live-me-network", "No AE network fixture; no ME success or failure is simulated");
                 return true;
             }
-            if (violation != null || !TestLabUiNetwork.validPlayer(player)
-                || !player.capabilities.isCreativeMode
-                || player.worldObj != world) {
+            if (violation != null || !TestLabUiNetwork.validPlayer(player) || player.worldObj != world) {
                 context
                     .check("session-guard", false, violation == null ? "Client permission/world changed" : violation);
                 return true;

@@ -63,7 +63,7 @@ public class CommonProxy {
         com.miaokatze.gtit.config.DefaultContentConfig.init(event.getModConfigurationDirectory());
         // Recover a previous preset transaction before any page migration or default-content writes.
         com.miaokatze.gtit.trade.preset.TradePresetManager.recoverPendingChanges();
-        com.miaokatze.gtit.testlab.TestLabRuntime.initialize(event);
+        TestLabBootstrap.initialize(event);
 
         // E4a: BQ 存在性反射探测（BqCompat 无任何 BQ 类型引用，缺席时静默降级）
         BqCompat.detect();
@@ -610,7 +610,7 @@ public class CommonProxy {
         event.registerServerCommand(new GTITGiftCommand());
         event.registerServerCommand(new com.miaokatze.gtit.command.PocketTransferCommand());
         event.registerServerCommand(new com.miaokatze.gtit.command.GiftLibraryCommand());
-        com.miaokatze.gtit.testlab.TestLabRuntime.serverStarting(event);
+        TestLabBootstrap.serverStarting(event);
     }
 
     /**
@@ -787,7 +787,7 @@ public class CommonProxy {
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("Failed to release world favourites; keeping old-directory data for retry", t);
         }
-        com.miaokatze.gtit.testlab.TestLabRuntime.serverStopping();
+        TestLabBootstrap.serverStopping();
         com.miaokatze.gtit.trade.preset.ui.TradePresetAccessHandler.stop();
         com.miaokatze.gtit.gift.ui.GiftAccessHandler.stop();
         com.miaokatze.gtit.trade.preset.TradePresetManager.shutdown();

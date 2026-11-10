@@ -13,6 +13,9 @@ import java.util.concurrent.Executors;
 import net.minecraft.world.WorldServer;
 
 import com.miaokatze.gtit.main.GTInterestingThing;
+import com.miaokatze.miaokatzecore.api.testlab.LabEvents;
+import com.miaokatze.miaokatzecore.api.testlab.LabRegistry;
+import com.miaokatze.miaokatzecore.api.testlab.LabResult;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
@@ -30,6 +33,7 @@ public final class TestLabRuntime {
     private final Deque<ProbeScenario> remaining = new ArrayDeque<>();
     private final List<Double> tickSamples = new ArrayList<>();
     private TestLabReport report;
+    private volatile TestLabReport lastCompleted;
     private ProbeContext context;
     private ProbeTask task;
     private WorldServer world;
@@ -54,21 +58,35 @@ public final class TestLabRuntime {
     public static void initialize(FMLPreInitializationEvent event) {
         TestLabConfig.load(event.getModConfigurationDirectory());
         if (!TestLabConfig.enabled) return;
+        try {
+            Class
+                .forName("com.miaokatze.miaokatzecore.testlab.LabDriver", false, TestLabRuntime.class.getClassLoader());
+        } catch (ClassNotFoundException absent) {
+            throw new IllegalStateException(
+                "GTIT testlab requires the matching MiaoKatzeCore -testlab replacement JAR for isolated world policy.",
+                absent);
+        }
         TestLabDimension.register();
         if (TestLabDimension.problem() != null) return;
-        BasicProbeScenarios.register();
-        com.miaokatze.gtit.testlab.scenario.NativeProbeScenarios.register();
+        registerScenarios();
         FMLCommonHandler.instance()
             .bus()
             .register(INSTANCE);
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.register(INSTANCE);
         TestLabUiNetwork.initialize();
-        register(new TestLabVendingFixture());
+        LabRegistry.register(new TestLabModule());
         net.minecraftforge.common.ForgeChunkManager
             .setForcedChunkLoadingCallback(GTInterestingThing.instance, (tickets, loadedWorld) -> {
                 for (net.minecraftforge.common.ForgeChunkManager.Ticket stale : tickets)
                     net.minecraftforge.common.ForgeChunkManager.releaseTicket(stale);
             });
+    }
+
+    static void registerScenarios() {
+        BasicProbeScenarios.register();
+        com.miaokatze.gtit.testlab.scenario.NativeProbeScenarios.register();
+        TestLabUiNetwork.registerScenario();
+        register(new TestLabVendingFixture());
     }
 
     public static void register(ProbeScenario scenario) {
@@ -82,8 +100,48 @@ public final class TestLabRuntime {
             event.registerServerCommand(new TestLabCommand());
     }
 
+    static List<ProbeScenario> scenarios() {
+        return new ArrayList<>(SCENARIOS.values());
+    }
+
     public static List<String> scenarioIds() {
         return new ArrayList<>(SCENARIOS.keySet());
+    }
+
+    public Map<String, Object> snapshot() {
+        Map<String, Object> facts = new LinkedHashMap<>();
+        TestLabReport visible = report != null ? report : lastCompleted;
+        facts.put("runId", visible == null ? null : visible.runId);
+        facts.put("state", report != null ? resetting ? "cleaning" : "running" : resetting ? "cleaning" : "idle");
+        facts.put("outcome", visible == null ? null : visible.status);
+        facts.put(
+            "reportPath",
+            visible == null || TestLabConfig.reportDirectory == null ? null
+                : new java.io.File(TestLabConfig.reportDirectory, visible.runId + ".json").getAbsolutePath());
+        facts.put("reportWritten", visible != null && visible.written);
+        facts.put("reportError", visible == null ? null : visible.writeError);
+        facts.put(
+            "cleanupPending",
+            resetting || context != null
+                || !spawned.isEmpty()
+                || (report == null && visible != null
+                    && !Boolean.TRUE.equals(visible.environment.get("cleanupComplete"))));
+        facts.put("taskId", context == null ? null : context.scenarioId());
+        facts.put("remainingTasks", remaining.size());
+        String activeScenario = context == null ? null : context.scenarioId();
+        facts.put(
+            "actor",
+            activeScenario == null ? null
+                : activeScenario.startsWith("native-gift-host-") ? "real-integrated-host"
+                    : activeScenario.startsWith("client-ui-") ? "real-test-client"
+                        : activeScenario.equals("native-remote-vending-team") ? "synthetic-owned-native-session"
+                            : "synthetic-disconnected");
+        facts.put(
+            "transport",
+            activeScenario == null ? null
+                : activeScenario.equals("native-remote-vending-team") ? "embedded-netty-no-socket"
+                    : activeScenario.startsWith("client-ui-") ? "physical-client-network" : "in-process");
+        return facts;
     }
 
     public String status() {
@@ -131,6 +189,7 @@ public final class TestLabRuntime {
                 .map(ProbeScenario::id)
                 .toArray(String[]::new));
         for (int i = 0; i < iterations; i++) remaining.addAll(selected);
+        LabEvents.publish("gtit", report.runId, null, "run.started", null, null, "pending");
         resetting = true;
         tickSamples.clear();
         tickCount = 0;
@@ -144,6 +203,34 @@ public final class TestLabRuntime {
         return report.runId;
     }
 
+    /** Cooperative cancellation; cleanup remains pending until the normal server-tick journal is drained. */
+    public String cancel(String requestId) {
+        refresh = false;
+        refreshRequestId = null;
+        if (report == null) {
+            TestLabUiNetwork.stop();
+            TestLabVendingFixture.stop();
+            return resetting ? "No active run; owned-fixture cleanup pending" : "No active run";
+        }
+        String run = report.runId;
+        report.environment.put("cancelRequestId", requestId);
+        report.add("harness", "cancelled", "CANCELLED", "Explicit stop/cancel; cleanup scheduled");
+        LabEvents.publish(
+            "gtit",
+            run,
+            context == null ? null : context.scenarioId(),
+            "run.cancelled",
+            null,
+            LabResult.CANCELLED,
+            "pending");
+        closeTask();
+        remaining.clear();
+        TestLabUiNetwork.stop();
+        TestLabVendingFixture.stop();
+        resetting = true;
+        return "Cancellation accepted run=" + run + "; cleanup pending";
+    }
+
     public void reset(boolean runAfter) {
         reset(runAfter, null);
     }
@@ -151,9 +238,12 @@ public final class TestLabRuntime {
     public void reset(boolean runAfter, String requestId) {
         if (report != null) {
             report.add("harness", "interrupted", "FAIL", "Explicit reset cancelled the active run");
+            LabEvents.publish("gtit", report.runId, null, "run.cancelled", "reset", LabResult.CANCELLED, "pending");
             closeTask();
             remaining.clear();
         }
+        TestLabUiNetwork.stop();
+        TestLabVendingFixture.stop();
         refresh = runAfter;
         refreshRequestId = requestId;
         resetting = true;
@@ -223,6 +313,7 @@ public final class TestLabRuntime {
                 }
                 ProbeScenario scenario = remaining.removeFirst();
                 context = new ProbeContext(world, report, scenario.id(), scenario.stress());
+                LabEvents.publish("gtit", report.runId, scenario.id(), "task.started", null, null, "pending");
                 taskTicks = 0;
                 long begin = System.nanoTime();
                 executing = true;
@@ -297,7 +388,10 @@ public final class TestLabRuntime {
             }
         }
         task = null;
-        if (context != null) context.close();
+        if (context != null) {
+            context.close();
+            LabEvents.publish("gtit", report.runId, context.scenarioId(), "task.finished", null, null, "pending");
+        }
         context = null;
         for (net.minecraft.entity.Entity entity : spawned) entity.setDead();
         spawned.clear();
@@ -333,13 +427,30 @@ public final class TestLabRuntime {
             report.metrics.put("serverTickMaxMillis", tickSamples.get(tickSamples.size() - 1));
             report.metrics.put("serverTickSamples", (double) tickSamples.size());
         }
+        LabEvents.publish(
+            "gtit",
+            report.runId,
+            null,
+            "cleanup.finished",
+            null,
+            ownedRemaining == 0 ? LabResult.PASS : LabResult.RECOVERY_PENDING,
+            ownedRemaining == 0 ? "complete" : "pending");
         report.finish();
+        LabEvents.publish(
+            "gtit",
+            report.runId,
+            null,
+            "run.finished",
+            null,
+            LabResult.valueOf(report.status),
+            ownedRemaining == 0 ? "complete" : "pending");
         if (writer == null || writer.isShutdown()) writer = Executors.newSingleThreadExecutor(runnable -> {
             Thread thread = new Thread(runnable, "GTIT-testlab-report");
             thread.setDaemon(true);
             return thread;
         });
         TestLabReport completed = report;
+        lastCompleted = completed;
         report = null;
         writer.execute(completed::write);
     }
@@ -372,6 +483,7 @@ public final class TestLabRuntime {
         INSTANCE.resetting = INSTANCE.refresh = false;
         INSTANCE.refreshRequestId = null;
         TestLabUiNetwork.stop();
+        TestLabVendingFixture.stop();
         if (INSTANCE.writer != null) {
             INSTANCE.writer.shutdown();
             try {

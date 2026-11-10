@@ -16,6 +16,10 @@ import time
 import uuid
 
 EXIT_CONFIG, EXIT_BUSY, EXIT_START, EXIT_TIMEOUT, EXIT_COMMAND = 2, 3, 4, 5, 6
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'tools/testlab'))
+import host as shared_host
+REGISTRY = shared_host.REGISTRY
+BUNDLE = shared_host.BUNDLE
 
 
 def stamp():
@@ -94,6 +98,17 @@ def properties(root):
 
 
 def validate(root):
+    registered = shared_host.find_registered(root, registry=REGISTRY)
+    shared_host.server_world(registered)
+    if shared_host.recovery_pending(registered):
+        raise ValueError('Pending recovery must use its explicit recovery workflow')
+    installed_mods = shared_host.inventory(root / 'mods')
+    for selected in shared_host.bundle_artifacts(BUNDLE, registered['id'].lower()):
+        loaded = [entry for entry in installed_mods if entry['modId'] == selected['modId']]
+        if len(loaded) != 1 or loaded[0]['sha256'] != selected['sha256']:
+            raise ValueError('Use shared host to install the exact complete module/Core testlab pair')
+    if (root / '.testlab-host/lease.json').exists():
+        raise FileExistsError('Shared testlab host owns this instance')
     if not root.is_dir() or not (root / 'testlab-instance.json').exists():
         raise ValueError('Instance must have testlab-instance.json; refusing an unowned directory')
     p = properties(root)
@@ -404,10 +419,13 @@ def supervise(args):
 
 
 def main():
+    global REGISTRY, BUNDLE
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('action', choices=['run', 'start', 'status', 'command', 'probe', 'stop', 'recover-lock'])
     p.add_argument('--instance', type=Path, required=True)
-    p.add_argument('--java', default='java')
+    p.add_argument('--registry', type=Path, default=REGISTRY)
+    p.add_argument('--bundle', type=Path, default=BUNDLE)
+    p.add_argument('--java')
     p.add_argument('--xms', default='1G')
     p.add_argument('--xmx', default='6G')
     p.add_argument('--startup-timeout', type=float, default=900)
@@ -419,8 +437,18 @@ def main():
     p.add_argument('--require-check', action='append', default=[], help='Required PASS case in scenario/check form')
     p.add_argument('--stop-after-commands', action='store_true')
     args = p.parse_args()
+    REGISTRY = args.registry.resolve()
+    BUNDLE = args.bundle.resolve()
     args.instance = args.instance.resolve()
     try:
+        registered = shared_host.find_registered(args.instance, registry=REGISTRY)
+        expected_java = Path(registered['server_java']).resolve()
+        if args.java and Path(args.java).resolve() != expected_java:
+            raise ValueError('Java must match registered Java 26 runtime')
+        args.java = str(expected_java)
+        release = expected_java.parent.parent / 'release'
+        if not release.is_file() or not re.search(r'JAVA_VERSION="26(?:[.\"+])', release.read_text()):
+            raise ValueError('Actual server runtime must be Java 26')
         base = args.instance / '.testlab'
         lock = base / 'owner.json'
         if args.action == 'run':

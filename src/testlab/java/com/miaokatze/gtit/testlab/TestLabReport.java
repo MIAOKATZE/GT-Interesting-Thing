@@ -14,6 +14,9 @@ import java.util.UUID;
 import com.google.gson.GsonBuilder;
 import com.miaokatze.gtit.Tags;
 import com.miaokatze.gtit.main.GTInterestingThing;
+import com.miaokatze.miaokatzecore.api.testlab.ArtifactIdentity;
+import com.miaokatze.miaokatzecore.api.testlab.LabEvents;
+import com.miaokatze.miaokatzecore.api.testlab.LabResult;
 
 import cpw.mods.fml.common.Loader;
 import cpw.mods.fml.common.ModContainer;
@@ -28,6 +31,8 @@ final class TestLabReport {
         .toString();
     String finishedAt;
     String status;
+    transient volatile boolean written;
+    transient volatile String writeError;
     final Map<String, Object> environment = new LinkedHashMap<>();
     final Map<String, Double> metrics = new LinkedHashMap<>();
     final List<Map<String, String>> cases = new ArrayList<>();
@@ -41,6 +46,14 @@ final class TestLabReport {
         this.mode = mode;
         if (!captureEnvironment) return;
         environment.put("gtitVersion", Tags.VERSION);
+        environment.put(
+            "artifactIdentity",
+            ArtifactIdentity.capture(GTInterestingThing.class)
+                .asMap());
+        environment.put(
+            "testlabIdentity",
+            ArtifactIdentity.capture(TestLabReport.class)
+                .asMap());
         environment.put("javaVersion", System.getProperty("java.version"));
         environment.put("jvm", System.getProperty("java.vm.name"));
         environment.put("os", System.getProperty("os.name"));
@@ -67,6 +80,14 @@ final class TestLabReport {
         entry.put("status", result);
         entry.put("detail", detail);
         cases.add(entry);
+        LabEvents.publish(
+            "gtit",
+            runId,
+            scenario,
+            "FAIL".equals(result) ? "failure" : "check",
+            name,
+            LabResult.valueOf(result),
+            "pending");
     }
 
     void finish() {
@@ -79,10 +100,16 @@ final class TestLabReport {
         long passed = cases.stream()
             .filter(entry -> "PASS".equals(entry.get("status")))
             .count();
-        long skipped = cases.size() - failed - passed;
+        long cancelled = cases.stream()
+            .filter(entry -> "CANCELLED".equals(entry.get("status")))
+            .count();
+        long skipped = cases.stream()
+            .filter(entry -> "SKIP".equals(entry.get("status")))
+            .count();
         metrics.put("passed", (double) passed);
         metrics.put("failed", (double) failed);
         metrics.put("skipped", (double) skipped);
+        metrics.put("cancelled", (double) cancelled);
         boolean incompleteCoverage = false;
         Object selected = environment.get("selectedScenarios");
         if (selected instanceof String[]ids) for (String id : ids) {
@@ -92,7 +119,8 @@ final class TestLabReport {
                         && ("PASS".equals(entry.get("status")) || "FAIL".equals(entry.get("status"))));
             if (!executed) incompleteCoverage = true;
         }
-        status = failed > 0 ? "FAIL" : passed > 0 && !incompleteCoverage ? "PASS" : "SKIP";
+        status = failed > 0 ? "FAIL"
+            : cancelled > 0 ? "CANCELLED" : passed > 0 && !incompleteCoverage ? "PASS" : "SKIP";
     }
 
     /** Called only by the enabled lab's report executor, after all server-thread mutations have finished. */
@@ -108,9 +136,20 @@ final class TestLabReport {
                     .create()
                     .toJson(this, writer);
             }
+            written = true;
+            LabEvents.publish(
+                "gtit",
+                runId,
+                null,
+                "report.written",
+                null,
+                LabResult.valueOf(status),
+                Boolean.TRUE.equals(environment.get("cleanupComplete")) ? "complete" : "pending");
             GTInterestingThing.LOG
                 .info("[GTIT-LAB] COMPLETE run={} status={} report={}", runId, status, output.getAbsolutePath());
         } catch (Exception | LinkageError error) {
+            writeError = error.toString();
+            LabEvents.publish("gtit", runId, null, "report.failed", null, LabResult.FAIL, "unknown");
             GTInterestingThing.LOG.error("[GTIT-LAB] REPORT_FAILED run=" + runId, error);
         }
     }

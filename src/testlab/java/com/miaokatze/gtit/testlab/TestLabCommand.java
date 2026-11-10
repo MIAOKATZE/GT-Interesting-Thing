@@ -18,7 +18,7 @@ public final class TestLabCommand extends CommandBase {
 
     @Override
     public String getCommandUsage(ICommandSender sender) {
-        return "/gtitlab help|status|reset|refresh|run <id>|suite|stress [iterations]|profile [id] [iterations]|ui pocket|vending|vending-ordinary|vending-batch|vending-legendary|vending-done";
+        return "/gtitlab help|status|catalog|stop|cancel|reset|refresh|run <id>|suite|stress [iterations]|profile [id] [iterations]|ui pocket|vending|vending-ordinary|vending-batch|vending-legendary|vending-done";
     }
 
     @Override
@@ -28,6 +28,14 @@ public final class TestLabCommand extends CommandBase {
 
     @Override
     public void processCommand(ICommandSender sender, String[] args) {
+        dispatch(sender, args, false);
+    }
+
+    void executeStrict(ICommandSender sender, String[] args) {
+        dispatch(sender, args, true);
+    }
+
+    private void dispatch(ICommandSender sender, String[] args, boolean strict) {
         if (args.length == 1 && ("help".equals(args[0]) || "tutorial".equals(args[0]))) {
             sender.addChatMessage(new ChatComponentText(getCommandUsage(sender)));
             sender.addChatMessage(
@@ -50,7 +58,7 @@ public final class TestLabCommand extends CommandBase {
             }
             if (args.length == 0) throw new IllegalArgumentException(getCommandUsage(sender));
             int maximumArgs = switch (args[0]) {
-                case "status", "reset", "refresh", "suite" -> 1;
+                case "status", "catalog", "stop", "cancel", "reset", "refresh", "suite" -> 1;
                 case "run", "stress", "ui" -> 2;
                 case "profile" -> 3;
                 default -> 0;
@@ -59,6 +67,8 @@ public final class TestLabCommand extends CommandBase {
             String result;
             switch (args[0]) {
                 case "status" -> result = TestLabRuntime.INSTANCE.status();
+                case "catalog" -> result = new com.google.gson.Gson().toJson(new TestLabModule().cases());
+                case "stop", "cancel" -> result = TestLabRuntime.INSTANCE.cancel(requestId);
                 case "reset", "refresh" -> {
                     TestLabRuntime.INSTANCE.reset("refresh".equals(args[0]), requestId);
                     result = "Owned-fixture reset scheduled";
@@ -80,13 +90,14 @@ public final class TestLabCommand extends CommandBase {
                 case "ui" -> {
                     if (!(sender instanceof EntityPlayerMP player) || args.length != 2)
                         throw new IllegalArgumentException("ui requires an online OP test client");
-                    result = "pocket".equals(args[1]) ? "run=" + TestLabUiNetwork.run(player)
-                        : TestLabVendingFixture.command(player, args[1]);
+                    result = "pocket".equals(args[1]) ? "run=" + TestLabUiNetwork.run(player, requestId)
+                        : TestLabVendingFixture.command(player, args[1], requestId);
                 }
                 default -> throw new IllegalArgumentException(getCommandUsage(sender));
             }
             sender.addChatMessage(new ChatComponentText("[GTIT-LAB] " + result));
         } catch (IllegalArgumentException | IllegalStateException error) {
+            if (strict) throw error;
             String rejection = "[GTIT-LAB] REJECT request=" + (requestId == null ? "-" : requestId)
                 + " reason="
                 + error.getMessage();
@@ -100,6 +111,9 @@ public final class TestLabCommand extends CommandBase {
         if (args.length == 1) return getListOfStringsMatchingLastWord(
             args,
             "status",
+            "catalog",
+            "stop",
+            "cancel",
             "reset",
             "refresh",
             "run",

@@ -131,73 +131,17 @@ public final class EssenceNativeChannels {
         }
     }
 
-    // ------------------------------------------------------------------ ★E-test（批 1 测试落地）：包私有测试种子口
-    //
-    // 存在理由：纯 JVM 零依赖套件里既没有 TC（{@code newFilledContainer} 恒 null ⇒ 探针恒空），
-    // 也没有任何第三方通道注册——「源质原生通道<b>在场</b>」那一列（E2 路由矩阵）只能靠种子驱动。
-    // 生产语义零变化的承诺：本组全部<b>包私有</b>且生产零调用方，{@link #SEEDED_NATIVE_TAGS} 恒空
-    // ⇒ 下面的种子分支一步滑过，两个判法的既有分支逐字保留。内建物品/流体通道<b>不在种子的世界里有
-    // 席位</b>：种子只顶替「运行时注册的第三方」那一席（{@link #channelStackFromContainer} 的内建排除
-    // 对种子不生效，由回归用例钉住）。
+    /** Optional native-channel lookup adapter; the default always queries the real registered channel types. */
+    static volatile java.util.function.Function<String, String> nativeChannelLookup = EssenceNativeChannels::registeredNativeChannelTypeId;
 
-    /** 种子：「typeId 是这些 tag 的源质原生通道」。生产恒空。 */
-    static final java.util.Map<String, java.util.Set<String>> SEEDED_NATIVE_TAGS = new java.util.LinkedHashMap<>();
-
-    /** 种子一条（幂等；空 typeId/tag 钝化）。 */
-    static void seedNativeForTest(String typeId, String tag) {
-        if (typeId == null || typeId.isEmpty() || tag == null || tag.isEmpty()) {
-            return;
-        }
-        java.util.Set<String> tags = SEEDED_NATIVE_TAGS.get(typeId);
-        if (tags == null) {
-            tags = new java.util.LinkedHashSet<>();
-            SEEDED_NATIVE_TAGS.put(typeId, tags);
-        }
-        tags.add(tag);
-    }
-
-    /** 清空全部种子（用例收尾必调——防跨用例污染）。 */
-    static void unseedNativesForTest() {
-        SEEDED_NATIVE_TAGS.clear();
-    }
-
-    /**
-     * 种子读数（生产恒 {@code false}）：这条 {@code (typeId, tag)} 对是不是被种子判成
-     * 「源质原生通道」。零依赖套件的桩件用它顶替「第三方席位」的探针判定——<b>不走</b>
-     * {@link #nativeChannelTypeId}（未种子的 tag 会掉进注册表循环，而 {@code AEStackTypeRegistry}
-     * 的类初始化引用 fastutil、不在 test classpath 上 ⇒ 实测 {@code NoClassDefFoundError}）。
-     */
-    static boolean isSeededNativeForTest(String typeId, String tag) {
-        if (typeId == null || tag == null) {
-            return false;
-        }
-        final java.util.Set<String> tags = SEEDED_NATIVE_TAGS.get(typeId);
-        return tags != null && tags.contains(tag);
-    }
-
-    /**
-     * 此 tag 的<b>第一条</b>源质原生通道的 id（{@code IAEStackType.getId()} 字符串）；
-     * 一条都没有 ⇒ {@code ""}（调用方据此<b>不写</b>任何声明——不产生死声明，见
-     * {@code NekoEssenceGhostCell#ghostKeyFor} 对空通道 id 的既有拒收）。
-     * <p>
-     * 候选序 = {@code InfinityStackTypes.allSupportedTypes()} 的稳定列表序（物品→流体→运行时注册的
-     * 第三方；前两者在 {@link #channelStackFromContainer} 里被排除，实际只在第三方段里找）。
-     * <p>
-     * ★E-test：种子查在注册表循环<b>之前</b>——生产里 {@link #SEEDED_NATIVE_TAGS} 恒空，这个分支
-     * 一步就滑过去（行为零变化）；零依赖套件里注册表循环因 fastutil 缺场而不可驱动（见
-     * {@link #isSeededNativeForTest} 的说明），「在场」列只有种子能让本方法被驱动到。
-     */
     public static String nativeChannelTypeId(String tag) {
+        if (tag == null || tag.isEmpty()) return "";
+        return nativeChannelLookup.apply(tag);
+    }
+
+    private static String registeredNativeChannelTypeId(String tag) {
         if (tag == null || tag.isEmpty()) {
             return "";
-        }
-        if (!SEEDED_NATIVE_TAGS.isEmpty()) {
-            for (final java.util.Map.Entry<String, java.util.Set<String>> seeded : SEEDED_NATIVE_TAGS.entrySet()) {
-                if (seeded.getValue()
-                    .contains(tag)) {
-                    return seeded.getKey();
-                }
-            }
         }
         for (IAEStackType<?> type : InfinityStackTypes.allSupportedTypes()) {
             if (type != null && nativeProbe(type, tag) != null) {

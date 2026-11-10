@@ -3195,8 +3195,8 @@ public class NekoPocketModelTest {
         // ★R97 S2 判据同步：源质来源只会在源质席位上被尝试（item 席位无源不占对）⇒ 桩件必须开
         // E2 原生路由并把 essentia 席位种子成原生，"异 tag 照常推"的正控才有落点。被测对象仍是
         // 剔除判据本身（aer 整条不进注入相），路由形状与 E2 矩阵用例一致。
-        EssenceNativeChannels.seedNativeForTest(NATIVE_TEST_TYPE_ID, "aer");
-        EssenceNativeChannels.seedNativeForTest(NATIVE_TEST_TYPE_ID, "ignis");
+        EssenceNativeChannelTestFixtures.seedNativeForTest(NATIVE_TEST_TYPE_ID, "aer");
+        EssenceNativeChannelTestFixtures.seedNativeForTest(NATIVE_TEST_TYPE_ID, "ignis");
         try {
             final StubOps ops = new StubOps();
             ops.essenceNativeRouting = true;
@@ -3223,7 +3223,7 @@ public class NekoPocketModelTest {
                 .runInjectBatch(bindingsOf(CELL_A), bare, Integer.MAX_VALUE, null);
             SimpleAssert.eq(24, pushed.transferred, "无声明 ⇒ 两支都推（10→8、20→16，各留零头）");
         } finally {
-            EssenceNativeChannels.unseedNativesForTest();
+            EssenceNativeChannelTestFixtures.unseedNativesForTest();
         }
     }
 
@@ -3287,7 +3287,7 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(500, report.transferred, "流体真的搬上去了");
 
         // 源质腿同形状：只有源质来源 + 原生席位在场 ⇒ essentia 通道吃到唯一配额
-        EssenceNativeChannels.seedNativeForTest(NATIVE_TEST_TYPE_ID, "aer");
+        EssenceNativeChannelTestFixtures.seedNativeForTest(NATIVE_TEST_TYPE_ID, "aer");
         try {
             final StubOps essence = new StubOps();
             essence.essenceNativeRouting = true;
@@ -3302,7 +3302,7 @@ public class NekoPocketModelTest {
             SimpleAssert.eq(Arrays.asList(NATIVE_TEST_TYPE_ID), essence.servedChannels, "item/fluid 无源不占对，只有原生席位被服务");
             SimpleAssert.eq(64, routed.transferred, "源质 64 点经原生通道搬走");
         } finally {
-            EssenceNativeChannels.unseedNativesForTest();
+            EssenceNativeChannelTestFixtures.unseedNativesForTest();
         }
     }
 
@@ -3343,7 +3343,7 @@ public class NekoPocketModelTest {
         for (int batch = 0; batch < 3; batch++) {
             final StubOps ops = new StubOps();
             ops.essenceNativeRouting = true;
-            EssenceNativeChannels.seedNativeForTest(NATIVE_TEST_TYPE_ID, "aer");
+            EssenceNativeChannelTestFixtures.seedNativeForTest(NATIVE_TEST_TYPE_ID, "aer");
             try {
                 ops.addSource(0, "i:1:0:", 4, PocketChannelOps.SourceKind.ITEM);
                 ops.addSource(1, PocketFilterConfig.fluidKey("water"), 200, PocketChannelOps.SourceKind.FLUID);
@@ -3354,7 +3354,7 @@ public class NekoPocketModelTest {
                     PocketChannelOps.SourceKind.ESSENCE);
                 PocketChannelRunner.runDualPhase(bindings, three, null, false, ops, 1);
             } finally {
-                EssenceNativeChannels.unseedNativesForTest();
+                EssenceNativeChannelTestFixtures.unseedNativesForTest();
             }
             threeFirst.add(ops.servedChannels.get(0));
         }
@@ -4413,7 +4413,7 @@ public class NekoPocketModelTest {
             final PocketCellProbe probe = PocketCellProbe.INSTANCE;
             final ItemStack cell = cellStack(CELL_A);
             host.stacks[3] = cell;
-            probe.useHostResolverForTest(host);
+            PocketCellProbe.useHostResolver(host);
 
             // 1) 未上报前：没有任何记录，也不得误判为"已消失"（UNKNOWN ⇒ stillPresent 为 true）
             SimpleAssert.eq(null, probe.locationOf(CELL_A), "未观测到 ⇒ 无位置记录");
@@ -7937,7 +7937,7 @@ public class NekoPocketModelTest {
      * （种子只顶「运行时注册的第三方」那一席 ⇒ 种子永远不能把内建通道判成原生，上传永不回落物品通道）。
      * 测试 JVM 里 AE2 的类型单例不可触达（节注释②）⇒ 这一档只能钉源码。
      * <p>
-     * ★区域 = {@code nativeProbe} 起到种子字段止 ⇒ 恰好覆盖「探针 + 它委派的那只单源换算件」两段，
+     * ★区域 = {@code nativeProbe} 起到通用 lookup 适配口止 ⇒ 恰好覆盖「探针 + 它委派的那只单源换算件」两段，
      * 因此同一段里既钉住"门在换算之前"，也钉住"探针确实委派了它"（第二判据无从藏身）。
      */
     private static void assertNativeProbeExclusionPinned() {
@@ -7948,10 +7948,10 @@ public class NekoPocketModelTest {
             return;
         }
         final int probeStart = methodStart(nativeChannels, "public static IAEStack<?> nativeProbe(");
-        // 区域终点 = 种子字段那一行（种子口整组住在探针/换算件与 nativeChannelTypeId 之间）
+        // 种子已移至 JVM test fixture；生产只保留通用 lookup 适配口作为此段终点。
         final int probeEnd = methodStart(
             nativeChannels,
-            "static final java.util.Map<String, java.util.Set<String>> SEEDED_NATIVE_TAGS");
+            "static volatile java.util.function.Function<String, String> nativeChannelLookup");
         SimpleAssert.that(probeStart >= 0 && probeEnd > probeStart, "★必须能按签名定位 nativeProbe（改名即红）");
         SimpleAssert.that(regionContainsCode(nativeChannels, probeStart, probeEnd, "ITEM_STACK_TYPE"), "内建物品通道的排除在场");
         SimpleAssert.that(regionContainsCode(nativeChannels, probeStart, probeEnd, "FLUID_STACK_TYPE"), "内建流体通道的排除在场");
@@ -7973,6 +7973,8 @@ public class NekoPocketModelTest {
             "★探针经唯一的 channelStackFromContainer 换算（禁第二判据）");
         SimpleAssert
             .that(!regionContainsCode(nativeChannels, probeStart, probeEnd, "SEEDED_"), "★探针与换算件零种子引用（种子不弱化内建排除）");
+        SimpleAssert.eq(0, countCodeLinesIn(nativeChannels, "SEEDED_NATIVE_TAGS"), "生产文件不存储测试种子");
+        SimpleAssert.eq(0, countCodeLinesIn(nativeChannels, "seedNativeForTest("), "生产文件不提供测试种子逻辑");
         // ★R91-② 交叉断言的静态形状：只在 try 内问一次 getAmountPerUnit，catch(Throwable) 未撤
         final int probeBodyEnd = firstCodeLineWith(
             nativeChannels,
@@ -8001,7 +8003,7 @@ public class NekoPocketModelTest {
      * delta 的通道段 = 原生 typeId，非原生两席位「无源可投不占对」整批不被服务（零拒收计数）。
      */
     private static void nativePresentUndeclaredRoutesToNative() {
-        EssenceNativeChannels.seedNativeForTest(NATIVE_TEST_TYPE_ID, "aer");
+        EssenceNativeChannelTestFixtures.seedNativeForTest(NATIVE_TEST_TYPE_ID, "aer");
         try {
             // 生产单源（声明侧读的那个方法）：种子在场 ⇒「在场」列可驱动（未种子时不可调——见节注释②）
             SimpleAssert.eq(
@@ -8039,7 +8041,7 @@ public class NekoPocketModelTest {
                 NekoPocketPanel.receiptOfReport(report),
                 "★R97 S2：搬了且零拒收（非原生席位不再被白试）⇒ ok（回执链可读）");
         } finally {
-            EssenceNativeChannels.unseedNativesForTest();
+            EssenceNativeChannelTestFixtures.unseedNativesForTest();
         }
     }
 
@@ -8122,8 +8124,8 @@ public class NekoPocketModelTest {
      * 叠在同一批里钉：原生通道的出现不得给永动环开新门。
      */
     private static void declaredTagNotInjectedAntiloop() {
-        EssenceNativeChannels.seedNativeForTest(NATIVE_TEST_TYPE_ID, "aer");
-        EssenceNativeChannels.seedNativeForTest(NATIVE_TEST_TYPE_ID, "ignis");
+        EssenceNativeChannelTestFixtures.seedNativeForTest(NATIVE_TEST_TYPE_ID, "aer");
+        EssenceNativeChannelTestFixtures.seedNativeForTest(NATIVE_TEST_TYPE_ID, "ignis");
         try {
             final StubOps ops = new StubOps();
             ops.essenceNativeRouting = true;
@@ -8160,7 +8162,7 @@ public class NekoPocketModelTest {
                 "★delta 里没有 aer 的条目（推出去一拍、按声明抽回来一拍 = 永动环）");
             SimpleAssert.eq(NATIVE_TEST_TYPE_ID, posted.get(0).typeId, "ignis 走的也是原生通道");
         } finally {
-            EssenceNativeChannels.unseedNativesForTest();
+            EssenceNativeChannelTestFixtures.unseedNativesForTest();
         }
     }
 
@@ -15487,7 +15489,7 @@ public class NekoPocketModelTest {
             }
             final String tag = ((PocketFilterConfig.EssenceFilter) payload).tag;
             final boolean nativeHit = !"item".equals(typeId) && !"fluid".equals(typeId)
-                && EssenceNativeChannels.isSeededNativeForTest(typeId, tag);
+                && EssenceNativeChannelTestFixtures.isSeededNativeForTest(typeId, tag);
             if (!nativeHit) {
                 return new Outcome(PocketReceipt.NO_CHANNEL, 0);
             }

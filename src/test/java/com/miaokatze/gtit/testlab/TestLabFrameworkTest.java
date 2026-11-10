@@ -44,6 +44,21 @@ public final class TestLabFrameworkTest {
             }
             SimpleAssert.eq(64, TestLabBounds.height(0), "Valid origin height");
         });
+        tests.put("canonical adapter propagates rejection instead of acknowledging a rejected run", () -> {
+            try {
+                new TestLabModule().execute(
+                    null,
+                    new String[] { "run", "missing" },
+                    java.util.UUID.randomUUID()
+                        .toString());
+                throw new AssertionError("Disabled run returned as accepted");
+            } catch (IllegalStateException expected) {
+                SimpleAssert.that(
+                    expected.getMessage()
+                        .contains("disabled"),
+                    "Authoritative rejection reaches driver");
+            }
+        });
         tests.put("zero assertions and skipped observations cannot pass", () -> {
             TestLabReport report = new TestLabReport("ui", false);
             report.finish();
@@ -87,7 +102,59 @@ public final class TestLabFrameworkTest {
                     .get("scenario"),
                 "Attributable case");
         });
+        tests.put("stop is separate from reset and cancelled reports cannot pass", () -> {
+            SimpleAssert.eq("No active run", TestLabRuntime.INSTANCE.cancel(null), "Idle stop is explicit");
+            TestLabReport report = new TestLabReport("suite", false);
+            report.add("native", "behavior", "PASS", "Actual assertion");
+            report.add("harness", "cancelled", "CANCELLED", "Explicit stop");
+            report.finish();
+            SimpleAssert.eq("CANCELLED", report.status, "Stop cannot become PASS");
+            report.add("harness", "cleanup", "FAIL", "Cleanup failed");
+            report.finish();
+            SimpleAssert.eq("FAIL", report.status, "Cleanup failure remains visible");
+        });
+        tests.put("all 18 native cases retain lanes defaults and real actor requirements", () -> {
+            TestLabRuntime.registerScenarios();
+            java.util.List<com.miaokatze.miaokatzecore.api.testlab.LabCase> catalog = new TestLabModule().cases();
+            SimpleAssert.eq(18, catalog.size(), "Complete catalog");
+            SimpleAssert.eq(
+                8L,
+                catalog.stream()
+                    .filter(c -> c.defaultSuite())
+                    .count(),
+                "Suite retains eight cases");
+            SimpleAssert.eq(
+                4L,
+                catalog.stream()
+                    .filter(c -> c.requiresRealActor())
+                    .count(),
+                "Two UI and two host phases");
+            for (String id : new String[] { "native-gift-host-stage", "native-gift-host-resume", "client-ui-pocket",
+                "client-ui-vending" }) {
+                SimpleAssert.that(
+                    catalog.stream()
+                        .anyMatch(c -> id.equals(c.id()) && c.requiresRealActor()),
+                    id);
+            }
+            SimpleAssert.that(!new TestLabModule().ownsWorld(null), "Never claim unrelated/null world");
+        });
         TestRunner.run(TestLabFrameworkTest.class, tests);
+        java.nio.file.Path catalogPath = java.nio.file.Paths.get("build", "testlab", "cases.json");
+        java.nio.file.Files.createDirectories(catalogPath.getParent());
+        Map<String, Object> declaredCatalog = new LinkedHashMap<>();
+        declaredCatalog.put("module", "gtit");
+        declaredCatalog.put("evidence", "declared");
+        declaredCatalog.put("cases", new TestLabModule().cases());
+        java.nio.file.Files.write(
+            catalogPath,
+            new com.google.gson.GsonBuilder().setPrettyPrinting()
+                .create()
+                .toJson(declaredCatalog)
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        TestLabCancellationTest.main(args);
+        TestLabAllAliasTest.main(args);
+        TestLabUiRenderGateTest.main(args);
+        com.miaokatze.gtit.main.TestLabBootstrapTest.main(args);
         com.miaokatze.gtit.testlab.scenario.NativeTeamCreationFailureTest.main(args);
         com.miaokatze.gtit.testlab.scenario.NativePocketFixtureTest.main(args);
     }

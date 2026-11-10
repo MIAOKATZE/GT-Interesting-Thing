@@ -45,7 +45,7 @@ public class ClientProxy extends CommonProxy {
         // 调用父类的 init 方法，确保通用逻辑正常执行
         super.init(event);
         TerminalGuiBridge.registerScreen(NekoRemoteVendingGui::createScreen);
-        com.miaokatze.gtit.testlab.TestLabUiClient.install();
+        TestLabBootstrap.installClient();
         com.miaokatze.gtit.terminal.TerminalClientSession.install();
         // NEI discovers recipe plugins itself; only the earlier HandlerInfo event listener is installed here.
         if (cpw.mods.fml.common.Loader.isModLoaded("NotEnoughItems")) {

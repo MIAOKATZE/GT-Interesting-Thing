@@ -3,6 +3,46 @@ plugins {
     id("com.gtnewhorizons.gtnhconvention")
 }
 
+// A complete replacement variant, never an addon to the ordinary Core jar.
+val testlabSourceSet = sourceSets.create("testlab") {
+    compileClasspath += sourceSets.main.get().output + sourceSets.main.get().compileClasspath
+    runtimeClasspath += output + compileClasspath + sourceSets.main.get().runtimeClasspath
+}
+configurations.named(testlabSourceSet.implementationConfigurationName) { extendsFrom(configurations.implementation.get()) }
+configurations.named(testlabSourceSet.compileOnlyConfigurationName) { extendsFrom(configurations.compileOnly.get()) }
+configurations.named(testlabSourceSet.annotationProcessorConfigurationName) { extendsFrom(configurations.annotationProcessor.get()) }
+sourceSets.test {
+    compileClasspath += testlabSourceSet.output
+    runtimeClasspath += testlabSourceSet.output
+}
+val testlabJar = tasks.register<Jar>("testlabJar") {
+    group = "build"
+    description = "Complete opt-in testlab replacement; do not install alongside the ordinary jar."
+    archiveClassifier.set("testlab-dev")
+    with(tasks.jar.get())
+    from(testlabSourceSet.output)
+    manifest.from(tasks.jar.get().manifest)
+    manifest.attributes("Miaokatze-Testlab-Variant" to "replacement")
+}
+// RFG 2.x creates and fully configures this task through its reobf<JarTaskName> rule.
+tasks.named<com.gtnewhorizons.retrofuturagradle.mcp.ReobfuscatedJar>("reobfTestlabJar") {
+    archiveClassifier.set("testlab")
+    referenceClasspath.from(testlabSourceSet.compileClasspath)
+    val productionReobf = tasks.named<com.gtnewhorizons.retrofuturagradle.mcp.ReobfuscatedJar>("reobfJar")
+    extraSrgFiles.from(productionReobf.map { it.extraSrgFiles })
+    extraSrgEntries.addAll(productionReobf.flatMap { it.extraSrgEntries })
+}
+val testlabSourceCommit = providers.exec { commandLine("git", "rev-parse", "HEAD") }.standardOutput.asText.map { it.trim() }
+val testlabSourceDirty = providers.exec {
+    commandLine("git", "status", "--porcelain", "--untracked-files=normal")
+}.standardOutput.asText.map { it.isNotBlank().toString() }
+tasks.withType<Jar>().configureEach {
+    manifest.attributes(
+        "Miaokatze-Source-Commit" to testlabSourceCommit.get(),
+        "Miaokatze-Source-Dirty" to testlabSourceDirty.get()
+    )
+}
+
 // 测试源是手写零依赖断言套件（TestRunner.main，无 JUnit 注解）；
 // Gradle 9 在存在 test 源但零发现时使 :test 直接失败，按报错提示关闭该门。
 tasks.test {
@@ -284,7 +324,7 @@ tasks.register<JavaExec>("runTestLabTest") {
     group = "verification"
     description = "Runs automation lab default gates, recovery bounds and report result invariants."
     mainClass = "com.miaokatze.gtit.testlab.TestLabFrameworkTest"
-    classpath = storeTestRuntimeClasspath
+    classpath = storeTestRuntimeClasspath + sourceSets.getByName("main").compileClasspath
     classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
 }
 

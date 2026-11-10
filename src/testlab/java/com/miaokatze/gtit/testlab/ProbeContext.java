@@ -38,6 +38,10 @@ public final class ProbeContext {
         return world;
     }
 
+    String scenarioId() {
+        return scenario;
+    }
+
     public String runId() {
         return report.runId;
     }

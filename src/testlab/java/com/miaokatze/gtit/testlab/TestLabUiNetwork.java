@@ -35,6 +35,9 @@ public final class TestLabUiNetwork {
         channel = NetworkRegistry.INSTANCE.newSimpleChannel("gtit_testlab");
         channel.registerMessage(RequestHandler.class, Request.class, 0, Side.CLIENT);
         channel.registerMessage(AckHandler.class, Ack.class, 1, Side.SERVER);
+    }
+
+    static void registerScenario() {
         TestLabRuntime.register(new ProbeScenario() {
 
             @Override
@@ -123,11 +126,15 @@ public final class TestLabUiNetwork {
     }
 
     static String run(EntityPlayerMP player) {
+        return run(player, null);
+    }
+
+    static String run(EntityPlayerMP player, String requestId) {
         if (!validPlayer(player)) throw new IllegalArgumentException("An online OP test client is required");
         requireEmptyInventory(player);
         requestedPlayer = player.getUniqueID();
         try {
-            return TestLabRuntime.INSTANCE.run("ui", "client-ui-pocket", 1);
+            return TestLabRuntime.INSTANCE.run("ui", "client-ui-pocket", 1, requestId);
         } catch (RuntimeException error) {
             requestedPlayer = null;
             throw error;

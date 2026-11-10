@@ -6,6 +6,7 @@ import net.minecraft.item.ItemStack;
 import com.cleanroommc.modularui.screen.ModularScreen;
 
 import cpw.mods.fml.common.FMLCommonHandler;
+import cpw.mods.fml.common.eventhandler.EventPriority;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 
@@ -17,6 +18,7 @@ public final class TestLabUiClient {
     private TestLabUiNetwork.Request pending;
     private int ticks;
     private boolean invoked;
+    private final TestLabUiRenderGate renderGate = new TestLabUiRenderGate();
 
     private TestLabUiClient() {}
 
@@ -36,6 +38,7 @@ public final class TestLabUiClient {
             incoming = null;
             ticks = 0;
             invoked = false;
+            renderGate.reset();
         }
         if (pending == null) return;
         Minecraft minecraft = Minecraft.getMinecraft();
@@ -61,20 +64,27 @@ public final class TestLabUiClient {
                 return;
             }
         }
+        renderGate.observe(invoked && targetScreenPresent());
+        if (++ticks >= 100) finish(0, "client UI did not render within 100 ticks");
+    }
+
+    /** Default-priority host capture runs before acknowledgement can trigger server cleanup. */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void render(TickEvent.RenderTickEvent event) {
+        if (pending == null || !invoked || event.phase != TickEvent.Phase.END) return;
+        if (renderGate.rendered(event.phase, targetScreenPresent())) finish(1, "gtit.pocket.main");
+    }
+
+    private static boolean targetScreenPresent() {
         ModularScreen screen = ModularScreen.getCurrent();
-        if (invoked && screen != null
-            && "gtit.pocket.main".equals(
-                screen.getMainPanel()
-                    .getName())) {
-            finish(
-                1,
-                screen.getMainPanel()
-                    .getName());
-        } else if (++ticks >= 100) finish(0, "client UI did not open within 100 ticks");
+        return screen != null && "gtit.pocket.main".equals(
+            screen.getMainPanel()
+                .getName());
     }
 
     private void finish(int result, String detail) {
         TestLabUiNetwork.acknowledge(pending, result, detail);
         pending = null;
+        renderGate.reset();
     }
 }
