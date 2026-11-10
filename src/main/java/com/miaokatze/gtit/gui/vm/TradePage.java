@@ -1370,7 +1370,7 @@ public final class TradePage {
 
         Flow statusRow = Flow.row()
             .height(10)
-            .widthRel(1f)
+            .widthRelOffset(1f, -4)
             .marginLeft(2)
             .child(
                 IKey.str(EnumChatFormatting.RED + "结构不完整")

@@ -256,6 +256,17 @@ tasks.register<JavaExec>("runNekoMusicConfigTest") {
 
 tasks.named("check") { dependsOn("runNekoMusicConfigTest") }
 
+// Native sound flags preserve the source-capture Mixin and normal stop/mute ownership.
+tasks.register<JavaExec>("runNekoMusicLoopTest") {
+    group = "verification"
+    description = "Checks native looping music flags without opening an audio device."
+    mainClass = "com.miaokatze.gtit.common.machine.neko.NekoMusicLoopTest"
+    classpath = storeTestRuntimeClasspath
+}
+
+tasks.named("check") { dependsOn("runNekoMusicLoopTest") }
+
+
 tasks.register<JavaExec>("runArchitectureBoundaryTest") {
     group = "verification"
     description = "Runs native team recovery, trade transaction, world-cache and magnet lifecycle regressions."

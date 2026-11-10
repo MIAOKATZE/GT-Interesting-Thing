@@ -33,6 +33,7 @@ import cpw.mods.fml.relauncher.SideOnly;
  * {@code GuiMusicController} 只是转发壳，common 侧不再 import gui 包）
  * - 防止叠加播放（先停止再播放）
  * - 接入 GUI 左上角的 BGM 切换按钮
+ * - 随机选定的曲目以原生零延迟流循环播放，关闭/静音沿既有停止路径处理
  * <p>
  * 音量控制通过反射访问 SoundSystem 实现：
  * SoundHandler → SoundManager → SoundSystem.setVolume(sourceName, volume)
@@ -319,7 +320,7 @@ public class NekoMusicEventHandler {
 
         // 播放猫猫 BGM
         try {
-            this.currentSound = PositionedSoundRecord.func_147673_a(NEKO_BGM);
+            this.currentSound = createLoopingMusic();
             mc.getSoundHandler()
                 .playSound(this.currentSound);
             LOG.debug("[NEKO] handleGuiOpened: 已请求播放猫猫 BGM，等待 Mixin 回调...");
@@ -328,6 +329,22 @@ public class NekoMusicEventHandler {
             LOG.warn("[NEKO] 无法播放猫猫售货机 BGM: {}", e.getMessage());
             this.currentSound = null;
         }
+    }
+
+    /** Native zero-delay streaming loop; retain PositionedSoundRecord for the existing source-capture Mixin. */
+    static PositionedSoundRecord createLoopingMusic() {
+        return new PositionedSoundRecord(NEKO_BGM, 1F, 1F, 0F, 0F, 0F) {
+
+            @Override
+            public boolean canRepeat() {
+                return true;
+            }
+
+            @Override
+            public ISound.AttenuationType getAttenuationType() {
+                return ISound.AttenuationType.NONE;
+            }
+        };
     }
 
     private void handleGuiClosed() {
