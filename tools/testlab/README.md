@@ -75,4 +75,4 @@ Core 每次命令写 `logs/miao-testlab/<requestUUID>.json`，含 accepted、sna
 
 宿主证据位于 `E:/CodeGT/.artifacts/testlab-system-optimization/host/<宿主UUID>/`。旧 runner 的 `.testlab/runs/` 及 last-run.json 仅作兼容证据，不能用旧报告或 stdin exit0 代替本轮结果。一实例一个 lease，核 PID 与创建身份；不删活锁、不杀全部 Java。失败保留世界、恢复凭据及原始报告，停止自有 child 后恢复候选包和配置。
 
-本轮已完成编译、框架/取消/目录/口袋 JVM 合同和 Jar 边界核验；未据此宣称当前候选实服、真实 GUI 或跨 JVM 房主流程已通过。精确日志见工作区 `.artifacts/testlab-system-optimization/gtit/`。
+当前候选已完成默认八场景服务端套件及真实 Pocket GUI、自然帧截图、集成服正常退出与临时世界回收验证。编译、JVM 合同和 Jar 边界核验不替代其他场景的实机证据；贸易机多样品交互、压力及房主跨 JVM 流程不在上述通过范围。工件身份与逐项结果见工作区实施报告和 `.artifacts/testlab-system-optimization/`，本页只维护使用合同。
