@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lDefault gift§r\nThe default guaranteed contents are bread ×§116§r, torches ×§164§r, a bed ×§11§r, chests ×§18§r and a Neko Coin ×§11§r, plus §12§r random rings from Skywalk, Ironheart, Dragon's Breath, Mountainbreaker and Tempest. Servers can change these contents.\n\n§3§lAdministrator configuration§r\n/gtit gift certain sets the current inventory as the guaranteed list; /gtit gift random <count> sets the random pool; /gtit gift reset restores defaults. /gtit gift claimlist lists claim records, and /gtit gift claimreset <all|player> resets records so the affected players receive another gift on their next login.\n\n§3§lCompletion§r\nHold a bed ×§11§r and torches ×§164§r for retrieval. §2Neither is consumed.§r",
+      "desc:8": "Keep a bed and a stack of torches from the chest for your first night. You do not need a second unopened gift.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lMap results§r\nThe scanner sends ore-vein and underground-fluid data to VisualProspecting's client map integration, such as JourneyMap markers. The display depends on the installed and enabled integration. Coordinates are not printed line by line in chat.\n\n§3§lOperation and completion§r\nCheck that VisualProspecting and its map integration are available, then use scan markers to plan exploration. Read how results are displayed and tick the checkbox; this quest does not check a scan count.",
+      "desc:8": "Open the map for vein or underground-fluid markers. If nothing appears, check VisualProspecting, its map integration and the selected scan mode.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

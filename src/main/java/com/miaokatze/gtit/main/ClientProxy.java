@@ -18,6 +18,19 @@ import cpw.mods.fml.common.event.FMLPreInitializationEvent;
  */
 public class ClientProxy extends CommonProxy {
 
+    public static final class VendingTooltip {
+
+        @cpw.mods.fml.common.eventhandler.SubscribeEvent
+        public void describe(net.minecraftforge.event.entity.player.ItemTooltipEvent e) {
+            if (!(gregtech.common.blocks.ItemMachines.getMetaTileEntity(
+                e.itemStack) instanceof com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2)) return;
+            com.miaokatze.miaokatzecore.api.tooltip.MachineTooltipPages
+                .apply(e.itemStack, e.toolTip, "gtit.machine.vending.compact", null);
+            String brand = com.miaokatze.gtit.common.util.GTITUtils.getAddedByLine();
+            if (!e.toolTip.contains(brand)) e.toolTip.add(brand);
+        }
+    }
+
     /**
      * ★R96 S11（需求 8）：饰品背包按键注册。放 <b>preInit</b> 的理由与 MUI2 自己的
      * {@code ClientProxy#preInit}（{@code :76-77}）一致 —— {@code KeyBinding} 要在
@@ -30,6 +43,7 @@ public class ClientProxy extends CommonProxy {
     @Override
     public void preInit(FMLPreInitializationEvent event) {
         super.preInit(event);
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.register(new VendingTooltip());
         com.miaokatze.gtit.trade.preset.client.TradePresetKeybind.install();
         com.miaokatze.gtit.gift.client.GiftKeybind.install();
         try {

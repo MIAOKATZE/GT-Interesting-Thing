@@ -4,7 +4,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lPurpose and mechanics§r\nGTIT provides two groups of features: the vending machine, starter gift, sign-in, lottery and mail form its operations system; coins, float cores, infinite storage and rings form its personal tool system. There are §18§r rings: §17§r functional rings and Windrider, crafted from those seven.\n\n§3§lQuest route§r\nThe eastern branch covers operations, and the western branch covers tools. Read this introduction, then tick the checkbox to complete the quest.",
+      "desc:8": "Start with your welcome chest. Follow the vending branch for trade, or collect coins to explore the portable tools.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -33,13 +33,7 @@
       "rewardID:8": "bq_standard:item",
       "rewards:9": {
         "0:10": {
-          "Count:3": 2,
-          "Damage:2": 0,
-          "OreDict:8": "",
-          "id:8": "gtit:neko_coin"
-        },
-        "1:10": {
-          "Count:3": 8,
+          "Count:3": 4,
           "Damage:2": 0,
           "OreDict:8": "",
           "id:8": "minecraft:bread"

@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lMovement effects§r\nWhile equipped, Tempest maintains §2Speed II and Jump Boost II§r, refreshing §130-second§r effects every §15 seconds§r. The bonuses remain active while the ring stays equipped and refreshes normally.\n\n§3§lCompletion§r\nHold §11§r Tempest for retrieval. It is §2not consumed§r.",
+      "desc:8": "Tempest grants Speed II and Jump Boost II. Try a short jump before sprinting through a mine.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -38,10 +38,10 @@
       "rewardID:8": "bq_standard:item",
       "rewards:9": {
         "0:10": {
-          "Count:3": 1,
+          "Count:3": 4,
           "Damage:2": 0,
           "OreDict:8": "",
-          "id:8": "gtit:shimmering_neko_coin"
+          "id:8": "gtit:neko_coin"
         }
       }
     }

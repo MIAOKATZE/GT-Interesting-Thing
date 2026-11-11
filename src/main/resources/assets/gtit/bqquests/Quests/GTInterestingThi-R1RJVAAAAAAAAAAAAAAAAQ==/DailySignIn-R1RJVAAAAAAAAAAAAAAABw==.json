@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lDaily and milestone rewards§r\nClaim daily rewards from the calendar in the sign-in tab. Defaults are §110§r Neko Coins on weekdays, §120§r on weekends and a streak coefficient of §11.0§r; servers can adjust these values.\n\nEach streak milestone can be claimed once per month. Cumulative milestones are one-time account rewards: the default §130 / 100 / 365§r days award §1100 / 300 / 1000§r coins respectively.\n\n§3§lCompletion§r\nRead the sign-in and milestone rules, then tick the checkbox. This quest does not check an actual sign-in record.",
+      "desc:8": "Claim sign-in rewards in their tab. Monthly streaks and lifetime totals are separate; a missed day does not erase lifetime progress.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -38,10 +38,10 @@
       "rewardID:8": "bq_standard:item",
       "rewards:9": {
         "0:10": {
-          "Count:3": 1,
+          "Count:3": 2,
           "Damage:2": 0,
           "OreDict:8": "",
-          "id:8": "gtit:neko_coin"
+          "id:8": "minecraft:bread"
         }
       }
     }

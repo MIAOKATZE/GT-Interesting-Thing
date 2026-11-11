@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lCreating and joining a team§r\nEnter /gtnhteam to open GTNHLib's team interface. Create a team, invite players or accept an invitation to join.\n\n§3§lShared wallet§r\nGTIT automatically uses the shared team wallet after you join; no separate mode needs enabling. Personal balances remain separate and are not automatically transferred. Leaving restores access to your personal wallet.\n\n§3§lCompletion§r\nRead the team controls and fund-sharing rules, then tick the checkbox. Joining a team is not required by this quest.",
+      "desc:8": "Open /gtnhteam to join or create a team. Team membership switches the active wallet without moving personal funds. Solo players need not form a team for this note.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

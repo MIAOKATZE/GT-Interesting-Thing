@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lVending-machine functions§r\nThe Neko Vending Machine provides trade, sign-in, lottery and mail interfaces. It has §18§r input inventory slots and §1100§r output inventory slots. Trades check available output space.\n\n§3§lCompletion§r\nObtain §11§r vending-machine controller and hold it in your inventory for retrieval; it is §2not consumed§r. Placing the machine in the world does not replace this inventory check.",
+      "desc:8": "Build a five-wide, four-high TV two blocks deep. The controller sits at the bottom centre of the front; fill the other 39 spaces with Neko casings, optionally replacing one with the dedicated ME hatch.\n\nCraft the portable terminal from a screen cover and a shimmering coin. Bind it to an accessible machine, then use it in air while the target chunk is loaded.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -38,36 +38,12 @@
       "rewardID:8": "bq_standard:item",
       "rewards:9": {
         "0:10": {
-          "Count:3": 1,
+          "Count:3": 4,
           "Damage:2": 0,
           "OreDict:8": "",
-          "id:8": "gtit:shimmering_neko_coin"
-        },
-        "1:10": {
-          "Count:3": 16,
-          "Damage:2": 0,
-          "OreDict:8": "",
-          "id:8": "gtit:neko_coin"
+          "id:8": "gtit:neko_vending_casing"
         }
       }
-    },
-    "1:10": {
-      "choices:9": {
-        "0:10": {
-          "Count:3": 2,
-          "Damage:2": 32690,
-          "OreDict:8": "",
-          "id:8": "gregtech:gt.metaitem.01"
-        },
-        "1:10": {
-          "Count:3": 2,
-          "Damage:2": 32680,
-          "OreDict:8": "",
-          "id:8": "gregtech:gt.metaitem.01"
-        }
-      },
-      "index:3": 1,
-      "rewardID:8": "bq_standard:choice"
     }
   },
   "tasks:9": {

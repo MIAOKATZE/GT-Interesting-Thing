@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lStarter gift and configuration§r\nEach player automatically receives a §2Starter Gift§r on their first login. A claim record prevents duplicate grants. An administrator can reset that record to issue another gift on the player's next login.\n\nGift contents, trade entries, sign-in rewards and lottery pools each have their own configuration. Administrators can also edit vending-machine trade entries in its GUI.\n\n§3§lCompletion§r\nHold §11§r Starter Gift for retrieval; it is §2not consumed§r. Alternatively, tick the checkbox. Either task completes this quest, so players who have already opened or no longer have their gift can use the checkbox.",
+      "desc:8": "Bring the welcome chest from your first login, or a bed if you already opened it. Set a spawn point and light your first shelter.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -38,30 +38,12 @@
       "rewardID:8": "bq_standard:item",
       "rewards:9": {
         "0:10": {
-          "Count:3": 32,
-          "Damage:2": 0,
-          "OreDict:8": "",
-          "id:8": "gtit:neko_coin"
-        }
-      }
-    },
-    "1:10": {
-      "choices:9": {
-        "0:10": {
-          "Count:3": 1,
-          "Damage:2": 2,
-          "OreDict:8": "",
-          "id:8": "enhancedlootbags:lootbag"
-        },
-        "1:10": {
           "Count:3": 16,
           "Damage:2": 0,
           "OreDict:8": "",
-          "id:8": "minecraft:iron_ingot"
+          "id:8": "minecraft:torch"
         }
-      },
-      "index:3": 1,
-      "rewardID:8": "bq_standard:choice"
+      }
     }
   },
   "tasks:9": {
@@ -72,20 +54,22 @@
       "ignoreNBT:1": 1,
       "index:3": 0,
       "partialMatch:1": 1,
-      "requireOnlyOneItem:1": 0,
+      "requireOnlyOneItem:1": 1,
       "requiredItems:9": {
         "0:10": {
           "Count:3": 1,
           "Damage:2": 0,
           "OreDict:8": "",
           "id:8": "gtit:starter_gift"
+        },
+        "1:10": {
+          "Count:3": 1,
+          "Damage:2": 0,
+          "OreDict:8": "",
+          "id:8": "minecraft:bed"
         }
       },
       "taskID:8": "bq_standard:retrieval"
-    },
-    "1:10": {
-      "index:3": 1,
-      "taskID:8": "bq_standard:checkbox"
     }
   }
 }

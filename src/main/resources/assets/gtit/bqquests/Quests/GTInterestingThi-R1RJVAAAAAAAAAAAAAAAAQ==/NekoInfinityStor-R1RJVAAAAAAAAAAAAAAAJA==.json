@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lInfinite storage across channels§r\nThe Neko Infinity Storage Unit supports items, fluids and registered third-party storage channels available at runtime. Supported types are stored separately while sharing §11§r ME drive slot.\n\n§3§lObtaining and migrating cells§r\nThe bundled trade costs §1512§r Shimmering Coins, §14§r §116,384k§r item cells and §14§r §116,384k§r fluid cells. Alternatively, shapelessly craft §11§r old infinite item cell with §11§r old infinite fluid cell into the new unit.\n\n§cEmpty the old cells through an ME-IO Port before migration. The recipe converts the cells without transferring their stored contents. Once the old cells are consumed, any contents left inside lose their access point.§r\n\n§3§lCompletion§r\nHold §11§r Neko Infinity Storage Unit for retrieval. It is §2not consumed§r.",
+      "desc:8": "One drive bay holds this multichannel unit. Each supported channel has its own contents. An old infinite item cell and fluid cell can be crafted together into the new unit.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -38,10 +38,10 @@
       "rewardID:8": "bq_standard:item",
       "rewards:9": {
         "0:10": {
-          "Count:3": 1,
+          "Count:3": 2,
           "Damage:2": 0,
           "OreDict:8": "",
-          "id:8": "gtit:shimmering_neko_coin"
+          "id:8": "minecraft:ender_pearl"
         }
       }
     }

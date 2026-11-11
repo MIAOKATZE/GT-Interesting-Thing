@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lCombat and mining effects§r\nWhile equipped, Mountainbreaker maintains §2Strength II and Haste II§r, refreshing §130-second§r effects every §15 seconds§r. These improve attack strength and mining speed respectively.\n\n§3§lCompletion§r\nHold §11§r Mountainbreaker for retrieval; it is §2not consumed§r. Maintaining the bonuses requires the ring to stay equipped and refresh normally.",
+      "desc:8": "Mountainbreaker grants Haste II for mining and Strength II for combat.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -38,10 +38,10 @@
       "rewardID:8": "bq_standard:item",
       "rewards:9": {
         "0:10": {
-          "Count:3": 1,
+          "Count:3": 4,
           "Damage:2": 0,
           "OreDict:8": "",
-          "id:8": "gtit:shimmering_neko_coin"
+          "id:8": "gtit:neko_coin"
         }
       }
     }

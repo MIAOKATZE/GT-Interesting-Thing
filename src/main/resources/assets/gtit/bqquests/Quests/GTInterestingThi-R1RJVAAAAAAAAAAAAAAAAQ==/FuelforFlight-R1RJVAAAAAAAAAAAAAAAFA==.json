@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lFlight supplies§r\nThe basic Float Core uses food reserves through exhaustion. Cooked beef restores food level and is also one of its crafting ingredients. Bring food before flying and replenish it as you approach the flight cutoff.\n\n§3§lSubmission and reward§r\nSubmit cooked beef ×§116§r to complete the quest; §cthe beef is consumed§r. The quest separately awards Delighted Meals ×§18§r as additional supplies, rather than returning the beef.",
+      "desc:8": "The float core draws on saturation before hunger. Hand in sixteen steaks for eight hearty meals; you keep the core.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

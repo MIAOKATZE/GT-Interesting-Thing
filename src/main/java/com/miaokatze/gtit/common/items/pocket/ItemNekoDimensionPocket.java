@@ -35,6 +35,7 @@ import com.miaokatze.gtit.crossmod.taum.TaumCompat;
 import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.register.CreativeTabManager;
+import com.miaokatze.miaokatzecore.api.tooltip.TooltipPages;
 
 import baubles.api.BaubleType;
 import baubles.api.IBauble;
@@ -700,8 +701,11 @@ public class ItemNekoDimensionPocket extends Item
      */
     @Override
     public void addInformation(ItemStack stack, EntityPlayer player, List tooltip, boolean showAdvanced) {
-        final Object[] args = tooltipArgs(stack);
+        boolean expanded = TooltipPages.expanded(stack);
+        final Object[] args = expanded ? tooltipArgs(stack) : null;
+        if (!expanded) tooltip.add(StatCollector.translateToLocal("item.neko_dimension_pocket.compact"));
         for (int i = 0;; i++) {
+            if (!expanded) break;
             final String key = TOOLTIP_PREFIX + i;
             final String template = StatCollector.translateToLocal(key);
             if (template.equals(key)) break;
@@ -710,8 +714,11 @@ public class ItemNekoDimensionPocket extends Item
                 EnumChatFormatting.LIGHT_PURPLE
                     + (template.indexOf('%') < 0 ? template : String.format(template, args)));
         }
-        appendDistillFastLine(tooltip, args);
-        appendElementReserveLines(tooltip, stack);
+        if (expanded) {
+            appendDistillFastLine(tooltip, args);
+            appendElementReserveLines(tooltip, stack);
+        }
+        TooltipPages.hint(stack, tooltip, false);
         if (stack != null && stack.hasTagCompound()
             && stack.getTagCompound()
                 .hasKey(PocketTransferReservation.NBT_KEY))

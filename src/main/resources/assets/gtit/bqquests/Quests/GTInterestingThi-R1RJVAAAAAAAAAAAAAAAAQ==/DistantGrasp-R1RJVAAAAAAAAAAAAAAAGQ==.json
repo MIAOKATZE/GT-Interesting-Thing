@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lReach bonus§r\nEach Distant Grasp adds §12§r blocks of interaction reach and §12§r blocks of attack reach. Multiple rings stack linearly. Equipping applies the bonus and removing the ring removes it; no extra toggle is needed.\n\n§3§lCompletion§r\nHold §11§r Distant Grasp for retrieval; it is §2not consumed§r. Equip the ring to use its effect.",
+      "desc:8": "Distant Grasp adds two blocks to interaction and attack reach per equipped ring.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -38,10 +38,10 @@
       "rewardID:8": "bq_standard:item",
       "rewards:9": {
         "0:10": {
-          "Count:3": 1,
+          "Count:3": 4,
           "Damage:2": 0,
           "OreDict:8": "",
-          "id:8": "gtit:shimmering_neko_coin"
+          "id:8": "gtit:neko_coin"
         }
       }
     }

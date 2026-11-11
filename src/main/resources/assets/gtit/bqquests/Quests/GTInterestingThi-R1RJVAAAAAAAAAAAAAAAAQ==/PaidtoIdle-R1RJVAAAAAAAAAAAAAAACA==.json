@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lOnline-time rewards§r\nDefault daily tiers award §15§r coins after §130 minutes§r online, §120§r after §12 hours§r and §150§r after §15 hours§r. Servers can adjust the tiers and rewards.\n\nTime accrues only while the player is online. Tiers reset daily, and each tier can be claimed once per day.\n\n§3§lCompletion§r\nRead the timing and claiming rules, then tick the checkbox. This quest does not require proof of online time.",
+      "desc:8": "Online time is separate from sign-in. The default daily milestones are 30 minutes, two hours and five hours. Return to the page to claim them before the daily reset.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

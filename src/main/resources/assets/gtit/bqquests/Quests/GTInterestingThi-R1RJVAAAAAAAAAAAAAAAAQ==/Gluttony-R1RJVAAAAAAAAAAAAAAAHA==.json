@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lRegular and emergency feeding§r\nGluttony restores §11§r food point per second, switching to saturation when food is full. If food level is below §15§r and at least §160 seconds§r have passed since the last emergency refill, both food and saturation are filled to §120§r.\n\n§3§lCompletion§r\nHold §11§r Gluttony for retrieval; it is §2not consumed§r. Both feeding effects require the ring to be equipped.",
+      "desc:8": "Gluttony restores food, then saturation. Below five food points it can refill both, with a minute between emergency refills.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -38,10 +38,10 @@
       "rewardID:8": "bq_standard:item",
       "rewards:9": {
         "0:10": {
-          "Count:3": 1,
+          "Count:3": 4,
           "Damage:2": 0,
           "OreDict:8": "",
-          "id:8": "gtit:shimmering_neko_coin"
+          "id:8": "minecraft:cooked_beef"
         }
       }
     }

@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lElectric flight§r\nThe Electric Float Core stores up to §132,000,000 EU§r and accepts charging at up to LV's §132 EU/t§r. While equipped, flight consumes §1128 EU/t§r.\n\n§3§lLow power and completion§r\nIf power is insufficient, a food level of at least §16§r allows flight using §10.01§r exhaustion per tick instead. §cFlight cannot continue when both power and food are insufficient.§r Craft §11§r Electric Float Core to complete the quest.",
+      "desc:8": "Charge the electric core at LV before wearing it. It stores 32 million EU and uses 128 EU/t in flight. Food can take over when power runs out if you have at least six food points.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -38,10 +38,10 @@
       "rewardID:8": "bq_standard:item",
       "rewards:9": {
         "0:10": {
-          "Count:3": 1,
+          "Count:3": 4,
           "Damage:2": 0,
           "OreDict:8": "",
-          "id:8": "gtit:neko_coin"
+          "id:8": "minecraft:cooked_beef"
         }
       }
     }

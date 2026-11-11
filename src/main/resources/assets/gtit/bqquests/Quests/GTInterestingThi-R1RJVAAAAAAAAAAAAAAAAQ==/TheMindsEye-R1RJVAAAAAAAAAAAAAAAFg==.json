@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lScan range and modes§r\nThe Telekinesis Scanner Core scans §119×19§r chunks around the player, with a radius of §19§r chunks or §1144§r blocks. Shift+right-click switches between ore-vein and underground-fluid modes.\n\n§3§lDependency and cost§r\n§cVisualProspecting is required; scanning is unavailable without it.§r Each scan requires a food level of at least §16§r and adds §124§r exhaustion. Results appear through VisualProspecting's client map integration.\n\n§3§lCompletion§r\nCraft §11§r Telekinesis Scanner Core to complete this quest.",
+      "desc:8": "Switch between veins and underground fluids with sneak-right-click. A scan covers 19 by 19 chunks and costs exhaustion. Look for the results in your VisualProspecting map integration.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -38,10 +38,10 @@
       "rewardID:8": "bq_standard:item",
       "rewards:9": {
         "0:10": {
-          "Count:3": 1,
+          "Count:3": 4,
           "Damage:2": 0,
           "OreDict:8": "",
-          "id:8": "gtit:neko_coin"
+          "id:8": "minecraft:cooked_beef"
         }
       }
     }

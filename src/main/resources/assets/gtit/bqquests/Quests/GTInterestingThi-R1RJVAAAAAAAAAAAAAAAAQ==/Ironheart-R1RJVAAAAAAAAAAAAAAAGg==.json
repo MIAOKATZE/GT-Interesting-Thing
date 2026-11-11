@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lMaximum health§r\nEach Ironheart adds §120§r maximum health, equal to §110§r hearts. Multiple rings stack linearly. Equipping and removing rings updates the health limit; it does not permanently increase base health.\n\n§3§lCompletion§r\nHold §11§r Ironheart for retrieval. It is §2not consumed§r.",
+      "desc:8": "Ironheart raises maximum health by ten hearts while worn.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -38,10 +38,10 @@
       "rewardID:8": "bq_standard:item",
       "rewards:9": {
         "0:10": {
-          "Count:3": 1,
+          "Count:3": 4,
           "Damage:2": 0,
           "OreDict:8": "",
-          "id:8": "gtit:shimmering_neko_coin"
+          "id:8": "gtit:neko_coin"
         }
       }
     }

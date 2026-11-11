@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lPreparing for reincarnation§r\nReincarnation requires a strictly singleplayer world; §cLAN-open worlds and dedicated servers are unsupported§r. Craft a crystal with Shimmering Coins ×§14§r, Neko Coins ×§14§r and a diamond ×§11§r. Deposit the items you want to carry in the reincarnation interface, then pass the two-stage confirmation to start a new cycle. Successful reincarnation §cconsumes §11§r§c crystal from your inventory§r.\n\n§3§lNew cycle and reward delivery§r\nThe world is regenerated and progress resets, while unlocked deposit rows and columns remain. Rewards depend only on this cycle's deposits and §cdo not accumulate across cycles§r. Automatic delivery begins about §15 seconds§r after your first login in the new cycle. Each item enters your inventory near the end of its animation; only overflow drops on the ground. No manual claim is needed.\n\n§3§lThis quest's requirements§r\nTick the information checkbox and hold §11§r Reincarnation Crystal for retrieval; §cboth tasks are required§r. The quest's retrieval §2does not consume the crystal§r or require actual reincarnation. Distinguish this quest check from the crystal consumed by the reincarnation operation.",
+      "desc:8": "Reincarnation starts a new world and is limited to private single-player games. Deposit what you want to carry over before confirming. Showing the crystal is enough here.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -41,22 +41,18 @@
           "Count:3": 1,
           "Damage:2": 0,
           "OreDict:8": "",
-          "id:8": "gtit:neko_coin"
+          "id:8": "minecraft:diamond"
         }
       }
     }
   },
   "tasks:9": {
     "0:10": {
-      "index:3": 0,
-      "taskID:8": "bq_standard:checkbox"
-    },
-    "1:10": {
       "autoConsume:1": 0,
       "consume:1": 0,
       "groupDetect:1": 0,
       "ignoreNBT:1": 1,
-      "index:3": 1,
+      "index:3": 0,
       "partialMatch:1": 1,
       "requireOnlyOneItem:1": 0,
       "requiredItems:9": {

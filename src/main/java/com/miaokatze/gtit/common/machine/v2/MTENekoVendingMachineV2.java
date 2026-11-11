@@ -1197,14 +1197,19 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      */
     @Override
     protected MultiblockTooltipBuilder createTooltip() {
-        return new MultiblockTooltipBuilder().addMachineType("Neko Vending Machine V2")
-            .addInfo("喵~ 猫猫售货机V2，完全独立版！")
+        return new MultiblockTooltipBuilder()
+            .addMachineType(net.minecraft.util.StatCollector.translateToLocal("gtit.machine.vending.type"))
+            .addInfo(net.minecraft.util.StatCollector.translateToLocal("gtit.machine.vending.trade"))
+            .addInfo(net.minecraft.util.StatCollector.translateToLocal("gtit.machine.vending.uplink"))
+            .addInfo(net.minecraft.util.StatCollector.translateToLocal("gtit.machine.vending.remote"))
             .beginStructureBlock(5, 4, 2, false)
-            .addController("Front Bottom Center")
-            .addOtherStructurePart(BlockRegistrar.nekoVendingCasing.getLocalizedName(), "Any casing block")
+            .addController(net.minecraft.util.StatCollector.translateToLocal("gtit.machine.vending.front"))
+            .addOtherStructurePart(
+                BlockRegistrar.nekoVendingCasing.getLocalizedName(),
+                net.minecraft.util.StatCollector.translateToLocal("gtit.machine.vending.casing"))
             .addOtherStructurePart(
                 net.minecraft.util.StatCollector.translateToLocal("gtit.machine.neko_vending_uplink_hatch"),
-                "Optional, at most one, any casing")
+                net.minecraft.util.StatCollector.translateToLocal("gtit.machine.vending.slot"))
             .addInfo(GTITUtils.getAddedByLine())
             .toolTipFinisher();
     }

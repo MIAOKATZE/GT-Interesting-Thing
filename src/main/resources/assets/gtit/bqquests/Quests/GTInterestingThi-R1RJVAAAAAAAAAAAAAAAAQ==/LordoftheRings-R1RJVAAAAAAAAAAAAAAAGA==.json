@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lRings and slots§r\nWith Baubles-Expanded installed, the ring row expands to §110§r slots; without it, §12§r slots are used. Seven functional rings are rare drops from §17§r kinds of structure chest. Windrider is obtained by crafting.\n\n§3§lBundled trade sources§r\nDefault prices are §18§r Shimmering Coins each for Distant Grasp, Skywalk and Ironheart; §112§r each for Dragon's Breath, Mountainbreaker and Tempest; and §112§r Shimmering Coins plus Delighted Meals ×§116§r for Gluttony. Servers can change these trades.\n\n§3§lCompletion§r\nRead the slot and ring-source information, then tick the checkbox. Later quests explain each ring's effects and retrieval requirements.",
+      "desc:8": "Find any one of the seven functional rings in loot or trade. Wear it in a ring slot to activate it, and keep one of each for Windrider.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -38,7 +38,7 @@
       "rewardID:8": "bq_standard:item",
       "rewards:9": {
         "0:10": {
-          "Count:3": 1,
+          "Count:3": 4,
           "Damage:2": 0,
           "OreDict:8": "",
           "id:8": "gtit:neko_coin"
@@ -48,8 +48,58 @@
   },
   "tasks:9": {
     "0:10": {
+      "autoConsume:1": 0,
+      "consume:1": 0,
+      "groupDetect:1": 0,
+      "ignoreNBT:1": 1,
       "index:3": 0,
-      "taskID:8": "bq_standard:checkbox"
+      "partialMatch:1": 1,
+      "requireOnlyOneItem:1": 1,
+      "requiredItems:9": {
+        "0:10": {
+          "Count:3": 1,
+          "Damage:2": 0,
+          "OreDict:8": "",
+          "id:8": "gtit:ring_distant_grasp"
+        },
+        "1:10": {
+          "Count:3": 1,
+          "Damage:2": 0,
+          "OreDict:8": "",
+          "id:8": "gtit:ring_ironheart"
+        },
+        "2:10": {
+          "Count:3": 1,
+          "Damage:2": 0,
+          "OreDict:8": "",
+          "id:8": "gtit:ring_dragon_breath"
+        },
+        "3:10": {
+          "Count:3": 1,
+          "Damage:2": 0,
+          "OreDict:8": "",
+          "id:8": "gtit:ring_gluttony"
+        },
+        "4:10": {
+          "Count:3": 1,
+          "Damage:2": 0,
+          "OreDict:8": "",
+          "id:8": "gtit:ring_tempest"
+        },
+        "5:10": {
+          "Count:3": 1,
+          "Damage:2": 0,
+          "OreDict:8": "",
+          "id:8": "gtit:ring_mountainbreaker"
+        },
+        "6:10": {
+          "Count:3": 1,
+          "Damage:2": 0,
+          "OreDict:8": "",
+          "id:8": "gtit:ring_skywalk"
+        }
+      },
+      "taskID:8": "bq_standard:retrieval"
     }
   }
 }

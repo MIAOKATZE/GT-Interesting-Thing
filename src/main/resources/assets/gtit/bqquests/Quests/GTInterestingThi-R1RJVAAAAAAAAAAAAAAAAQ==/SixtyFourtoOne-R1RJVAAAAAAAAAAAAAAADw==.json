@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lForward exchange§r\nThe bundled vending-machine trades include an exchange of §164§r Neko Coins for §11§r Shimmering Coin. By default, each player must wait §122 hours§r after using this entry before using it again. Server settings determine the actual price and cooldown.\n\n§3§lCompletion§r\nHold §11§r Shimmering Coin for retrieval; it is §2not consumed§r. The coin does not have to come from this particular exchange.",
+      "desc:8": "The default exchange is 64 coins for one shimmering coin, but only 56 on the way back. The offers have separate cooldowns. Show one shimmering coin; do not spend it just for the quest.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -38,30 +38,12 @@
       "rewardID:8": "bq_standard:item",
       "rewards:9": {
         "0:10": {
-          "Count:3": 64,
+          "Count:3": 8,
           "Damage:2": 0,
           "OreDict:8": "",
           "id:8": "gtit:neko_coin"
         }
       }
-    },
-    "1:10": {
-      "choices:9": {
-        "0:10": {
-          "Count:3": 1,
-          "Damage:2": 0,
-          "OreDict:8": "",
-          "id:8": "gtit:shimmering_neko_coin"
-        },
-        "1:10": {
-          "Count:3": 56,
-          "Damage:2": 0,
-          "OreDict:8": "",
-          "id:8": "gtit:neko_coin"
-        }
-      },
-      "index:3": 1,
-      "rewardID:8": "bq_standard:choice"
     }
   },
   "tasks:9": {

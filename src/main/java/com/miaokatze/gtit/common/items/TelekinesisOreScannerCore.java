@@ -17,6 +17,7 @@ import net.minecraft.world.World;
 
 import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.register.CreativeTabManager;
+import com.miaokatze.miaokatzecore.api.tooltip.TooltipPages;
 import com.sinthoras.visualprospecting.VisualProspecting_API;
 
 import gregtech.api.enums.Mods;
@@ -186,15 +187,8 @@ public class TelekinesisOreScannerCore extends Item {
     // ==================== NBT数据管理 ====================
 
     public int getMode(ItemStack stack) {
-        NBTTagCompound nbt = stack.getTagCompound();
-        if (nbt == null) {
-            nbt = new NBTTagCompound();
-            stack.setTagCompound(nbt);
-        }
-        if (!nbt.hasKey(NBT_MODE)) {
-            nbt.setInteger(NBT_MODE, MODE_ORES); // 默认矿石模式
-        }
-        return nbt.getInteger(NBT_MODE);
+        return stack.hasTagCompound() ? stack.getTagCompound()
+            .getInteger(NBT_MODE) : MODE_ORES;
     }
 
     public void setMode(ItemStack stack, int mode) {
@@ -221,20 +215,17 @@ public class TelekinesisOreScannerCore extends Item {
 
     @Override
     public void addInformation(ItemStack stack, EntityPlayer player, java.util.List list, boolean par4) {
-        list.add(
-            EnumChatFormatting.GRAY + StatCollector.translateToLocal("item.gtit.telekinesis_ore_scanner_core.desc.1"));
-        list.add(
-            EnumChatFormatting.GRAY + StatCollector.translateToLocal("item.gtit.telekinesis_ore_scanner_core.desc.2"));
-        list.add(EnumChatFormatting.GRAY + "Mode: " + EnumChatFormatting.YELLOW + getModeName(getMode(stack)));
-        list.add(EnumChatFormatting.GRAY + "Range: " + EnumChatFormatting.AQUA + "19x19 chunks (UHV)");
-
-        if (Mods.VisualProspecting.isModLoaded()) {
-            list.add(EnumChatFormatting.GREEN + "✓ VisualProspecting/JourneyMap");
-        } else {
-            list.add(EnumChatFormatting.DARK_GRAY + "○ VisualProspecting required");
+        list.add(StatCollector.translateToLocal("item.telekinesis_ore_scanner_core.tooltip.0"));
+        list.add(StatCollector.translateToLocal("item.telekinesis_ore_scanner_core.tooltip.1"));
+        list.add(EnumChatFormatting.YELLOW + getModeName(getMode(stack)));
+        if (TooltipPages.expanded(stack)) {
+            list.add(StatCollector.translateToLocal("item.telekinesis_ore_scanner_core.tooltip.2"));
+            list.add(StatCollector.translateToLocal("item.telekinesis_ore_scanner_core.tooltip.3"));
         }
-
-        list.add(EnumChatFormatting.ITALIC.toString() + EnumChatFormatting.DARK_GRAY + "Shift+Right to switch mode");
+        if (!Mods.VisualProspecting.isModLoaded()) list.add(
+            EnumChatFormatting.RED
+                + StatCollector.translateToLocal("item.gtit.telekinesis_ore_scanner_core.visualprospecting.required"));
+        TooltipPages.hint(stack, list, false);
         list.add(GTITUtils.getAddedByLine());
     }
 }

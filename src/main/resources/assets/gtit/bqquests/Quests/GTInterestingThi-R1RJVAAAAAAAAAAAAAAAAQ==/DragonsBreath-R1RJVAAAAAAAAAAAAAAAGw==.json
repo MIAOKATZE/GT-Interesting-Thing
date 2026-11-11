@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lMaintained potion effects§r\nWhile equipped, Dragon's Breath maintains §2Fire Resistance, Night Vision, Regeneration I and Resistance I§r. Effects refresh every §15 seconds§r and last §130 seconds§r per refresh, so they remain active while the ring stays equipped and refreshes normally.\n\n§3§lCompletion§r\nHold §11§r Dragon's Breath for retrieval; it is §2not consumed§r. These potion effects do not provide immunity to all damage.",
+      "desc:8": "Dragon Breath refreshes fire resistance, night vision, regeneration and resistance while equipped.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -38,10 +38,10 @@
       "rewardID:8": "bq_standard:item",
       "rewards:9": {
         "0:10": {
-          "Count:3": 1,
+          "Count:3": 4,
           "Damage:2": 0,
           "OreDict:8": "",
-          "id:8": "gtit:shimmering_neko_coin"
+          "id:8": "gtit:neko_coin"
         }
       }
     }

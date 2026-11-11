@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§3§lCoin sources§r\nOrdinary Neko Coins are included in §17§r structure-chest loot tables, with §12–8§r coins per loot entry and a stack limit of §164§r. Shimmering Coins are not registered in those chest tables; sources include fishing, exchange trades and quest rewards.\n\n§3§lFishing chances§r\nEach successful catch first rolls the default §12%§r chance for a Shimmering Coin. If that misses, it rolls the default §110%§r chance for an ordinary coin. The resulting default ordinary-coin chance is §19.8%§r. Servers can adjust both chances.\n\n§3§lCompletion§r\nHold §18§r ordinary Neko Coins for retrieval. They are §2not consumed§r.",
+      "desc:8": "Collect eight coins from loot or fishing and keep them. The rod gives you another chance at both ordinary and shimmering coins.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -41,7 +41,7 @@
           "Count:3": 1,
           "Damage:2": 0,
           "OreDict:8": "",
-          "id:8": "gtit:neko_coin"
+          "id:8": "minecraft:fishing_rod"
         }
       }
     }
