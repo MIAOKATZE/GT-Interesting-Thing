@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Additional terms: see AGPL-ADDITIONAL-TERMS.md in the project root.
+
 package com.miaokatze.gtit.client.vending.scene;
 
 /** Exact GT5 5.09.54.205 geometry contracts, not an instanceof assumption about every custom material. */

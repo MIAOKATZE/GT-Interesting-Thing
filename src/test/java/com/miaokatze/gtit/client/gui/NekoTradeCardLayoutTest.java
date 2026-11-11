@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Additional terms: see AGPL-ADDITIONAL-TERMS.md in the project root.
+
 package com.miaokatze.gtit.client.gui;
 
 /** Pure density/overflow contract; not a substitute for native GL and mouse validation. */

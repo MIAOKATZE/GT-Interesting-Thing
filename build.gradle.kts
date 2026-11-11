@@ -421,3 +421,6 @@ listOf("runPocketFluidNativeBoundaryTest", "runVendingConcurrencyTest").forEach 
         })
     }
 }
+
+// Package and verify the project-specific code and independent-asset licenses.
+apply(from = "gradle/licensing.gradle.kts")

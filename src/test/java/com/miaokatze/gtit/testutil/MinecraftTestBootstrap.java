@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Additional terms: see AGPL-ADDITIONAL-TERMS.md in the project root.
+
 package com.miaokatze.gtit.testutil;
 
 /** 实际 Forge/原版注册表初始化；子加载器与既有贸易回归相同，避免用桩件替代 NBT/物品。 */

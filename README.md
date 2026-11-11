@@ -6,7 +6,7 @@
 <p align="center"><strong><em>GTNH 趣味道具模组</em></strong><br><strong><em>GTNH Interesting Gadgets Mod</em></strong></p>
 
 <p align="center">
-  <a href="LICENSE"><img alt="License AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg"></a>
+  <a href="LICENSE"><img alt="Code license AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg"></a>
   <img alt="Minecraft 1.7.10" src="https://img.shields.io/badge/Minecraft-1.7.10-blue.svg">
   <img alt="Forge 10.13.4.1614" src="https://img.shields.io/badge/Forge-10.13.4.1614-blue.svg">
   <a href="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack"><img alt="GTNH 2.9.0 final" src="https://img.shields.io/badge/GTNH-2.9.0-orange.svg"></a>
@@ -687,9 +687,13 @@ A literal `\n` in mail bodies is converted to a line break. / 邮件正文中字
 
 ## License / 许可证
 
-Released under the AGPL-3.0 License. See the LICENSE file for details.
+**Code:** [AGPLv3](LICENSE) with [reasonable additional terms](AGPL-ADDITIONAL-TERMS.md). **Designated independent assets:** [CC BY-NC-ND 4.0](ASSET-LICENSE.md). See [NOTICE](NOTICE.md) for project identity, exact scope, third-party exceptions, and independent legal-compliance duties.
 
-以 AGPL-3.0 许可证发布，详见 LICENSE 文件。
+**代码：** AGPLv3及合理附加条款；**指定独立素材：** CC BY-NC-ND 4.0。具体范围、第三方例外和独立法律合规义务见NOTICE；既有有效授权不追溯撤回。
+
+This arrangement applies from **v2.1.11**. The two licenses cover different material; they are not alternative choices for the same material.
+
+**Music exception:** `neko_bgm_1.ogg`, `neko_bgm_2.ogg`, and `neko_bgm_3.ogg` remain AGPL-3.0-only. Sound effects are designated CC BY-NC-ND 4.0. 三段音乐保持AGPL，不作NC声明；音效采用上述素材许可。
 
 ***
 
