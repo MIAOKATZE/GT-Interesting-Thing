@@ -3,19 +3,14 @@
 
 package com.miaokatze.gtit.mixin;
 
-import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.projectile.EntityFishHook;
-import net.minecraft.item.ItemStack;
 
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-
-import com.miaokatze.gtit.common.api.enums.GTITItemList;
-import com.miaokatze.gtit.config.Config;
 
 /**
  * 服务端 Mixin：玩家每次成功钓到鱼时，服务端掷概率额外附赠猫猫币/闪烁猫猫币。
@@ -56,38 +51,6 @@ public class MixinEntityFishHook {
             value = "INVOKE",
             target = "Lnet/minecraft/entity/projectile/EntityFishHook;func_146033_f()Lnet/minecraft/item/ItemStack;"))
     private void gtit$onFishLootRolled(CallbackInfoReturnable<Integer> cir) {
-        EntityPlayer angler = this.field_146042_b;
-        // 只对服务端生效
-        if (angler == null || angler.worldObj.isRemote) {
-            return;
-        }
-
-        double shimmeringChance = Config.fishingShimmeringNekoCoinChance;
-        double normalChance = Config.fishingNekoCoinChance;
-        // 两项概率均为 0 时完全零开销路径
-        if (shimmeringChance <= 0.0D && normalChance <= 0.0D) {
-            return;
-        }
-
-        // 每次成功钓鱼先掷闪烁猫猫币、未中再掷普通猫猫币（两项独立配置，单位为百分比 0-100）
-        if (shimmeringChance > 0.0D && angler.worldObj.rand.nextDouble() * 100.0D < shimmeringChance) {
-            giveNekoCoin(angler, GTITItemList.ShimmeringNekoCoin);
-        } else if (normalChance > 0.0D && angler.worldObj.rand.nextDouble() * 100.0D < normalChance) {
-            giveNekoCoin(angler, GTITItemList.NekoCoin);
-        }
-    }
-
-    /**
-     * 发放范式对齐 StarterGift.onItemRightClick：背包优先，满了掉落到玩家位置
-     */
-    private static void giveNekoCoin(EntityPlayer angler, GTITItemList item) {
-        ItemStack stack = item.get(1);
-        if (stack == null) {
-            return;
-        }
-        if (!angler.inventory.addItemStackToInventory(stack)) {
-            angler.worldObj
-                .spawnEntityInWorld(new EntityItem(angler.worldObj, angler.posX, angler.posY + 1, angler.posZ, stack));
-        }
+        com.miaokatze.gtit.common.loot.NekoCoinRewards.award(this.field_146042_b, 1.0);
     }
 }

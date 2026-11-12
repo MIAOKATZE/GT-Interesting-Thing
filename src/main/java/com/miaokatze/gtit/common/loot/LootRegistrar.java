@@ -31,6 +31,11 @@ public class LootRegistrar {
      * 注册所有战利品
      */
     public static void init() {
+        NekoCoinEvents events = new NekoCoinEvents();
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.register(events);
+        cpw.mods.fml.common.FMLCommonHandler.instance()
+            .bus()
+            .register(events);
         registerChestLoot();
         LOG.info("[GTIT] 战利品注册完成");
     }

@@ -30,6 +30,7 @@ public final class LootRegistrarTest {
     public static void main(String[] args) throws Exception {
         if (!MinecraftTestBootstrap.enter(LootRegistrarTest.class, args)) return;
         Map<String, Runnable> cases = new LinkedHashMap<>();
+        cases.put("both final coin probabilities scale with fishing", LootRegistrarTest::coinOdds);
         cases.put("seven original categories and counts", LootRegistrarTest::originalCategories);
         cases.put("repeat registration does not increase weight", LootRegistrarTest::repeatRegistration);
         cases.put("replacement pools recover coin and seven rings", LootRegistrarTest::replacementPools);
@@ -38,6 +39,31 @@ public final class LootRegistrarTest {
         cases.put("same pool can recover a removed entry", LootRegistrarTest::removedEntry);
         cases.put("real chest generation keeps inclusive 2 to 8 range", LootRegistrarTest::generateChest);
         TestRunner.run(LootRegistrarTest.class, cases);
+    }
+
+    private static void coinOdds() {
+        for (double scale : new double[] { 1, 0.2, 0.1 }) {
+            int[] outcomes = new int[3];
+            for (int gate = 0; gate < 10; gate++)
+                for (int rare = 0; rare < 100; rare++) for (int ordinary = 0; ordinary < 10; ordinary++) {
+                    final double[] values = { (gate + .5) / 10, (rare + .5) / 100, (ordinary + .5) / 10 };
+                    Random sample = new Random(0) {
+
+                        int index = scale == 1 ? 1 : 0;
+
+                        @Override
+                        public double nextDouble() {
+                            return values[index++];
+                        }
+                    };
+                    outcomes[NekoCoinRewards.roll(sample, scale, 2, 10)]++;
+                }
+            require(
+                outcomes[1] == (int) (980 * scale) && outcomes[2] == (int) (200 * scale),
+                "scaled ordinary/rare " + scale);
+        }
+        require(NekoCoinRewards.roll(new Random(16), 1, 0, 0) == 0, "disabled fishing sources");
+        require(NekoCoinRewards.roll(new Random(16), 1, 100, 100) == 2, "never award both coins");
     }
 
     private static void originalCategories() {

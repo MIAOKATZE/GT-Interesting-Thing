@@ -702,9 +702,13 @@ public class ItemNekoDimensionPocket extends Item
     @Override
     public void addInformation(ItemStack stack, EntityPlayer player, List tooltip, boolean showAdvanced) {
         boolean expanded = TooltipPages.expanded(stack);
-        final Object[] args = expanded ? tooltipArgs(stack) : null;
-        if (!expanded) tooltip
-            .add(TooltipPages.firstLook(stack, StatCollector.translateToLocal("item.neko_dimension_pocket.compact")));
+        final Object[] args = tooltipArgs(stack);
+        if (!expanded) {
+            tooltip.add(StatCollector.translateToLocalFormatted("item.neko_dimension_pocket.compact.items", args));
+            tooltip.add(StatCollector.translateToLocalFormatted("item.neko_dimension_pocket.compact.fluids", args));
+            tooltip.add(
+                TooltipPages.firstLook(stack, StatCollector.translateToLocal("item.neko_dimension_pocket.compact")));
+        }
         for (int i = 0;; i++) {
             if (!expanded) break;
             final String key = TOOLTIP_PREFIX + i;

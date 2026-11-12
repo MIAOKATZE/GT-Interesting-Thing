@@ -78,12 +78,12 @@ item.starter_gift.tooltip.0=右击打开，获得新手物资
 # 猫猫币
 item.neko_coin.name=猫猫币
 item.neko_coin.tooltip.0=猫猫售货机的普通货币；交易按团队钱包余额结算。
-item.neko_coin.tooltip.1=可在宝箱中发现，或从鱼塘中钓起
+item.neko_coin.tooltip.1=§b来源 §8· §f宝箱、亲手钓鱼、收获成熟作物或击杀敌对生物。
 
 # 闪烁猫猫币
 item.shimmering_neko_coin.name=闪烁猫猫币
 item.shimmering_neko_coin.tooltip.0=猫猫售货机的稀有货币；与普通猫猫币分别记账。
-item.shimmering_neko_coin.tooltip.1=极为稀有，仅能从鱼塘中钓起
+item.shimmering_neko_coin.tooltip.1=§b来源 §8· §f亲手钓鱼、收获成熟作物或击杀敌对生物时有小概率获得。
 
 # 轮回水晶
 item.reincarnation_crystal.name=轮回水晶
@@ -417,12 +417,12 @@ gtit.pocket.upgrade.mage.tooltip=蒸馏间隔五秒缩至一秒
 gtit.pocket.upgrade.mage.line.0=§6安装§7 · 装入口袋第 %1$d 格后无法拆除；主开关可随时关闭。
 gtit.pocket.upgrade.mage.line.1=主开关下有 %1$d 项独立设置。\n猫猫币补能和源质转换默认开启，结晶默认关闭。
 gtit.pocket.upgrade.mage.line.2=中途安装从下一轮蒸馏起生效；产量取决于物品本身的源质。
-gtit.pocket.upgrade.mage.line.3=§b法杖充能§7 · 每 %1$d tick 为一支法杖补充至多 %2$d 点。
+gtit.pocket.upgrade.mage.line.3=§b法杖充能§f · 每 §e%1$d§f tick 为一支法杖补充至多 §e%2$d§f 点。
 gtit.pocket.upgrade.mage.line.4=先检查主手，再检查背包的 %1$d 格，只给第一支能接收的法杖充能。
 gtit.pocket.upgrade.mage.line.5=§b猫猫币补能§7 · 每 %1$d 秒使用一枚，先查口袋 %2$d 格，再查背包 %3$d 格。\n仅在全部可入账时扣币；普通币为各源 +%4$d，闪烁币 +%5$d。
 gtit.pocket.upgrade.mage.line.6=§b源质转换§7 · 每 %1$d 秒，每种元始源质折 %2$d 点元素。\n%3$d 种同时处理，非元始源质保留。
 gtit.pocket.upgrade.mage.line.7=§d结晶模式§7 · 蒸馏改产结晶，每枚 %1$d 点；不再生成源质。\n结晶先放口袋中栏，再放背包；两处都满时掉在脚下。\n源质盘内原有储量不变。
-gtit.pocket.upgrade.mage.line.8=§b元素储量§7 · %1$d 种元素各可存 %2$d 点，共 %3$d 点。
+gtit.pocket.upgrade.mage.line.8=§b元素储量§f · §e%1$d§f 种元素各可存 §e%2$d§f 点，共 §e%3$d§f 点。
 gtit.pocket.upgrade.mage.line.9=各元素余量可在口袋的说明中查看；只有源质转换会消耗盘内源质。
 gtit.pocket.upgrade.slot.tooltip=每格只收对应插件；放入即固化，不可取出
 # ---- ★R96 S2 新增 19 键：升级配置面板（次级面板）的标题/三态读数/挂载位 + 关闭态格读数 + 七条粘性回执 ----
@@ -968,8 +968,11 @@ gtit.machine.vending.remote=绑定的猫猫终端可以远程打开交易界面�
 gtit.machine.vending.front=正面底边中央
 gtit.machine.vending.casing=控制器之外的机械方块位
 gtit.machine.vending.slot=可替换任意一个机械方块，整机至多 1 个
-gtit.machine.vending.compact=猫猫币与物品交易；产物进入输出栏或已启用的 ME 输出。|结构 5 × 4 × 2，专用 ME 上行链路仓可选，至多 1 个。
-item.neko_dimension_pocket.compact=随身存放物品和源质；库存随口袋保存，遗失口袋也会失去内容物。
+gtit.machine.vending.compact=§b交易 §8· §f团队钱包结算猫猫币，支持物品交易。|§6结构 §8· §f5 × 4 × 2，可装 §e1§f 个专用 ME 上行链路仓。|§a产出 §8· §f默认进入输出栏；启用 ME 输出后，新产物送回网络。|§d远程 §8· §f绑定猫猫终端后可远程打开交易界面。
+item.neko_dimension_pocket.compact=§c保管 §8· §f物品与源质保存在口袋中；遗失口袋也会失去内容物。
 item.reincarnation_crystal.tooltip.access=§b用途§7 · 单人存档中右键打开周目面板，可先寄存要带走的物品。
 item.reincarnation_crystal.tooltip.confirm=§c确认轮回会删除当前存档；仅打开面板不会触发。
 item.neko_dimension_pocket.reserve_heading=§b元素储量
+item.neko_dimension_pocket.compact.items=§b物品 §8· §e%1$d§f 个存储格；可同时收纳源质。
+item.neko_dimension_pocket.compact.fluids=§3流体 §8· §e%8$d§f 个独立储罐，每罐 §e%5$,d§f mB。
+gtit.pocket.upgrade.mage.compact_modes=§d模式 §8· §f猫猫币补能、源质转换默认开启；蒸馏结晶默认关闭。

@@ -78,12 +78,12 @@ item.starter_gift.tooltip.0=Right-click to open and receive starter items
 # Neko Coin
 item.neko_coin.name=Neko Coin
 item.neko_coin.tooltip.0=Standard Neko vending currency. Trades draw from the team wallet.
-item.neko_coin.tooltip.1=Can be found in chests or caught while fishing
+item.neko_coin.tooltip.1=§bSources §8· §fLoot chests, fishing, harvesting ripe crops or killing hostile mobs yourself.
 
 # Shimmering Neko Coin
 item.shimmering_neko_coin.name=Shimmering Neko Coin
 item.shimmering_neko_coin.tooltip.0=Rare Neko vending currency, tracked separately from ordinary Neko Coins.
-item.shimmering_neko_coin.tooltip.1=Extremely rare, can only be caught while fishing
+item.shimmering_neko_coin.tooltip.1=§bSources §8· §fRare bonus from fishing, harvesting ripe crops or killing hostile mobs yourself.
 
 # Reincarnation Crystal
 item.reincarnation_crystal.name=Reincarnation Crystal
@@ -428,12 +428,12 @@ gtit.pocket.upgrade.mage.tooltip=Distillation interval cut from five seconds to 
 gtit.pocket.upgrade.mage.line.0=§6Installation§7 · Fitting it in pocket slot %1$d is permanent. The master switch can be turned off.
 gtit.pocket.upgrade.mage.line.1=The master switch controls %1$d independent settings.\nCoin charging and transmutation start on; crystallization starts off.
 gtit.pocket.upgrade.mage.line.2=Installing mid-cycle takes effect on the next batch. Yield follows the aspects in each item.
-gtit.pocket.upgrade.mage.line.3=§bWand charging§7 · Every %1$d ticks, one wand receives up to %2$d points.
+gtit.pocket.upgrade.mage.line.3=§bWand charging§f · Every §e%1$d§f ticks, one wand receives up to §e%2$d§f points.
 gtit.pocket.upgrade.mage.line.4=The first eligible wand is charged: main hand first, then the %1$d inventory slots.
 gtit.pocket.upgrade.mage.line.5=§bCoin charging§7 · One coin every %1$d second; checks %2$d pocket slots, then %3$d inventory slots.\nOnly spends a coin if all primals can accept it: normal +%4$d each, shimmering +%5$d each.
 gtit.pocket.upgrade.mage.line.6=§bTransmutation§7 · Every %1$d second, each primal converts into %2$d element points.\nAll %3$d primals can convert together. Other essentia is untouched.
 gtit.pocket.upgrade.mage.line.7=§dCrystal mode§7 · Distillation yields crystals worth %1$d point each instead of essentia.\nCrystals go to the middle pocket bar, then your inventory. Overflow drops at your feet.\nExisting stock in the essentia tray is unchanged.
-gtit.pocket.upgrade.mage.line.8=§bElement reserves§7 · %1$d primal elements, up to %2$d points each (%3$d in total).
+gtit.pocket.upgrade.mage.line.8=§bElement reserves§f · §e%1$d§f primal elements, up to §e%2$d§f points each (§e%3$d§f in total).
 gtit.pocket.upgrade.mage.line.9=The pocket tooltip lists each reserve. Only transmutation consumes stored aspects.
 gtit.pocket.upgrade.slot.tooltip=Each slot accepts only its matching module; inserting is permanent and it cannot be taken back out
 # ---- ★R96 S2 new keys (19): the upgrade config band (secondary panel) title / three-state readouts /
@@ -992,8 +992,11 @@ gtit.machine.vending.remote=A bound Neko terminal can open this machine remotely
 gtit.machine.vending.front=Front face, bottom center
 gtit.machine.vending.casing=Any casing position outside the controller
 gtit.machine.vending.slot=Replaces any one casing, at most one per machine
-gtit.machine.vending.compact=Trades Neko Coins and items. Output goes to the machine or the enabled ME output.|Structure: 5 × 4 × 2, with up to one optional Neko ME uplink.
-item.neko_dimension_pocket.compact=Portable item and essentia storage. Contents belong to this pocket and are lost with it.
+gtit.machine.vending.compact=§bTrade §8· §fNeko Coins settle from the team wallet; item trades are supported.|§6Structure §8· §f5 × 4 × 2, up to §e1§f dedicated ME uplink.|§aOutput §8· §fOutput slots by default; enabled ME output sends new products to the network.|§dRemote §8· §fA bound Neko Terminal opens the trading screen remotely.
+item.neko_dimension_pocket.compact=§cCustody §8· §fStored items and essentia are lost with this pocket.
 item.reincarnation_crystal.tooltip.access=§bUse§7 · Right-click in single-player to open the rebirth panel and deposit items.
 item.reincarnation_crystal.tooltip.confirm=§cConfirming rebirth deletes this save. Opening the panel alone does not.
 item.neko_dimension_pocket.reserve_heading=§bElement reserves
+item.neko_dimension_pocket.compact.items=§bItems §8· §e%1$d§f storage slots, plus essentia storage.
+item.neko_dimension_pocket.compact.fluids=§3Fluids §8· §e%8$d§f independent tanks, §e%5$,d§f mB each.
+gtit.pocket.upgrade.mage.compact_modes=§dModes §8· §fCoin charging and transmutation start on; crystallization starts off.

@@ -10,7 +10,7 @@
   <img alt="Minecraft 1.7.10" src="https://img.shields.io/badge/Minecraft-1.7.10-blue.svg">
   <img alt="Forge 10.13.4.1614" src="https://img.shields.io/badge/Forge-10.13.4.1614-blue.svg">
   <a href="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack"><img alt="GTNH 2.9.0 final" src="https://img.shields.io/badge/GTNH-2.9.0-orange.svg"></a>
-  <img alt="GTIT 2.1.15" src="https://img.shields.io/badge/GTIT-2.1.15-green.svg">
+  <img alt="GTIT 2.1.16" src="https://img.shields.io/badge/GTIT-2.1.16-green.svg">
 </p>
 
 | 前置 / Requirement | 版本 / Version |
@@ -19,6 +19,16 @@
 | [MIAOKATZE Core](https://github.com/MIAOKATZE/MIAOKATZE-Core) | 0.2.14+ |
 
 猫猫售货机、次元口袋和魔法使插件的长说明默认展开。在背包中悬停后按当前绑定键（默认 **V**）可收纳，同种物品共用设置。收纳后仍会显示交易产物去向、口袋遗失风险或插件的固化条件。第一次在背包查看次元口袋时，库存随物品保存的提示会短暂高亮。售货机依赖 VendingMachine 0.4.103 或更高兼容版本。
+
+普通币和闪烁币沿用钓鱼配置。每次亲手收获成熟作物（左键收割或右键采收）按成功钓鱼的 20% 掷奖；亲手击杀敌对生物按 10%。按默认钓鱼配置，实际几率如下；每次至多一枚，背包满时掉到脚边。
+
+| 行为 | 普通猫猫币 | 闪烁猫猫币 |
+| --- | ---: | ---: |
+| 成功钓鱼 | 9.8% | 2% |
+| 收获成熟作物 | 1.96% | 0.4% |
+| 亲手击杀敌对生物 | 0.98% | 0.2% |
+
+普通币另可在地牢、铁匠铺、矿井、沙漠／丛林神殿、要塞走廊／交叉口的战利品箱中抽到。新增途径不向机器鱼塘、自动农场或假玩家发币。
 
 Hover the vending controller, dimension pocket or Mage upgrade and press the configured key (**V** by default) to toggle its details. The preference is saved locally by item type.
 

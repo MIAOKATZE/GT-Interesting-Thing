@@ -182,7 +182,9 @@ public class ItemPocketUpgrade extends Item {
             tooltip.add(EnumChatFormatting.GRAY + StatCollector.translateToLocal("gtit.pocket.upgrade.stack.essence"));
         }
         if (type == PocketUpgradeType.MAGE) {
-            appendMageLines(tooltip, com.miaokatze.miaokatzecore.api.tooltip.TooltipPages.expanded(stack));
+            boolean expanded = com.miaokatze.miaokatzecore.api.tooltip.TooltipPages.expanded(stack);
+            if (!expanded) tooltip.add(StatCollector.translateToLocal("gtit.pocket.upgrade.mage.compact_modes"));
+            appendMageLines(tooltip, expanded);
             com.miaokatze.miaokatzecore.api.tooltip.TooltipPages.hint(stack, tooltip, false);
         }
         tooltip.add(GTITUtils.getAddedByLine());
@@ -201,7 +203,8 @@ public class ItemPocketUpgrade extends Item {
     private static void appendMageLines(List tooltip, boolean expanded) {
         final Object[][] args = mageLineArgs();
         for (int i = 0; i < MAGE_LINE_KEYS.length; i++) {
-            if (!expanded && i != 0) continue; // Always retain irreversible installation and the master switch.
+            if (!expanded && i != 0 && i != 3 && i != 8) continue; // Always retain irreversible installation and the
+                                                                   // master switch.
             final String template = StatCollector.translateToLocal(MAGE_LINE_KEYS[i]);
             if (template.equals(MAGE_LINE_KEYS[i])) {
                 continue;
