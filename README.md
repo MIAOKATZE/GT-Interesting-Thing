@@ -10,17 +10,17 @@
   <img alt="Minecraft 1.7.10" src="https://img.shields.io/badge/Minecraft-1.7.10-blue.svg">
   <img alt="Forge 10.13.4.1614" src="https://img.shields.io/badge/Forge-10.13.4.1614-blue.svg">
   <a href="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack"><img alt="GTNH 2.9.0 final" src="https://img.shields.io/badge/GTNH-2.9.0-orange.svg"></a>
-  <img alt="GTIT 2.1.13" src="https://img.shields.io/badge/GTIT-2.1.13-green.svg">
+  <img alt="GTIT 2.1.14" src="https://img.shields.io/badge/GTIT-2.1.14-green.svg">
 </p>
 
 | 前置 / Requirement | 版本 / Version |
 | --- | --- |
 | GTNH | 2.9.0 |
-| [MIAOKATZE Core](https://github.com/MIAOKATZE/MIAOKATZE-Core) | 0.2.11+ |
+| [MIAOKATZE Core](https://github.com/MIAOKATZE/MIAOKATZE-Core) | 0.2.12+ |
 
-猫猫售货机、次元口袋和探矿核心的说明默认展开。在背包中悬停后按 **C** 可收纳，同种物品共用设置。收纳后仍会显示交易产物去向、口袋遗失风险或当前探矿模式。售货机依赖 VendingMachine 0.4.103 或更高兼容版本。
+猫猫售货机、次元口袋和探矿核心的说明默认展开。在背包中悬停后按 **X** 可收纳，同种物品共用设置。收纳后仍会显示交易产物去向、口袋遗失风险或当前探矿模式。第一次在背包查看次元口袋时，库存随物品保存的提示会短暂高亮。售货机依赖 VendingMachine 0.4.103 或更高兼容版本。
 
-Hover the vending controller, dimension pocket or ore scanner and press **C** to toggle its details. The preference is saved locally by item type.
+Hover the vending controller, dimension pocket or ore scanner and press **X** to toggle its details. The preference is saved locally by item type.
 
 > \[!NOTE]
 > This is an unofficial mod. Please avoid discussing this mod in official GTNH forums.
@@ -679,9 +679,9 @@ A literal `\n` in mail bodies is converted to a line break. / 邮件正文中字
 
 - Jabel (modern Java syntax, Java 8 bytecode) / Minecraft 1.7.10 / Forge 10.13.4.1614
 - ModularUI / ModularUI2 / StructureLib
-- Dependencies: MIAOKATZE Core 0.2.11+, GT5-Unofficial (5.09.54.265), GTNHLib, VisualProspecting, Baubles-Expanded, IC2; VendingMachine 0.4.103 (local release jar; original casings and ME uplinks convert to GTIT's dedicated Neko parts), BetterQuesting 3.8.92 (compileOnly)
+- Dependencies: MIAOKATZE Core 0.2.12+, GT5-Unofficial (5.09.54.265), GTNHLib, VisualProspecting, Baubles-Expanded, IC2; VendingMachine 0.4.103 (local release jar; original casings and ME uplinks convert to GTIT's dedicated Neko parts), BetterQuesting 3.8.92 (compileOnly)
 - Jabel（现代 Java 语法，编译为 Java 8 字节码）/ Minecraft 1.7.10 / Forge 10.13.4.1614
-- 依赖：MIAOKATZE Core 0.2.11+、GT5-Unofficial（5.09.54.265）、GTNHLib、VisualProspecting、Baubles-Expanded、IC2；VendingMachine 0.4.103（本地发布 jar；原机械方块与 ME 仓可转换为 GTIT 猫猫专用部件）、BetterQuesting 3.8.92（compileOnly）
+- 依赖：MIAOKATZE Core 0.2.12+、GT5-Unofficial（5.09.54.265）、GTNHLib、VisualProspecting、Baubles-Expanded、IC2；VendingMachine 0.4.103（本地发布 jar；原机械方块与 ME 仓可转换为 GTIT 猫猫专用部件）、BetterQuesting 3.8.92（compileOnly）
 
 ***
 

@@ -703,22 +703,22 @@ public class ItemNekoDimensionPocket extends Item
     public void addInformation(ItemStack stack, EntityPlayer player, List tooltip, boolean showAdvanced) {
         boolean expanded = TooltipPages.expanded(stack);
         final Object[] args = expanded ? tooltipArgs(stack) : null;
-        if (!expanded) tooltip.add(StatCollector.translateToLocal("item.neko_dimension_pocket.compact"));
+        if (!expanded) tooltip
+            .add(TooltipPages.firstLook(stack, StatCollector.translateToLocal("item.neko_dimension_pocket.compact")));
         for (int i = 0;; i++) {
             if (!expanded) break;
             final String key = TOOLTIP_PREFIX + i;
             final String template = StatCollector.translateToLocal(key);
             if (template.equals(key)) break;
             // 只在真的含占位时才格式化一次（口径同 NekoPocketPanel#receiptText）
-            tooltip.add(
-                EnumChatFormatting.LIGHT_PURPLE
-                    + (template.indexOf('%') < 0 ? template : String.format(template, args)));
+            String line = template.indexOf('%') < 0 ? template : String.format(template, args);
+            tooltip.add(EnumChatFormatting.LIGHT_PURPLE + (i == 1 ? TooltipPages.firstLook(stack, line) : line));
         }
         if (expanded) {
             appendDistillFastLine(tooltip, args);
             appendElementReserveLines(tooltip, stack);
         }
-        TooltipPages.hint(stack, tooltip, false);
+        TooltipPages.hint(stack, tooltip, true);
         if (stack != null && stack.hasTagCompound()
             && stack.getTagCompound()
                 .hasKey(PocketTransferReservation.NBT_KEY))
