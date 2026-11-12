@@ -716,6 +716,7 @@ public class ItemNekoDimensionPocket extends Item
         }
         if (expanded) {
             appendDistillFastLine(tooltip, args);
+            tooltip.add(StatCollector.translateToLocal("item.neko_dimension_pocket.reserve_heading"));
             appendElementReserveLines(tooltip, stack);
         }
         TooltipPages.hint(stack, tooltip, true);

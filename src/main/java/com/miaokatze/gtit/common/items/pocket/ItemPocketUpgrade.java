@@ -182,7 +182,8 @@ public class ItemPocketUpgrade extends Item {
             tooltip.add(EnumChatFormatting.GRAY + StatCollector.translateToLocal("gtit.pocket.upgrade.stack.essence"));
         }
         if (type == PocketUpgradeType.MAGE) {
-            appendMageLines(tooltip);
+            appendMageLines(tooltip, com.miaokatze.miaokatzecore.api.tooltip.TooltipPages.expanded(stack));
+            com.miaokatze.miaokatzecore.api.tooltip.TooltipPages.hint(stack, tooltip, false);
         }
         tooltip.add(GTITUtils.getAddedByLine());
     }
@@ -197,15 +198,16 @@ public class ItemPocketUpgrade extends Item {
      * 同一条理由），实参由 {@link #mageLineArgs()} 从 PocketConstants 符号派生 —— 本类不写
      * 任何第二份规格数字。
      */
-    private static void appendMageLines(List tooltip) {
+    private static void appendMageLines(List tooltip, boolean expanded) {
         final Object[][] args = mageLineArgs();
         for (int i = 0; i < MAGE_LINE_KEYS.length; i++) {
+            if (!expanded && i != 0) continue; // Always retain irreversible installation and the master switch.
             final String template = StatCollector.translateToLocal(MAGE_LINE_KEYS[i]);
             if (template.equals(MAGE_LINE_KEYS[i])) {
                 continue;
             }
-            tooltip.add(
-                EnumChatFormatting.GRAY + (template.indexOf('%') < 0 ? template : String.format(template, args[i])));
+            String rendered = template.indexOf('%') < 0 ? template : String.format(template, args[i]);
+            for (String line : gregtech.api.util.GTSplit.split(rendered)) tooltip.add(EnumChatFormatting.GRAY + line);
         }
     }
 

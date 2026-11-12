@@ -17,7 +17,6 @@ import net.minecraft.world.World;
 
 import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.register.CreativeTabManager;
-import com.miaokatze.miaokatzecore.api.tooltip.TooltipPages;
 import com.sinthoras.visualprospecting.VisualProspecting_API;
 
 import gregtech.api.enums.Mods;
@@ -218,14 +217,10 @@ public class TelekinesisOreScannerCore extends Item {
         list.add(StatCollector.translateToLocal("item.telekinesis_ore_scanner_core.tooltip.0"));
         list.add(StatCollector.translateToLocal("item.telekinesis_ore_scanner_core.tooltip.1"));
         list.add(EnumChatFormatting.YELLOW + getModeName(getMode(stack)));
-        if (TooltipPages.expanded(stack)) {
-            list.add(StatCollector.translateToLocal("item.telekinesis_ore_scanner_core.tooltip.2"));
-            list.add(StatCollector.translateToLocal("item.telekinesis_ore_scanner_core.tooltip.3"));
-        }
+        list.add(StatCollector.translateToLocal("item.telekinesis_ore_scanner_core.tooltip.3"));
         if (!Mods.VisualProspecting.isModLoaded()) list.add(
             EnumChatFormatting.RED
                 + StatCollector.translateToLocal("item.gtit.telekinesis_ore_scanner_core.visualprospecting.required"));
-        TooltipPages.hint(stack, list, false);
         list.add(GTITUtils.getAddedByLine());
     }
 }

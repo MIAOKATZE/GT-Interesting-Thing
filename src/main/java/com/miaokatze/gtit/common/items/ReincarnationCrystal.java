@@ -49,6 +49,8 @@ public class ReincarnationCrystal extends Item {
 
     @Override
     public void addInformation(ItemStack stack, EntityPlayer player, List tooltip, boolean showAdvanced) {
+        tooltip.add(net.minecraft.util.StatCollector.translateToLocal("item.reincarnation_crystal.tooltip.access"));
+        tooltip.add(net.minecraft.util.StatCollector.translateToLocal("item.reincarnation_crystal.tooltip.confirm"));
         tooltip.add(GTITUtils.getAddedByLine());
     }
 

@@ -8,15 +8,15 @@ neko_vending_casing.0.name=Neko Vending Machine Casing
 # Items
 item.float_core.name=Float Core
 item.float_core.tooltip.0=Equip in bauble slot to gain flight
-item.float_core.tooltip.1=Consumes hunger per tick while flying
-item.float_core.tooltip.2=Automatically disables flight when hunger below 3 points
+item.float_core.tooltip.1=Flight steadily builds exhaustion, draining saturation before hunger.
+item.float_core.tooltip.2=Requires at least 6 hunger points (3 drumsticks) to maintain flight.
 item.electric_float_core.name=Electric Float Core
 item.electric_float_core.tooltip.0=Equip in bauble slot to gain flight
-item.electric_float_core.tooltip.1=LV charging, 32,000,000 EU capacity. Flight costs 128 EU/t.
-item.electric_float_core.tooltip.2=Consumes electricity while flying, hunger when depleted (half cost)
+item.electric_float_core.tooltip.1=§bPower§7 · LV charging, 32,000,000 EU capacity.
+item.electric_float_core.tooltip.2=Flight uses 128 EU/t. Without enough charge it builds exhaustion at half the normal core’s rate.
 item.telekinesis_ore_scanner_core.name=Telekinesis Ore Scanner Core
-item.telekinesis_ore_scanner_core.tooltip.0=Right-click while held to scan for ore veins or underground fluids.
-item.telekinesis_ore_scanner_core.tooltip.1=Consumes 6 hunger, 19x19 chunk wide-range scan
+item.telekinesis_ore_scanner_core.tooltip.0=Right-click while held to map ore veins or underground fluids in JourneyMap.
+item.telekinesis_ore_scanner_core.tooltip.1=§bRange§7 · 19 × 19 chunks per scan, at a cost of 6 hunger points.
 item.telekinesis_ore_scanner_core.tooltip.2=Data auto-uploaded to JourneyMap
 item.telekinesis_ore_scanner_core.tooltip.3=Shift+Right-click to switch Ore/Fluid mode
 
@@ -37,8 +37,8 @@ item.ring_distant_grasp.tooltip.0=Equip in ring slot to increase interaction and
 item.ring_distant_grasp.tooltip.1=+2 blocks per ring, stackable
 item.ring_distant_grasp.source=Source: Chest Loot
 item.ring_skywalk.name=Ring of Skywalk
-item.ring_skywalk.tooltip.0=Equip in ring slot to auto step-up 1 block
-item.ring_skywalk.tooltip.1=Walk smoothly, no jumping needed
+item.ring_skywalk.tooltip.0=Wear in a ring slot to increase step height.
+item.ring_skywalk.tooltip.1=Walk up a one-block ledge without jumping.
 item.ring_skywalk.source=Source: Chest Loot
 item.ring_windrider.name=Ring of Windrider
 item.ring_windrider.tooltip.0=Equip in ring slot to gain creative flight
@@ -54,15 +54,15 @@ item.ring_ironheart.tooltip.0=Equip in ring slot to increase max health
 item.ring_ironheart.tooltip.1=+20 health per ring (10 hearts), stackable
 item.ring_ironheart.source=Source: Chest Loot
 item.ring_dragon_breath.name=Ring of Dragon's Breath
-item.ring_dragon_breath.tooltip.0=Equip in ring slot to gain dragon's blessing
+item.ring_dragon_breath.tooltip.0=While worn: four lasting protective effects.
 item.ring_dragon_breath.tooltip.1=Fire Resistance + Night Vision + Regeneration I + Resistance I
 item.ring_dragon_breath.source=Source: Chest Loot
 item.ring_mountainbreaker.name=Ring of Mountainbreaker
-item.ring_mountainbreaker.tooltip.0=Equip in ring slot to gain mountain-breaking power
+item.ring_mountainbreaker.tooltip.0=While worn: increases melee damage and digging speed.
 item.ring_mountainbreaker.tooltip.1=Strength II + Haste II
 item.ring_mountainbreaker.source=Source: Chest Loot
 item.ring_tempest.name=Ring of Tempest
-item.ring_tempest.tooltip.0=Equip in ring slot to gain tempest speed
+item.ring_tempest.tooltip.0=While worn: increases running speed and jump height.
 item.ring_tempest.tooltip.1=Speed II + Jump Boost II
 item.ring_tempest.source=Source: Chest Loot
 
@@ -77,12 +77,12 @@ item.starter_gift.tooltip.0=Right-click to open and receive starter items
 
 # Neko Coin
 item.neko_coin.name=Neko Coin
-item.neko_coin.tooltip.0=A shimmering cat memorial coin
+item.neko_coin.tooltip.0=Standard Neko vending currency. Trades draw from the team wallet.
 item.neko_coin.tooltip.1=Can be found in chests or caught while fishing
 
 # Shimmering Neko Coin
 item.shimmering_neko_coin.name=Shimmering Neko Coin
-item.shimmering_neko_coin.tooltip.0=A cat memorial coin radiating mysterious light
+item.shimmering_neko_coin.tooltip.0=Rare Neko vending currency, tracked separately from ordinary Neko Coins.
 item.shimmering_neko_coin.tooltip.1=Extremely rare, can only be caught while fishing
 
 # Reincarnation Crystal
@@ -298,9 +298,9 @@ item.neko_dimension_pocket.name=Neko Dimensional Pocket
 # item class javadoc at the original declaration spot, ledger updated by slice G); the remaining
 # rows are renumbered to {0,1,2} and rewritten short and colloquial: .0 how to open /
 # .1 = R53b contents live in the item (old .2) / .2 = crafting cost (old .3).
-item.neko_dimension_pocket.tooltip.0=Right-click or press B to open the panel; while worn, Alt + empty-hand right click on a GT machine draws fluid
-item.neko_dimension_pocket.tooltip.1=Items and aspects live in this pocket: lose the pocket, lose it all
-item.neko_dimension_pocket.tooltip.2=Crafting eats one Neko Infinity Storage Unit: empty it first
+item.neko_dimension_pocket.tooltip.0=§bControls§7 · Right-click or press B for the panel. While worn, Alt+right-click a GT machine empty-handed to draw fluid.
+item.neko_dimension_pocket.tooltip.1=Items and essentia are stored in this pocket. Losing it also loses its contents.
+item.neko_dimension_pocket.tooltip.2=§6Crafting§7 · Consumes an infinity storage unit. Empty the unit before crafting.
 gtit.pocket.balance.neko=Neko Coin: %d
 gtit.pocket.balance.shimmering=Shimmering Neko Coin: %d
 gtit.pocket.channel.instant=Open Instant Channel (-%d coin)
@@ -425,16 +425,16 @@ gtit.pocket.upgrade.mage.tooltip=Distillation interval cut from five seconds to 
 # ---- R100 slice B new keys (10): mage module numbered detail lines line.0..line.9 (the one-line effect stays first) ----
 # Order: permanent install -> four modes -> distillation notes -> three passives (wand / coin / transmute)
 # -> crystal -> element capacity -> costs. Numbers are %n$d placeholders fed by ItemPocketUpgrade#mageLineArgs.
-gtit.pocket.upgrade.mage.line.0=Permanent once inserted into slot %1$d; the master switch can still be turned off at any time
-gtit.pocket.upgrade.mage.line.1=Four modes: the master switch plus %1$d sub-modes (crystal / coin / transmute); coin and transmute on by default, crystal off
-gtit.pocket.upgrade.mage.line.2=Distillation speeds up from the next batch when inserted mid-run; yield follows each item's own aspects
-gtit.pocket.upgrade.mage.line.3=Passive wand charging: one batch every %1$d ticks, at most %2$d points per wand; only the first wand that can take points is fed
-gtit.pocket.upgrade.mage.line.4=Wand scan: main hand first, then the %1$d backpack slots
-gtit.pocket.upgrade.mage.line.5=Passive coin charging: exactly one coin every %1$d second, the pocket's %2$d slots before the backpack's %3$d; all-or-nothing precheck, normal coins +%4$d and shimmering +%5$d to each primal
-gtit.pocket.upgrade.mage.line.6=Passive transmute: every %1$d second each primal folds %2$d point into element capacity, all %3$d in parallel; non-primals are never touched
-gtit.pocket.upgrade.mage.line.7=Crystal mode: while on, distillation yield lands in the pocket's middle bar first as crystals, then the backpack if it will not fit (%1$d point each); the essence tray is never touched and no essence is produced, and whatever fits nowhere drops at your feet; the tray's existing stock is unaffected
-gtit.pocket.upgrade.mage.line.8=Element capacity: %1$d primals with %2$d each, %3$d in total; see the pocket's own tooltip for the six reserve lines
-gtit.pocket.upgrade.mage.line.9=Costs: transmute is the only drain on the essence tray
+gtit.pocket.upgrade.mage.line.0=§6Installation§7 · Fitting it in pocket slot %1$d is permanent. The master switch can be turned off.
+gtit.pocket.upgrade.mage.line.1=The master switch controls %1$d independent settings.\nCoin charging and transmutation start on; crystallization starts off.
+gtit.pocket.upgrade.mage.line.2=Installing mid-cycle takes effect on the next batch. Yield follows the aspects in each item.
+gtit.pocket.upgrade.mage.line.3=§bWand charging§7 · Every %1$d ticks, one wand receives up to %2$d points.
+gtit.pocket.upgrade.mage.line.4=The first eligible wand is charged: main hand first, then the %1$d inventory slots.
+gtit.pocket.upgrade.mage.line.5=§bCoin charging§7 · One coin every %1$d second; checks %2$d pocket slots, then %3$d inventory slots.\nOnly spends a coin if all primals can accept it: normal +%4$d each, shimmering +%5$d each.
+gtit.pocket.upgrade.mage.line.6=§bTransmutation§7 · Every %1$d second, each primal converts into %2$d element points.\nAll %3$d primals can convert together. Other essentia is untouched.
+gtit.pocket.upgrade.mage.line.7=§dCrystal mode§7 · Distillation yields crystals worth %1$d point each instead of essentia.\nCrystals go to the middle pocket bar, then your inventory. Overflow drops at your feet.\nExisting stock in the essentia tray is unchanged.
+gtit.pocket.upgrade.mage.line.8=§bElement reserves§7 · %1$d primal elements, up to %2$d points each (%3$d in total).
+gtit.pocket.upgrade.mage.line.9=The pocket tooltip lists each reserve. Only transmutation consumes stored aspects.
 gtit.pocket.upgrade.slot.tooltip=Each slot accepts only its matching module; inserting is permanent and it cannot be taken back out
 # ---- ★R96 S2 new keys (19): the upgrade config band (secondary panel) title / three-state readouts /
 # mount frames + the closed-state cell readout + seven sticky receipts.
@@ -940,8 +940,8 @@ gtit.gui.teams.state.disabled=BQ parties are disabled on this server
 gtit.gui.teams.state.error=Team information is temporarily unavailable
 gtit.gui.teams.state.loading=Loading team information…
 item.neko_vending_terminal.name=Neko Trading Machine Portable Terminal
-gtit.terminal.tooltip.bind=Right-click a Neko vending machine to bind or rebind
-gtit.terminal.tooltip.open=Right-click while holding to open; target dimension and chunk must be loaded
+gtit.terminal.tooltip.bind=§bBind§7 · Right-click a Neko vending machine. Use another machine to change the target.
+gtit.terminal.tooltip.open=§eAccess§7 · Right-click while held to trade. The target dimension and chunk must be loaded.
 gtit.terminal.unbound=No Neko vending machine bound
 gtit.terminal.bound=Bound to %s (%s, %s, %s)
 gtit.terminal.dimension_missing=The bound dimension does not exist
@@ -994,3 +994,6 @@ gtit.machine.vending.casing=Any casing position outside the controller
 gtit.machine.vending.slot=Replaces any one casing, at most one per machine
 gtit.machine.vending.compact=Trades Neko Coins and items. Output goes to the machine or the enabled ME output.|Structure: 5 × 4 × 2, with up to one optional Neko ME uplink.
 item.neko_dimension_pocket.compact=Portable item and essentia storage. Contents belong to this pocket and are lost with it.
+item.reincarnation_crystal.tooltip.access=§bUse§7 · Right-click in single-player to open the rebirth panel and deposit items.
+item.reincarnation_crystal.tooltip.confirm=§cConfirming rebirth deletes this save. Opening the panel alone does not.
+item.neko_dimension_pocket.reserve_heading=§bElement reserves
