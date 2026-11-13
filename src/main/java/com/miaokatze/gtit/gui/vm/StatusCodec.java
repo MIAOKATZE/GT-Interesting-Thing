@@ -113,6 +113,9 @@ public final class StatusCodec {
     private long lastMachineRevision = -1;
     /** 可交易状态缓存有效 tick 数（20 tick = 1 秒） */
     private static final long TRADEABLE_STATUS_CACHE_TICKS = 20;
+    private boolean synchronizingTradeStatus;
+    private final Map<String, String> receivedStatusStrings = new HashMap<>();
+    private List<String> receivedTradeFailures = java.util.Collections.emptyList();
 
     public StatusCodec(MTENekoVendingMachineV2 multiblock, IGregTechTileEntity baseMetaTileEntity,
         Runnable requestCurrencyNotify) {
@@ -132,6 +135,7 @@ public final class StatusCodec {
             () -> syncManager.isClient() ? teamWallet
                 : TeamDataProvider.getData(TeamDataProvider.getTeam(playerId)) != null,
             value -> {
+                if (teamWallet == value) return;
                 teamWallet = value;
                 requestCurrencyNotify.run();
             });
@@ -141,23 +145,19 @@ public final class StatusCodec {
         // --- BQ 锁定状态（S2C，同步所有交易组的状态）---
         bqLockStatusSync = new StringSyncValue(
             () -> syncManager.isClient() ? "" : buildBqLockStatusString(playerId),
-            val -> { parseBqLockStatus(val); });
+            val -> receiveStatus("bq", val, () -> parseBqLockStatus(val)));
         syncManager.syncValue("nekoV2BqLockStatus", bqLockStatusSync);
 
         // --- 冷却状态（S2C，同步所有交易组的状态）---
         cooldownStatusSync = new StringSyncValue(
             () -> syncManager.isClient() ? "" : buildCooldownStatusString(playerId),
-            val -> { parseCooldownStatus(val); });
+            val -> receiveStatus("cooldown", val, () -> parseCooldownStatus(val)));
         syncManager.syncValue("nekoV2CooldownStatus", cooldownStatusSync);
 
         // --- 可交易状态（S2C，服务端综合 BQ/冷却/钱包/输入物品计算）---
         tradeableStatusSync = new StringSyncValue(
             () -> syncManager.isClient() ? "" : buildTradeableStatusString(playerId),
-            val -> {
-                parseTradeableStatus(val);
-                // 服务端同步值到达后通知主面板刷新，确保客户端立即应用新的可交易状态
-                requestCurrencyNotify.run();
-            });
+            val -> receiveStatus("tradeable", val, () -> parseTradeableStatus(val)));
         syncManager.syncValue("nekoV2TradeableStatus", tradeableStatusSync);
 
         // Each entry is bounded independently; a list avoids StringSyncValue truncating all trade reasons at 32 KiB.
@@ -178,26 +178,17 @@ public final class StatusCodec {
         // 客户端无法直接调用 GTNHLib Teams API，必须通过此同步值获取缩放信息
         teamScaleSync = new StringSyncValue(
             () -> syncManager.isClient() ? "" : buildTeamScaleString(playerId),
-            val -> { parseTeamScaleString(val); });
+            val -> receiveStatus("team", val, () -> parseTeamScaleString(val)));
         syncManager.syncValue("nekoV2TeamScale", teamScaleSync);
 
         favouriteStatusSync = new StringSyncValue(
             () -> syncManager.isClient() ? "" : buildFavouriteStatusString(playerId),
-            val -> {
-                parseFavouriteStatus(val);
-                requestCurrencyNotify.run();
-            });
+            val -> receiveStatus("favourites", val, () -> parseFavouriteStatus(val)));
         syncManager.syncValue("nekoV2FavouriteStatus", favouriteStatusSync);
 
         // BQ 锁定/冷却状态变化时也需要重新计算可交易状态
         if (!syncManager.isClient()) {
-            Runnable tradeableStatusDirtyMarker = () -> {
-                markTradeableStatusDirtyAndNotify();
-                // 冷却状态变化意味着交易已执行或冷却已重置，团队缩放信息（已用次数）也需更新
-                if (teamScaleSync != null) {
-                    teamScaleSync.notifyUpdate();
-                }
-            };
+            Runnable tradeableStatusDirtyMarker = this::markTradeableStatusDirtyAndNotify;
             bqLockStatusSync.setChangeListener(tradeableStatusDirtyMarker);
             cooldownStatusSync.setChangeListener(tradeableStatusDirtyMarker);
         }
@@ -208,32 +199,43 @@ public final class StatusCodec {
     }
 
     /**
-     * 交易编排钩子：标记可交易状态为脏并立即触发重同步
-     * <p>
-     * 收编宿主重复出现的「tradeableStatusDirty = true; tradeableStatusSync.notifyUpdate()」两行式。
+     * 交易编排钩子：标记可交易状态为脏，立即重检并只同步实际变化。
      */
     public void markTradeableStatusDirtyAndNotify() {
         tradeableStatusDirty = true;
-        if (tradeableStatusSync != null) {
-            tradeableStatusSync.notifyUpdate();
-        }
-        if (tradeFailureSync != null) tradeFailureSync.notifyUpdate();
+        synchronizeTradeStatus(false);
     }
 
     /**
      * 交易编排钩子：交易成功后的状态通道级联刷新
      * <p>
-     * 可交易置脏 + 可交易/冷却/团队缩放三通道 notifyUpdate（原 processTradeRequest 成功段级联收编）。
+     * 先合并冷却监听器的失效，再重检可交易/失败原因，避免同一批状态重复计算及发送。
      */
     public void notifyTradeStatusChanged() {
-        markTradeableStatusDirtyAndNotify();
-        if (cooldownStatusSync != null) {
-            cooldownStatusSync.notifyUpdate();
+        tradeableStatusDirty = true;
+        synchronizeTradeStatus(true);
+    }
+
+    private void synchronizeTradeStatus(boolean refreshCooldown) {
+        if (synchronizingTradeStatus) return;
+        synchronizingTradeStatus = true;
+        try {
+            // Cooldown listeners can invalidate availability. Finish that invalidation before computing it once.
+            if (refreshCooldown && cooldownStatusSync != null) cooldownStatusSync.detectAndSendChanges(false);
+            if (teamScaleSync != null) teamScaleSync.detectAndSendChanges(false);
+            if (tradeableStatusSync != null) tradeableStatusSync.detectAndSendChanges(false);
+            if (tradeFailureSync != null) tradeFailureSync.detectAndSendChanges(false);
+        } finally {
+            synchronizingTradeStatus = false;
         }
-        // 交易成功后冷却内已用次数发生变化，需同步团队缩放信息
-        if (teamScaleSync != null) {
-            teamScaleSync.notifyUpdate();
-        }
+    }
+
+    private void receiveStatus(String channel, String value, Runnable parse) {
+        String normalized = value == null ? "" : value;
+        if (java.util.Objects.equals(receivedStatusStrings.getOrDefault(channel, ""), normalized)) return;
+        receivedStatusStrings.put(channel, normalized);
+        parse.run();
+        requestCurrencyNotify.run();
     }
 
     /** 客户端读：BQ 锁定状态（缺省 false=未锁定） */
@@ -270,6 +272,9 @@ public final class StatusCodec {
     }
 
     private void parseTradeFailures(List<String> entries) {
+        List<String> incoming = entries == null ? java.util.Collections.emptyList() : entries;
+        if (receivedTradeFailures.equals(incoming)) return;
+        receivedTradeFailures = new ArrayList<>(incoming);
         tradeFailureMap.clear();
         if (entries != null) for (String entry : entries) {
             if (entry == null || entry.length() > MAX_FAILURE_LENGTH * 4 + 64) continue;
@@ -298,7 +303,7 @@ public final class StatusCodec {
     }
 
     public void notifyFavouritesChanged() {
-        if (favouriteStatusSync != null) favouriteStatusSync.notifyUpdate();
+        if (favouriteStatusSync != null) favouriteStatusSync.detectAndSendChanges(false);
     }
 
     private String buildFavouriteStatusString(UUID playerId) {

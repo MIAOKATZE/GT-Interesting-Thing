@@ -379,6 +379,7 @@ mapOf(
     "runGiftAccessTest" to "com.miaokatze.gtit.gift.ui.GiftAccessTest",
     "runTeamStatusTest" to "com.miaokatze.gtit.gui.vm.NekoTeamStatusSyncTest",
     "runStatusCodecSyncTest" to "com.miaokatze.gtit.gui.vm.StatusCodecSyncTest",
+    "runTradeRefreshWorkTest" to "com.miaokatze.gtit.gui.vm.TradeRefreshWorkTest",
     "runRemoteVendingTerminalTest" to "com.miaokatze.gtit.common.items.terminal.RemoteVendingTerminalTest",
     "runVendingConcurrencyTest" to "com.miaokatze.gtit.gui.vm.VendingConcurrencyTest",
     "runLootRegistrarTest" to "com.miaokatze.gtit.common.loot.LootRegistrarTest",
@@ -400,7 +401,7 @@ mapOf(
             doFirst { scratchDir.get().asFile.mkdirs() }
         }
         classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
-        if (taskName == "runRemoteVendingTerminalTest") {
+        if (taskName == "runRemoteVendingTerminalTest" || taskName == "runTradeRefreshWorkTest" || taskName == "runStatusCodecSyncTest") {
             classpath += configurations.getByName("nativeTerminalScreenTestRuntime")
         }
         if (taskName == "runRemoteVendingTerminalTest" || taskName == "runVendingConcurrencyTest") {

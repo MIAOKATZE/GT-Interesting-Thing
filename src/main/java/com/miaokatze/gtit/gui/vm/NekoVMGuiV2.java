@@ -1091,7 +1091,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * 交易显示数据更新回调
      * <p>
      * 由 {@link NekoTradeMainPanel#updateGui()} 调用，
-     * 接收格式化后的交易数据并更新预分配的 Widget。
+     * 在同一批展示对象上应用服务端状态，不重绑预分配 Widget 的物品定义。
      * <p>
      * 同时使用同步值中的 BQ/冷却/可交易状态覆盖 formatTrades() 生成的基础状态，
      * 确保多人游戏下客户端显示正确的锁定、冷却和可交易信息。
@@ -1101,7 +1101,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * @param trades 按分类组织的交易显示数据
      */
     @Override
-    public void onTradeDisplayUpdated(Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades) {
+    public void onTradeStatusUpdated(Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades) {
         if (trades == null) return;
 
         // 使用同步值中的 BQ/冷却/可交易状态覆盖显示数据
@@ -1146,6 +1146,13 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             }
         }
 
+    }
+
+    /** Rebind widgets only when definitions or the visible member order actually change. */
+    @Override
+    public void onTradeDisplayUpdated(Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades) {
+        if (trades == null) return;
+        onTradeStatusUpdated(trades);
         if (selectedTrade != null) {
             NekoTradeItemDisplay previous = selectedTrade;
             selectedTrade = null;
