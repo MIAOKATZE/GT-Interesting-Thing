@@ -379,7 +379,12 @@ public final class StatusCodecSyncTest {
         long[] team = codec.getTeamScale(COOLDOWN_GROUP);
         SimpleAssert
             .that(team != null && team[0] == 4L && team[1] == 2L, "S2C team capacity and usage survive decoding");
-        SimpleAssert.eq(1, refreshes[0], "tradeable receive callback refreshes the host exactly once");
+        SimpleAssert.eq(4, refreshes[0], "each changed status channel invalidates the host immediately");
+        receive(manager, CHANNELS[0], COOLDOWN_GROUP + ":true," + ONE_TIME_GROUP + ":false");
+        receive(manager, CHANNELS[1], cooldownKey + ":37," + oneTimeKey + ":-1");
+        receive(manager, CHANNELS[2], cooldownKey + ":false," + oneTimeKey + ":true");
+        receive(manager, CHANNELS[3], COOLDOWN_GROUP + ":4:2");
+        SimpleAssert.eq(4, refreshes[0], "replayed identical S2C snapshots do not invalidate the host");
 
         for (String channel : CHANNELS) receive(manager, channel, "");
         SimpleAssert.that(!codec.getBqLocked(COOLDOWN_GROUP), "empty update clears old BQ locks");
@@ -387,7 +392,8 @@ public final class StatusCodecSyncTest {
         SimpleAssert.that(!codec.isOneTimeRedeemed(oneTimeKey), "empty update clears old one-time markers");
         SimpleAssert.eq(null, codec.getTradeable(cooldownKey), "empty update clears old tradeable states");
         SimpleAssert.eq(null, codec.getTeamScale(COOLDOWN_GROUP), "empty update clears old team usage");
-        SimpleAssert.eq(3, refreshes[0], "empty tradeable and favourite updates refresh the host");
+        SimpleAssert
+            .eq(8, refreshes[0], "clearing changed status channels invalidates the host; empty favourites do not");
         historyRemainsUnavailable();
     }
 

@@ -232,6 +232,11 @@ public class NekoTradeMainPanel extends ModularPanel {
          */
         void onTradeDisplayUpdated(Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades);
 
+        /** Update state on the same display objects without replacing the widgets' item/definition data. */
+        default void onTradeStatusUpdated(Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades) {
+            onTradeDisplayUpdated(trades);
+        }
+
         /**
          * 通知需要恢复之前的设置
          * <p>
@@ -301,6 +306,9 @@ public class NekoTradeMainPanel extends ModularPanel {
     private boolean forceRefresh = false;
     /** A registry replacement must rebuild item data even while Shift/Ctrl holds the normal sort order. */
     private boolean registryRefresh;
+    private final Map<String, NekoTradeItemDisplay> definitionDisplays = new HashMap<>();
+    private long definitionDisplayVersion = -1L;
+    private Map<NekoTradeCategory, List<NekoTradeItemDisplay>> lastPresentedTrades;
 
     /** 货币更新标志（外部通知有货币变化时设置，触发强制刷新） */
     private boolean hasCurrencyUpdate = false;
@@ -473,13 +481,15 @@ public class NekoTradeMainPanel extends ModularPanel {
      * 按键期间仅更新状态（如可交易→冷却中），按键释放后才全量刷新。
      */
     public void updateGui() {
-        if ((shiftHeld || ctrlHeld) && !registryRefresh) {
+        boolean definitionsChanged = definitionDisplayVersion != NekoTradeDatabase.INSTANCE.getVersion();
+        if ((shiftHeld || ctrlHeld) && !registryRefresh && !definitionsChanged) {
             // 增量更新：仅刷新现有显示数据的状态
-            updateTradeInformation(getCurrentTradeDisplayData());
+            updateTradeInformation(
+                lastPresentedTrades == null ? getCurrentTradeDisplayData() : copyTradeLists(lastPresentedTrades));
         } else {
             // 全量刷新：重新从数据库构建交易显示数据
             Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades = formatTrades();
-            callback.onTradeDisplayUpdated(trades);
+            publishTradeDisplay(trades);
         }
         registryRefresh = false;
     }
@@ -556,7 +566,25 @@ public class NekoTradeMainPanel extends ModularPanel {
         List<NekoTradeItemDisplay> allTrades = new ArrayList<>();
         for (List<NekoTradeItemDisplay> list : currentData.values()) allTrades.addAll(list);
         currentData.put(NekoTradeCategory.FAVOURITES, filterFavouritedTrades(allTrades));
-        callback.onTradeDisplayUpdated(currentData);
+        publishTradeDisplay(currentData);
+    }
+
+    private void publishTradeDisplay(Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades) {
+        if (lastPresentedTrades == null || !lastPresentedTrades.equals(trades)) {
+            callback.onTradeDisplayUpdated(trades);
+        } else {
+            callback.onTradeStatusUpdated(trades);
+        }
+        // Keep the old membership/order independently of the mutable state stored in each display object.
+        lastPresentedTrades = copyTradeLists(trades);
+    }
+
+    private static Map<NekoTradeCategory, List<NekoTradeItemDisplay>> copyTradeLists(
+        Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades) {
+        Map<NekoTradeCategory, List<NekoTradeItemDisplay>> copy = new HashMap<>();
+        for (Map.Entry<NekoTradeCategory, List<NekoTradeItemDisplay>> entry : trades.entrySet())
+            copy.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+        return copy;
     }
 
     // ==================== 交易格式化 ====================
@@ -565,7 +593,7 @@ public class NekoTradeMainPanel extends ModularPanel {
      * 格式化交易数据
      * <p>
      * 完美复刻 VM 的 formatTrades 逻辑，但适配 GTIT V2 系统。
-     * 全量从交易数据库构建交易显示数据，流程：
+     * 按数据库版本复用交易定义，仅重新过滤、更新状态与排序；定义变化时才重新构建，流程：
      * <ol>
      * <li>遍历所有交易组（{@link NekoTradeDatabase#getAllTradeGroups}）及其交易，
      * 创建 {@link NekoTradeItemDisplay}</li>
@@ -586,6 +614,11 @@ public class NekoTradeMainPanel extends ModularPanel {
      * @return 按分类组织的交易显示数据
      */
     public Map<NekoTradeCategory, List<NekoTradeItemDisplay>> formatTrades() {
+        long version = NekoTradeDatabase.INSTANCE.getVersion();
+        if (definitionDisplayVersion != version) {
+            definitionDisplays.clear();
+            definitionDisplayVersion = version;
+        }
         Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades = new HashMap<>();
 
         NekoSortMode sortMode = callback.getSortMode();
@@ -617,7 +650,12 @@ public class NekoTradeMainPanel extends ModularPanel {
                     }
 
                     // 从 V2 交易数据构建显示对象
-                    NekoTradeItemDisplay display = NekoTradeItemDisplay.fromNekoTrade(trade, group, i);
+                    String identity = group.getId() + ":" + i;
+                    NekoTradeItemDisplay display = definitionDisplays.get(identity);
+                    if (display == null) {
+                        display = NekoTradeItemDisplay.fromNekoTrade(trade, group, i);
+                        definitionDisplays.put(identity, display);
+                    }
 
                     // 设置收藏状态
                     display.setFavourite(callback.getSyncedFavourite(group.getId(), i));
