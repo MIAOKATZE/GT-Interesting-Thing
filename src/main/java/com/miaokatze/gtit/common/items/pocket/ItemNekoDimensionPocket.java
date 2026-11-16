@@ -30,6 +30,7 @@ import com.miaokatze.gtit.common.items.pocket.mage.PocketCoinChargeDriver;
 import com.miaokatze.gtit.common.items.pocket.mage.PocketEssenceTransmuteDriver;
 import com.miaokatze.gtit.common.items.pocket.mage.PocketWandChargeDriver;
 import com.miaokatze.gtit.common.items.pocket.magnet.PocketMagnetDriver;
+import com.miaokatze.gtit.common.util.AuthoredTooltips;
 import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.crossmod.taum.TaumCompat;
 import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
@@ -701,6 +702,18 @@ public class ItemNekoDimensionPocket extends Item
      */
     @Override
     public void addInformation(ItemStack stack, EntityPlayer player, List tooltip, boolean showAdvanced) {
+        if (AuthoredTooltips.append(stack, tooltip, "gtit:neko_dimension_pocket", (binding, page) -> {
+            if ("elements".equals(binding)) {
+                page.line(StatCollector.translateToLocal("gtit.tooltip.pocket.elements"));
+                List<String> reserves = new java.util.ArrayList<>();
+                appendElementReserveLines(reserves, stack);
+                for (String line : reserves) page.line(line);
+            } else if ("quarantine".equals(binding) && stack.hasTagCompound()
+                && stack.getTagCompound().hasKey(PocketTransferReservation.NBT_KEY)) {
+                page.warning(StatCollector.translateToLocal("gtit.pocket.transfer.quarantined"));
+            }
+        })) return;
+
         boolean expanded = TooltipPages.expanded(stack);
         final Object[] args = tooltipArgs(stack);
         if (!expanded) {

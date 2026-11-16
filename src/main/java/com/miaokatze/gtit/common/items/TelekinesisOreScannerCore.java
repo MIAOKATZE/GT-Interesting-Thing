@@ -15,6 +15,7 @@ import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.util.StatCollector;
 import net.minecraft.world.World;
 
+import com.miaokatze.gtit.common.util.AuthoredTooltips;
 import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.register.CreativeTabManager;
 import com.sinthoras.visualprospecting.VisualProspecting_API;
@@ -214,6 +215,14 @@ public class TelekinesisOreScannerCore extends Item {
 
     @Override
     public void addInformation(ItemStack stack, EntityPlayer player, java.util.List list, boolean par4) {
+        if (AuthoredTooltips.append(stack, list, "gtit:telekinesis_ore_scanner_core", (binding, page) -> {
+            if ("mode".equals(binding)) {
+                page.line(StatCollector.translateToLocalFormatted("gtit.tooltip.scanner.mode", getModeName(getMode(stack))));
+            } else if ("dependency".equals(binding) && !Mods.VisualProspecting.isModLoaded()) {
+                page.warning(StatCollector.translateToLocal("item.gtit.telekinesis_ore_scanner_core.visualprospecting.required"));
+            }
+        })) return;
+
         list.add(StatCollector.translateToLocal("item.telekinesis_ore_scanner_core.tooltip.0"));
         list.add(StatCollector.translateToLocal("item.telekinesis_ore_scanner_core.tooltip.1"));
         list.add(EnumChatFormatting.YELLOW + getModeName(getMode(stack)));

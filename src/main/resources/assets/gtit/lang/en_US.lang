@@ -1000,3 +1000,7 @@ item.neko_dimension_pocket.reserve_heading=§bElement reserves
 item.neko_dimension_pocket.compact.items=§bItems §8· §e%1$d§f storage slots, plus essentia storage.
 item.neko_dimension_pocket.compact.fluids=§3Fluids §8· §e%8$d§f independent tanks, §e%5$,d§f mB each.
 gtit.pocket.upgrade.mage.compact_modes=§dModes §8· §fCoin charging and transmutation start on; crystallization starts off.
+
+gtit.tooltip.authored_locale=en_US
+gtit.tooltip.scanner.mode=§eMode: %s
+gtit.tooltip.pocket.elements=§dElement reserves§r:

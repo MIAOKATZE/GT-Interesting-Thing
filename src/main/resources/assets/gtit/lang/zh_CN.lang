@@ -976,3 +976,7 @@ item.neko_dimension_pocket.reserve_heading=§b元素储量
 item.neko_dimension_pocket.compact.items=§b物品 §8· §e%1$d§f 个存储格；可同时收纳源质。
 item.neko_dimension_pocket.compact.fluids=§3流体 §8· §e%8$d§f 个独立储罐，每罐 §e%5$,d§f mB。
 gtit.pocket.upgrade.mage.compact_modes=§d模式 §8· §f猫猫币补能、源质转换默认开启；蒸馏结晶默认关闭。
+
+gtit.tooltip.authored_locale=zh_CN
+gtit.tooltip.scanner.mode=§e模式：%s
+gtit.tooltip.pocket.elements=§d元素储量§r：
