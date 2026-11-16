@@ -709,9 +709,10 @@ public class ItemNekoDimensionPocket extends Item
                 appendElementReserveLines(reserves, stack);
                 for (String line : reserves) page.line(line);
             } else if ("quarantine".equals(binding) && stack.hasTagCompound()
-                && stack.getTagCompound().hasKey(PocketTransferReservation.NBT_KEY)) {
-                page.warning(StatCollector.translateToLocal("gtit.pocket.transfer.quarantined"));
-            }
+                && stack.getTagCompound()
+                    .hasKey(PocketTransferReservation.NBT_KEY)) {
+                        page.warning(StatCollector.translateToLocal("gtit.pocket.transfer.quarantined"));
+                    }
         })) return;
 
         boolean expanded = TooltipPages.expanded(stack);

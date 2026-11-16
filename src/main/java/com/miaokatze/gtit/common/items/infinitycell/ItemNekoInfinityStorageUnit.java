@@ -3,8 +3,6 @@
 
 package com.miaokatze.gtit.common.items.infinitycell;
 
-import com.miaokatze.gtit.common.util.AuthoredTooltips;
-
 import java.util.Collection;
 import java.util.List;
 
@@ -12,6 +10,7 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.StatCollector;
 
+import com.miaokatze.gtit.common.util.AuthoredTooltips;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 import appeng.api.exceptions.AppEngException;

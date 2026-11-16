@@ -37,7 +37,8 @@ public final class AuthoredTooltips {
         InputStream stream = AuthoredTooltips.class.getResourceAsStream(resource);
         if (stream == null) return null;
         try (InputStreamReader reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
-            JsonObject result = new JsonParser().parse(reader).getAsJsonObject();
+            JsonObject result = new JsonParser().parse(reader)
+                .getAsJsonObject();
             CATALOGS.put(locale, result);
             return result;
         } catch (java.io.IOException e) {
@@ -63,19 +64,27 @@ public final class AuthoredTooltips {
         JsonObject catalog = catalog();
         if (catalog == null) return null;
         JsonObject aliases = catalog.getAsJsonObject("aliases");
-        if (aliases != null && aliases.has(id)) id = aliases.get(id).getAsString();
+        if (aliases != null && aliases.has(id)) id = aliases.get(id)
+            .getAsString();
         JsonObject items = catalog.getAsJsonObject("items");
         if (items == null || !items.has(id)) return null;
-        NativeTooltipPage page = NativeTooltipPage.forItem(stack).twoTiers();
+        NativeTooltipPage page = NativeTooltipPage.forItem(stack)
+            .twoTiers();
         String tier = page.tier() == NativeTooltipPage.Tier.QUICK ? "quick" : "common";
-        for (JsonElement value : items.getAsJsonObject(id).getAsJsonArray(tier)) {
+        for (JsonElement value : items.getAsJsonObject(id)
+            .getAsJsonArray(tier)) {
             JsonObject block = value.getAsJsonObject();
-            switch (block.get("type").getAsString()) {
+            switch (block.get("type")
+                .getAsString()) {
                 case "line":
-                    page.input(block.get("text").getAsString());
+                    page.input(
+                        block.get("text")
+                            .getAsString());
                     break;
                 case "warning":
-                    page.warning(block.get("text").getAsString());
+                    page.warning(
+                        block.get("text")
+                            .getAsString());
                     break;
                 case "divider":
                     page.divider();
@@ -85,13 +94,17 @@ public final class AuthoredTooltips {
                     for (JsonElement row : block.getAsJsonArray("rows")) rows.add(strings(row.getAsJsonArray()));
                     TooltipTable table = TooltipTable.of("", strings(block.getAsJsonArray("columns")), rows)
                         .withInputIcons();
-                    for (int column = 0; column < table.headers().size(); column++) {
+                    for (int column = 0; column < table.headers()
+                        .size(); column++) {
                         table = table.align(column, TooltipTable.Alignment.LEFT);
                     }
                     page.block(table);
                     break;
                 case "dynamic":
-                    dynamic.accept(block.get("binding").getAsString(), page);
+                    dynamic.accept(
+                        block.get("binding")
+                            .getAsString(),
+                        page);
                     break;
                 default:
                     throw new IllegalStateException("Unknown tooltip block: " + block);

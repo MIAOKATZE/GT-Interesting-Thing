@@ -217,9 +217,12 @@ public class TelekinesisOreScannerCore extends Item {
     public void addInformation(ItemStack stack, EntityPlayer player, java.util.List list, boolean par4) {
         if (AuthoredTooltips.append(stack, list, "gtit:telekinesis_ore_scanner_core", (binding, page) -> {
             if ("mode".equals(binding)) {
-                page.line(StatCollector.translateToLocalFormatted("gtit.tooltip.scanner.mode", getModeName(getMode(stack))));
+                page.line(
+                    StatCollector.translateToLocalFormatted("gtit.tooltip.scanner.mode", getModeName(getMode(stack))));
             } else if ("dependency".equals(binding) && !Mods.VisualProspecting.isModLoaded()) {
-                page.warning(StatCollector.translateToLocal("item.gtit.telekinesis_ore_scanner_core.visualprospecting.required"));
+                page.warning(
+                    StatCollector
+                        .translateToLocal("item.gtit.telekinesis_ore_scanner_core.visualprospecting.required"));
             }
         })) return;
 

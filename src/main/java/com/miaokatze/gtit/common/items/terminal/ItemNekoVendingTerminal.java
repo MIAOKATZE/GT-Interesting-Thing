@@ -194,10 +194,15 @@ public final class ItemNekoVendingTerminal extends Item
         if (AuthoredTooltips.append(stack, tooltip, "gtit:neko_vending_terminal", (binding, page) -> {
             if ("terminal".equals(binding)) {
                 NekoVendingTarget current = NekoVendingTarget.read(stack);
-                page.line(EnumChatFormatting.YELLOW + (current == null
-                    ? StatCollector.translateToLocal("gtit.terminal.unbound")
-                    : StatCollector.translateToLocalFormatted("gtit.terminal.bound", current.dimension, current.x,
-                        current.y, current.z)));
+                page.line(
+                    EnumChatFormatting.YELLOW
+                        + (current == null ? StatCollector.translateToLocal("gtit.tooltip.terminal.unbound")
+                            : StatCollector.translateToLocalFormatted(
+                                "gtit.terminal.bound",
+                                current.dimension,
+                                current.x,
+                                current.y,
+                                current.z)));
             }
         })) return;
 

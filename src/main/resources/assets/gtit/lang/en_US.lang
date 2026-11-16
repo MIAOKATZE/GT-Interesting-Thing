@@ -1004,3 +1004,5 @@ gtit.pocket.upgrade.mage.compact_modes=§dModes §8· §fCoin charging and trans
 gtit.tooltip.authored_locale=en_US
 gtit.tooltip.scanner.mode=§eMode: %s
 gtit.tooltip.pocket.elements=§dElement reserves§r:
+
+gtit.tooltip.terminal.unbound=Not bound to a [item:gregtech:gt.blockmachines@14610|Neko Vending Machine]

@@ -103,7 +103,7 @@
       "common": [
         {
           "type": "line",
-          "text": "猫猫售货机的§6普通货币§r；两种币分别记账。"
+          "text": " [item:gregtech:gt.blockmachines@14610|猫猫售货机] 的§6普通货币§r；两种币分别记账。"
         },
         {
           "type": "line",
@@ -151,7 +151,7 @@
       "quick": [
         {
           "type": "line",
-          "text": "猫猫售货机的§6普通货币§r，§a团队钱包§r余额由队员共享。"
+          "text": " [item:gregtech:gt.blockmachines@14610|猫猫售货机] 的§6普通货币§r，§a团队钱包§r余额由队员共享。"
         },
         {
           "type": "line",
@@ -168,7 +168,7 @@
       "common": [
         {
           "type": "line",
-          "text": "猫猫售货机的§d稀有货币§r；两种币分别记账。"
+          "text": " [item:gregtech:gt.blockmachines@14610|猫猫售货机] 的§d稀有货币§r；两种币分别记账。"
         },
         {
           "type": "line",
@@ -212,7 +212,7 @@
       "quick": [
         {
           "type": "line",
-          "text": "猫猫售货机的§d稀有货币§r，与普通猫猫币分别记账。"
+          "text": " [item:gregtech:gt.blockmachines@14610|猫猫售货机] 的§d稀有货币§r，与普通 [item:gtit:neko_coin@0|猫猫币] 分别记账。"
         },
         {
           "type": "line",
@@ -317,7 +317,7 @@
         },
         {
           "type": "line",
-          "text": "合成：其余七种戒指各 §b1 枚§r、猫猫币 2 枚。"
+          "text": "合成：其余七种戒指各 §b1 枚§r、 [item:gtit:neko_coin@0|猫猫币] 2 枚。"
         },
         {
           "type": "dynamic",
@@ -601,7 +601,7 @@
         },
         {
           "type": "line",
-          "text": "每列累计投入 16 个对应档位的机械外壳即可解锁；蒸汽列使用镀铜砖块。"
+          "text": "每列累计投入 16 个对应档位的机械外壳即可解锁；蒸汽列使用 [item:gregtech:gt.blockcasings@10|镀铜砖块]。"
         },
         {
           "type": "line",
@@ -714,7 +714,7 @@
       "common": [
         {
           "type": "line",
-          "text": "占用 §b1 个§r ME 驱动器槽位，独立存放物品、流体与源质。"
+          "text": "占用 §b1 个§r [item:appliedenergistics2:tile.BlockDrive@0|ME 驱动器] 槽位，独立存放物品、流体与源质。"
         },
         {
           "type": "line",
@@ -733,7 +733,7 @@
         },
         {
           "type": "warning",
-          "text": "合成次元口袋会消耗本单元，请先转出库存。"
+          "text": "合成 [item:gtit:neko_dimension_pocket@0|次元口袋] 会消耗本单元，请先转出库存。"
         },
         {
           "type": "dynamic",
@@ -857,7 +857,7 @@
         },
         {
           "type": "warning",
-          "text": "合成消耗无限存储单元；请先转出单元库存。"
+          "text": "合成消耗 [item:gtit:gtit.neko_infinity_unit@0|无限存储单元]；请先转出单元库存。"
         },
         {
           "type": "dynamic",
@@ -884,7 +884,7 @@
         },
         {
           "type": "warning",
-          "text": "合成会消耗无限存储单元；先转出该单元的库存。"
+          "text": "合成会消耗 [item:gtit:gtit.neko_infinity_unit@0|无限存储单元]；先转出该单元的库存。"
         },
         {
           "type": "dynamic",
@@ -1080,7 +1080,7 @@
       "common": [
         {
           "type": "line",
-          "text": "让§a次元通道§r持续运行，无需消耗猫猫币。"
+          "text": "让§a次元通道§r持续运行，无需消耗 [item:gtit:neko_coin@0|猫猫币]。"
         },
         {
           "type": "line",
@@ -1107,7 +1107,7 @@
       "quick": [
         {
           "type": "line",
-          "text": "让§a次元通道§r持续运行，无需消耗猫猫币。"
+          "text": "让§a次元通道§r持续运行，无需消耗 [item:gtit:neko_coin@0|猫猫币]。"
         },
         {
           "type": "line",
@@ -1147,7 +1147,7 @@
           ],
           "rows": [
             [
-              "猫猫币补能",
+              " [item:gtit:neko_coin@0|猫猫币] 补能",
               "各元素：普通 §b+1§r／闪烁 §b+10",
               "§a开"
             ],
@@ -1192,7 +1192,7 @@
         },
         {
           "type": "warning",
-          "text": "猫猫币补能、源质转换默认开启；会消耗币与元始源质，可分别关闭。"
+          "text": " [item:gtit:neko_coin@0|猫猫币] 补能、源质转换默认开启；会消耗币与元始源质，可分别关闭。"
         },
         {
           "type": "warning",
@@ -1209,7 +1209,7 @@
       "common": [
         {
           "type": "line",
-          "text": "远程打开已绑定的猫猫售货机，支持§a跨维度§r。"
+          "text": "远程打开已绑定的 [item:gregtech:gt.blockmachines@14610|猫猫售货机]，支持§a跨维度§r。"
         },
         {
           "type": "table",
@@ -1252,7 +1252,7 @@
       "quick": [
         {
           "type": "line",
-          "text": "§e[right:右击]§r 猫猫售货机绑定，随后手持 §e[right:右击]§r 远程打开§a交易界面§r。"
+          "text": "§e[right:右击]§r [item:gregtech:gt.blockmachines@14610|猫猫售货机] 绑定，随后手持 §e[right:右击]§r 远程打开§a交易界面§r。"
         },
         {
           "type": "line",
@@ -1273,7 +1273,7 @@
       "common": [
         {
           "type": "line",
-          "text": "用物品和§6猫猫币§r交易，钱包余额由团队共享。"
+          "text": "用物品和§6 [item:gtit:neko_coin@0|猫猫币] §r交易，钱包余额由团队共享。"
         },
         {
           "type": "table",
@@ -1290,7 +1290,7 @@
             ],
             [
               "接入 ME",
-              "专用上行链路仓",
+              " [item:gregtech:gt.blockmachines@14611|猫猫售货机 ME 上行链路仓] ",
               "启用输出后送入网络"
             ]
           ]
@@ -1301,14 +1301,18 @@
         },
         {
           "type": "line",
-          "text": "绑定§a便携终端§r可跨维度访问。"
+          "text": "绑定§a [item:gtit:neko_vending_terminal@0|猫猫贸易机便携终端] §r可跨维度访问。"
         },
         {
           "type": "divider"
         },
         {
           "type": "line",
-          "text": "结构：§b5 宽 × 4 高 × 2 深§r，最多 1 个上行链路仓。"
+          "text": "结构：§b5 宽 × 4 高 × 2 深§r，最多 1 个 [item:gregtech:gt.blockmachines@14611|猫猫售货机 ME 上行链路仓]。"
+        },
+        {
+          "type": "line",
+          "text": "按住§e[key:左 Shift]§r查看结构。"
         },
         {
           "type": "line",
@@ -1319,11 +1323,15 @@
       "quick": [
         {
           "type": "line",
-          "text": "用§6猫猫币§r与物品完成交易，货币可由§a团队钱包§r支付。"
+          "text": "用§6 [item:gtit:neko_coin@0|猫猫币] §r与物品完成交易，货币可由§a团队钱包§r支付。"
         },
         {
           "type": "line",
-          "text": "结构：5 宽 × 4 高 × 2 深；可选装 1 个专用 ME 上行链路仓。"
+          "text": "结构：5 宽 × 4 高 × 2 深；可选装 1 个 [item:gregtech:gt.blockmachines@14611|猫猫售货机 ME 上行链路仓]。"
+        },
+        {
+          "type": "line",
+          "text": "按住 §e[key:左 Shift]§r 查看结构指导。"
         },
         {
           "type": "line",
@@ -1336,7 +1344,7 @@
       "common": [
         {
           "type": "line",
-          "text": "为猫猫售货机接入 §bME 网络§r，可取料和输出产物。"
+          "text": "为 [item:gregtech:gt.blockmachines@14610|猫猫售货机] 接入 §bME 网络§r，可取料和输出产物。"
         },
         {
           "type": "table",
@@ -1383,7 +1391,7 @@
       "quick": [
         {
           "type": "line",
-          "text": "为猫猫售货机接入 §aME 物品网络§r，供交易取料与输出产物。"
+          "text": "为 [item:gregtech:gt.blockmachines@14610|猫猫售货机] 接入 §aME 物品网络§r，供交易取料与输出产物。"
         },
         {
           "type": "line",

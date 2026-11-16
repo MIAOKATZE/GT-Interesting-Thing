@@ -980,3 +980,5 @@ gtit.pocket.upgrade.mage.compact_modes=§d模式 §8· §f猫猫币补能、源�
 gtit.tooltip.authored_locale=zh_CN
 gtit.tooltip.scanner.mode=§e模式：%s
 gtit.tooltip.pocket.elements=§d元素储量§r：
+
+gtit.tooltip.terminal.unbound=尚未绑定 [item:gregtech:gt.blockmachines@14610|猫猫售货机]
