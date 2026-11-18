@@ -97,10 +97,8 @@ public class NekoPocketContainer extends ModularContainer {
     private static final int OVERSIZED_STACK_LINE = 64;
 
     /**
-     * ★大堆拦截（R104 修订：由「前置拆分顶背包」改为「超过 64 不允许被替换」——用户实测拆分支
-     * 在背包已有同物时几乎不加量、其余掉脚下，裁定干脆禁止）。只拦<b>服务端</b>：客户端那份
-     * 超大堆的手持补入先在双端走安全分支；其余拒绝仍仅在服务端判定，拒绝后的双纠正拉回客户端预测。
-     * QUICK_MOVE（mode 1）早退放行——MUI2 自带按天然满量拆块且失败留格，天然安全。
+     * 大堆的普通手持补入和持物 Shift 拦截都在双端执行。只有空游标的 Shift 可以交给 MUI2 搬运。
+     * 其余大堆危险手势由服务端拒绝并同步精确槽量和游标。
      */
     @Override
     public ItemStack slotClick(int slotId, int mouseButton, int mode, EntityPlayer player) {
@@ -113,26 +111,20 @@ public class NekoPocketContainer extends ModularContainer {
             return null;
         }
         final ModularSlot storage = storageSlotAt(slotId);
+        final ItemStack stored = storage == null ? null : storage.getStack();
         final ItemStack held = player == null ? null : player.inventory.getItemStack();
         if (mode == 0 && (mouseButton == 0 || mouseButton == 1)
-            && storage != null
-            && storage.getStack() != null
-            && storage.getStack().stackSize > OVERSIZED_STACK_LINE
+            && stored != null
+            && stored.stackSize > OVERSIZED_STACK_LINE
             && held != null) {
             PocketStoragePlacement.place(storage, player.inventory, mouseButton);
             syncOversizedStoragePlacement(storage, player);
             return null;
         }
-        if (mode != 1 && !panel.syncManager()
-            .isClient()) {
-            final ModularSlot modular = storageSlotAt(slotId);
-            if (modular != null && rejectsOversizedClick(
-                modular.getStack(),
-                mode,
-                player == null ? null : player.inventory.getItemStack())) {
-                rejectOversizedClick(modular, player);
-                return null;
-            }
+        if (rejectsOversizedClick(stored, mode, held)
+            && (mode == 1 || !panel.syncManager().isClient())) {
+            syncOversizedStoragePlacement(storage, player);
+            return null;
         }
         if (slotId == -999 && mode == 0 && (mouseButton == 0 || mouseButton == 1)) {
             if (!panel.persistBeforeCursorDrop(player)) {
@@ -144,7 +136,7 @@ public class NekoPocketContainer extends ModularContainer {
         return super.slotClick(slotId, mouseButton, mode, player);
     }
 
-    /** 服务器同步精确存储数与游标；客户端已使用同一补入算法预测。 */
+    /** 补入或拒绝大堆点击后，服务端同步精确存储数与游标。 */
     protected void syncOversizedStoragePlacement(ModularSlot slot, EntityPlayer player) {
         if (panel.syncManager()
             .isClient()) return;
@@ -173,9 +165,8 @@ public class NekoPocketContainer extends ModularContainer {
     }
 
     /**
-     * 大堆兜底拦截判据（★纯函数，JVM 直测）：安全手持补入已由前置分支处理；本判据只放行
-     * <b>空手取件</b>（mode 0 且光标为空——MUI2 的 PICKUP 按天然上限截取，左键 ≤64 / 右键 ≤32
-     * 上游标，1.7.10 的 byte 数量序列化天然安全）；其余手势一律拒绝，各自对应的蒸发面：
+     * 大堆兜底拦截判据。安全手持补入已由前置分支处理，空游标仍可普通取件或 Shift 搬运。
+     * 其余手势可能把整堆移出口袋并触发原版 byte 数量回绕：
      * <ul>
      * <li>手持物品点击（替换 swap / 同物合并）——swap 分支把整堆推上游标，&gt;127 出网络回绕成 0
      * （物品蒸发，正是用户报的"大堆被替换就消失"；合法同物补入不会进入此兜底分支）；</li>
@@ -183,13 +174,12 @@ public class NekoPocketContainer extends ModularContainer {
      * <li>creative 克隆（mode 3）——光标拿到整堆副本，同 swap；</li>
      * <li>丢掷（mode 4，Q / Ctrl+Q）——Ctrl+Q 整堆丢出，EntityItem.Count 是 byte，1024 回绕。</li>
      * </ul>
-     * 判据本体对 mode 1 也表拒绝，作 QUICK_MOVE 上游早退之外的第二层防线。
      */
     static boolean rejectsOversizedClick(ItemStack slotStack, int mode, ItemStack held) {
         if (slotStack == null || slotStack.stackSize <= OVERSIZED_STACK_LINE) {
             return false;
         }
-        return mode != 0 || held != null;
+        return held != null || (mode != 0 && mode != 1);
     }
 
     /**

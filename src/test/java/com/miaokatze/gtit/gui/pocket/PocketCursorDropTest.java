@@ -4,11 +4,14 @@
 package com.miaokatze.gtit.gui.pocket;
 
 import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.List;
 
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.player.InventoryPlayer;
+import net.minecraft.init.Items;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
@@ -18,13 +21,19 @@ import net.minecraftforge.fluids.FluidStack;
 import com.cleanroommc.modularui.core.mixins.early.minecraft.ContainerAccessor;
 import com.cleanroommc.modularui.factory.PlayerInventoryGuiData;
 import com.cleanroommc.modularui.factory.inventory.InventoryType;
+import com.cleanroommc.modularui.utils.item.PlayerMainInvWrapper;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
+import com.cleanroommc.modularui.widgets.slot.SlotGroup;
 import com.miaokatze.gtit.common.items.pocket.PocketCarrierIdentity;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
 import com.miaokatze.gtit.common.items.pocket.PocketRuntimeSession;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgrades;
 import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
 
-/** Native MUI -> vanilla cursor drop, using an explicitly constructed server-session fixture. */
+import cpw.mods.fml.common.Loader;
+
+/** Native MUI cursor clicks and pocket persistence using a headless session fixture. */
 public final class PocketCursorDropTest {
 
     private static final InventoryType MAIN = new InventoryType("gtit_cursor_drop_test") {
@@ -86,6 +95,8 @@ public final class PocketCursorDropTest {
 
     private static final class Container extends NekoPocketContainer {
 
+        private List<ModularSlot> shiftTargets = Collections.emptyList();
+
         Container(NekoPocketPanel panel) {
             super(panel);
         }
@@ -93,6 +104,21 @@ public final class PocketCursorDropTest {
         @Override
         public ContainerAccessor acc() {
             return () -> 0;
+        }
+
+        @Override
+        public List<ModularSlot> getShiftClickSlots() {
+            return shiftTargets;
+        }
+
+        void wireStorageAndPlayerSlots(PocketInventory inventory, InventoryPlayer player) {
+            addSlotToContainer(
+                new PocketSlots().storage(inventory, 0)
+                    .slotGroup(new SlotGroup(PocketSlots.GROUP_STORAGE, 1)));
+            ModularSlot destination = new ModularSlot(new PlayerMainInvWrapper(player), 1)
+                .slotGroup(new SlotGroup("test_player", 1));
+            addSlotToContainer(destination);
+            shiftTargets = Collections.singletonList(destination);
         }
 
         @Override
@@ -144,6 +170,17 @@ public final class PocketCursorDropTest {
         void drop(int button) {
             container.slotClick(-999, button, 0, player);
         }
+
+        void seedStorage(int count) {
+            player.inventory.setItemStack(null);
+            player.inventory.mainInventory[0] = carrier;
+            PocketUpgrades.installStackCount(carrier, 1);
+            inventory.storage()
+                .setStackInSlot(0, new ItemStack(Items.iron_ingot, count));
+            panel.persistFinal();
+            check(!inventory.isDirty() && inventory.storageStack(0).stackSize == count, "test baseline persisted");
+            container.wireStorageAndPlayerSlots(inventory, player.inventory);
+        }
     }
 
     private static <T> T allocate(Class<T> type) {
@@ -158,6 +195,52 @@ public final class PocketCursorDropTest {
 
     private static void check(boolean condition, String message) {
         if (!condition) throw new AssertionError(message);
+    }
+
+    private static void oversizedShiftClick() throws Exception {
+        // The headless Forge bootstrap skips mod discovery. MUI's optional NEA check expects a registry.
+        Field namedMods = Loader.class.getDeclaredField("namedMods");
+        namedMods.setAccessible(true);
+        namedMods.set(Loader.instance(), Collections.emptyMap());
+
+        for (boolean client : new boolean[] { false, true }) {
+            Fixture f = new Fixture();
+            f.seedStorage(1024);
+            f.sync.client = client;
+            ItemStack held = new ItemStack(Items.gold_ingot, 3);
+            f.player.inventory.setItemStack(held);
+
+            check(f.container.slotClick(0, 0, 1, f.player) == null, "occupied-cursor quick move is rejected");
+            check(f.player.inventory.getItemStack() == held && held.stackSize == 3, "cursor retains the held item");
+            check(f.player.inventory.mainInventory[1] == null, "quick-move destination was untouched");
+            check(f.inventory.storageStack(0).stackSize == 1024 && !f.inventory.isDirty(), "storage remains unchanged");
+            check(f.sync.corrections == (client ? 0 : 1), "only the server corrects the cursor");
+
+            if (!client) {
+                f.container.slotClick(1, 0, 0, f.player);
+                check(
+                    f.player.inventory.getItemStack() == null && f.player.inventory.mainInventory[1].stackSize == 3,
+                    "the original held item can be placed in the player's inventory");
+                f.container.onModularContainerClosed();
+                ItemStack reopened = PocketInventory.readFrom(f.carrier.getTagCompound())
+                    .storageStack(0);
+                check(
+                    reopened.getItem() == Items.iron_ingot && reopened.stackSize == 1024,
+                    "reopened storage still contains only the original pile");
+            }
+        }
+
+        Fixture empty = new Fixture();
+        empty.seedStorage(1024);
+        empty.container.slotClick(0, 0, 1, empty.player);
+        check(
+            empty.player.inventory.getItemStack() == null && empty.player.inventory.mainInventory[1].stackSize == 64,
+            "empty-cursor Shift fills the available player slot within its natural limit");
+        empty.container.onModularContainerClosed();
+        ItemStack remainder = PocketInventory.readFrom(empty.carrier.getTagCompound())
+            .storageStack(0);
+        check(remainder.getItem() == Items.iron_ingot && remainder.stackSize == 960,
+            "empty-cursor Shift saves the exact remainder on close");
     }
 
     public static void main(String[] args) throws Exception {
@@ -213,7 +296,8 @@ public final class PocketCursorDropTest {
             client.inventory.isDirty() && PocketInventory.readFrom(client.player.dropped.getTagCompound())
                 .tankTruthAt(0) == 1000,
             "client prediction never persists authoritative inventory");
+        oversizedShiftClick();
         System.out
-            .println("PocketCursorDropTest: PASS (native left/right drops, failed flush, foreign/stale/client guards)");
+            .println("PocketCursorDropTest: PASS (cursor drops and oversized storage Shift-click)");
     }
 }
