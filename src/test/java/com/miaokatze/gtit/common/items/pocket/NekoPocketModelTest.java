@@ -642,8 +642,7 @@ public class NekoPocketModelTest {
         // 产币字样归零、coin.hint 各恰一行）并入本条 lang 段。★起点 258（TP-B 后实测）⇒ +1 = 259
         // （分母一律取跑出来的数）。----
         cases.put("mage_mode_readout_syncs_server_truth", NekoPocketModelTest::mageModeReadoutSyncsServerTruth);
-        // ---- ★slotClick 大堆拦截（R104 修订）：纯函数面一条（rejectsOversizedClick 向量；跨包经反射）。
-        // 槽级拦截与拒绝后双纠正 = limited：真 EntityPlayer/ModularUI 装配不可注入，由实机验收。----
+        // 超大堆拦截判据的边界值。原生点击和保存往返另见 PocketCursorDropTest。
         cases.put(
             "slot_click_oversized_reject_pure_function",
             NekoPocketModelTest::slotClickOversizedRejectPureFunction);
@@ -18940,7 +18939,7 @@ public class NekoPocketModelTest {
         // 超 64：手上有东西（替换/合并）拒绝——swap 分支整堆上游标 >127 回绕蒸发，R104 用户裁定的正身
         SimpleAssert.that(rejectsOversizedClickReflect(stack(1024), 0, stack(1)), "1024 堆 + 手上有物 → 拒绝（替换/合并都不许）");
         SimpleAssert.that(rejectsOversizedClickReflect(stack(65), 0, stack(1)), "65 堆 + 手上有物 → 拒绝（>64 一刀切）");
-        // 超 64：其余 mode 全拒（各自对应一条 byte 蒸发面）
+        // 超 64：拒绝可能把整堆移出存储槽的手势。
         SimpleAssert.that(
             rejectsOversizedClickReflect(stack(1024), 2, null),
             "1024 堆 + 热键换位 mode 2 → 拒绝（整堆落玩家背包栏，NBT byte 蒸发）");
@@ -18951,8 +18950,9 @@ public class NekoPocketModelTest {
         SimpleAssert.that(
             rejectsOversizedClickReflect(stack(1024), 5, null),
             "1024 堆 + 拖拽 mode 5 → 拒绝（canDragInto 已 false，双保险）");
-        // mode 1 生产路径上游早退放行，判据本体仍表拒绝作第二层防线
-        SimpleAssert.that(rejectsOversizedClickReflect(stack(1024), 1, null), "1024 堆 + mode 1 → 判据本体拒绝（实际由上游早退放行）");
+        SimpleAssert.that(!rejectsOversizedClickReflect(stack(1024), 1, null), "1024 堆 + 空游标 Shift → 允许搬运");
+        SimpleAssert.that(rejectsOversizedClickReflect(stack(1024), 1, stack(1)), "1024 堆 + 持物 Shift → 拒绝");
+        SimpleAssert.that(!rejectsOversizedClickReflect(stack(64), 1, stack(1)), "64 堆仍沿原有 Shift 路径");
     }
 
     /**

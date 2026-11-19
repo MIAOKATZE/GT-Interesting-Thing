@@ -28,6 +28,7 @@ import com.cleanroommc.modularui.screen.ModularScreen;
 import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
+import com.miaokatze.gtit.common.util.AuthoredTooltips;
 import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.register.CreativeTabManager;
@@ -190,6 +191,21 @@ public final class ItemNekoVendingTerminal extends Item
 
     @Override
     public void addInformation(ItemStack stack, EntityPlayer player, List<String> tooltip, boolean advanced) {
+        if (AuthoredTooltips.append(stack, tooltip, "gtit:neko_vending_terminal", (binding, page) -> {
+            if ("terminal".equals(binding)) {
+                NekoVendingTarget current = NekoVendingTarget.read(stack);
+                page.line(
+                    EnumChatFormatting.YELLOW
+                        + (current == null ? StatCollector.translateToLocal("gtit.tooltip.terminal.unbound")
+                            : StatCollector.translateToLocalFormatted(
+                                "gtit.terminal.bound",
+                                current.dimension,
+                                current.x,
+                                current.y,
+                                current.z)));
+            }
+        })) return;
+
         tooltip.add(EnumChatFormatting.GRAY + StatCollector.translateToLocal("gtit.terminal.tooltip.bind"));
         tooltip.add(EnumChatFormatting.GRAY + StatCollector.translateToLocal("gtit.terminal.tooltip.open"));
         NekoVendingTarget target = NekoVendingTarget.read(stack);

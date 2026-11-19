@@ -255,8 +255,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
     // ==================== A01 蓝图 G5 域控制器（纯服务端域，不涉 Widget 树） ====================
 
-    /** S2C 状态字符串编解码器（BQ 锁定/冷却/可交易/团队缩放四对通道 + 分类图标/名称辅助） */
-    private final StatusCodec statusCodec = new StatusCodec(multiblock, baseMetaTileEntity, () -> {
+    /** Trade rows are synchronized independently of the wallet and the output scene. */
+    private final StatusCodec statusCodec = new StatusCodec(multiblock, () -> {
         if (this.mainPanel != null) {
             this.mainPanel.notifyCurrencyUpdate();
         }
@@ -276,7 +276,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         },
         coinAmountSyncs,
         meCoinAmountSyncs,
-        statusCodec::markTradeableStatusDirtyAndNotify,
+        statusCodec::requestRegularRefresh,
         () -> this.guiData != null ? this.guiData.getPlayer() : null,
         this::scheduleServerAction);
     /** BGM 开关联动（★R100 片 F：标志真相在 NekoMusicEventHandler，本类只持转发壳） */
@@ -767,7 +767,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         defaultTradeSyncActionSync.allowC2S();
         syncManager.syncValue("nekoV2DefaultTradeSyncAction", defaultTradeSyncActionSync);
 
-        // --- 四类 S2C 状态通道（BQ 锁定/冷却/可交易/团队缩放，A01 蓝图 G5 下沉 StatusCodec）---
         statusCodec.registerSyncValues(syncManager, playerId);
 
         // --- 各货币余额（S2C）---
@@ -779,10 +778,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
                 return wallet == null ? 0 : wallet.getCount(cid);
             });
-            // 货币余额变化时标记可交易状态为脏并立即触发重新同步
-            if (!syncManager.isClient()) {
-                coinAmountSyncer.setChangeListener(statusCodec::markTradeableStatusDirtyAndNotify);
-            }
             syncManager.syncValue("nekoCoinAmount_" + currencyId, coinAmountSyncer);
             coinAmountSyncs.put(currencyId, coinAmountSyncer);
         }
@@ -1000,18 +995,11 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * All callers defer the entire business operation. Admission may reject without touching items,
      * wallets or outputs. Tick END runs after machine ticks, including their setActive restoration.
      */
-    void markTradeableStatusDirty() {
-        statusCodec.markTradeableStatusDirtyAndNotify();
-    }
-
     public void scheduleServerAction(Runnable action) {
         VendingServerActions.schedulePlayerRequest(
             guiData != null && guiData.getPlayer() instanceof EntityPlayerMP ? (EntityPlayerMP) guiData.getPlayer()
                 : null,
-            VendingGuiSession.guard(guiData, syncManagerRef, baseMetaTileEntity, multiblock, () -> {
-                action.run();
-                multiblock.markTradeStateChanged();
-            }));
+            VendingGuiSession.guard(guiData, syncManagerRef, baseMetaTileEntity, multiblock, action));
     }
 
     /** Completion only releases the volatile scene request latch, including pre-admission rejection. */
@@ -1019,10 +1007,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         VendingServerActions.schedulePlayerRequest(
             guiData != null && guiData.getPlayer() instanceof EntityPlayerMP ? (EntityPlayerMP) guiData.getPlayer()
                 : null,
-            VendingGuiSession.guard(guiData, syncManagerRef, baseMetaTileEntity, multiblock, () -> {
-                action.run();
-                multiblock.markTradeStateChanged();
-            }),
+            VendingGuiSession.guard(guiData, syncManagerRef, baseMetaTileEntity, multiblock, action),
             completion);
     }
 
@@ -1035,20 +1020,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     boolean isMachineActive() {
         return machineActiveSync != null ? machineActiveSync.getValue()
             : baseMetaTileEntity != null && baseMetaTileEntity.isActive();
-    }
-
-    @Override
-    public long getSyncedCooldownRemaining(UUID groupId, int tradeIndex) {
-        if (groupId == null || tradeIndex < 0) {
-            return 0L;
-        }
-        String key = groupId.toString() + ":" + tradeIndex;
-        return statusCodec.getCooldownRemaining(key);
-    }
-
-    @Override
-    public boolean getSyncedOneTimeRedeemed(UUID groupId, int tradeIndex) {
-        return groupId != null && tradeIndex >= 0 && statusCodec.isOneTimeRedeemed(groupId + ":" + tradeIndex);
     }
 
     @Override
@@ -1072,10 +1043,13 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     }
 
     @Override
-    public Boolean getSyncedTradeableStatus(UUID groupId, int tradeIndex) {
-        if (groupId == null) return null;
-        String key = groupId.toString() + ":" + tradeIndex;
-        return statusCodec.getTradeable(key);
+    public StatusCodec.TradeStatus getSyncedTradeStatus(StatusCodec.TradeKey key) {
+        return statusCodec.clientStatus(key);
+    }
+
+    @Override
+    public Map<StatusCodec.TradeKey, StatusCodec.TradeStatus> takeTradeStatusChanges() {
+        return statusCodec.takeClientChanges();
     }
 
     @Override
@@ -1087,72 +1061,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         return widgets != null ? widgets : new ArrayList<>();
     }
 
-    /**
-     * 交易显示数据更新回调
-     * <p>
-     * 由 {@link NekoTradeMainPanel#updateGui()} 调用，
-     * 在同一批展示对象上应用服务端状态，不重绑预分配 Widget 的物品定义。
-     * <p>
-     * 同时使用同步值中的 BQ/冷却/可交易状态覆盖 formatTrades() 生成的基础状态，
-     * 确保多人游戏下客户端显示正确的锁定、冷却和可交易信息。
-     * 可交易状态优先使用 {@link #tradeableStatusSync} 的服务端计算值；
-     * 若该交易尚无同步值，则回退到本地 BQ+冷却 逻辑。
-     *
-     * @param trades 按分类组织的交易显示数据
-     */
-    @Override
-    public void onTradeStatusUpdated(Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades) {
-        if (trades == null) return;
-
-        // 使用同步值中的 BQ/冷却/可交易状态覆盖显示数据
-        for (List<NekoTradeItemDisplay> displayList : trades.values()) {
-            if (displayList == null) continue;
-            for (NekoTradeItemDisplay display : displayList) {
-                if (display == null) continue;
-
-                // 覆盖 BQ 锁定状态（来自 bqLockStatusSync）
-                boolean bqLocked = statusCodec.getBqLocked(display.getGroupId());
-                display.setBqLocked(bqLocked);
-
-                // 覆盖冷却状态（来自 cooldownStatusSync）
-                String cdKey = display.getGroupId()
-                    .toString() + ":"
-                    + display.getTradeIndex();
-                long cooldown = statusCodec.getCooldownRemaining(cdKey);
-                display.setCooldownRemaining(cooldown);
-                display.setOneTimeRedeemed(statusCodec.isOneTimeRedeemed(cdKey));
-
-                // 设置团队缩放信息（来自 teamScaleSync）
-                // 客户端通过同步值获取冷却内最大次数和已用次数，用于 tooltip 展示
-                long[] scaleInfo = statusCodec.getTeamScale(display.getGroupId());
-                if (scaleInfo != null && scaleInfo.length >= 2) {
-                    display.setMaxTradesInCooldown((int) scaleInfo[0]);
-                    display.setUsedTradesInCooldown(scaleInfo[1]);
-                } else {
-                    // 未同步到缩放信息时使用默认值（个人限制，无已用次数）
-                    display.setMaxTradesInCooldown(1);
-                    display.setUsedTradesInCooldown(0);
-                }
-
-                // 更新可交易状态（优先使用服务端同步值，无则回退 BQ+冷却）
-                String tradeableKey = cdKey;
-                Boolean syncedTradeable = statusCodec.getTradeable(tradeableKey);
-                display.setTradeFailure(statusCodec.getTradeFailure(tradeableKey));
-                if (syncedTradeable != null) {
-                    display.setTradeable(syncedTradeable);
-                } else {
-                    display.setTradeable(!bqLocked && cooldown <= 0 && !display.isOneTimeRedeemed());
-                }
-            }
-        }
-
-    }
-
     /** Rebind widgets only when definitions or the visible member order actually change. */
     @Override
     public void onTradeDisplayUpdated(Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades) {
         if (trades == null) return;
-        onTradeStatusUpdated(trades);
         if (selectedTrade != null) {
             NekoTradeItemDisplay previous = selectedTrade;
             selectedTrade = null;
@@ -1773,35 +1685,25 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * @param trades 按分类组织的交易显示数据
      */
     private void updatePreAllocatedWidgets(Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades) {
-        // 更新 TILE 模式 Widget
-        updateWidgetList(trades, displayedTradesTiles);
-        // 更新 LIST 模式 Widget
-        updateWidgetList(trades, displayedTradesList);
+        onTradeCategoriesReordered(displayedTradesTiles.keySet(), trades);
     }
 
-    /**
-     * 更新单个显示模式的 Widget 列表
-     *
-     * @param trades 交易显示数据
-     * @param map    Widget 映射（分类 → Widget 列表）
-     */
-    private void updateWidgetList(Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades,
-        Map<NekoTradeCategory, List<NekoTradeItemDisplayWidget>> map) {
-        for (Map.Entry<NekoTradeCategory, List<NekoTradeItemDisplayWidget>> entry : map.entrySet()) {
-            NekoTradeCategory category = entry.getKey();
-            List<NekoTradeItemDisplayWidget> widgets = entry.getValue();
-            List<NekoTradeItemDisplay> displayList = trades.get(category);
-            int displaySize = displayList != null ? displayList.size() : 0;
+    @Override
+    public void onTradeCategoriesReordered(java.util.Set<NekoTradeCategory> categories,
+        Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades) {
+        for (NekoTradeCategory category : categories) {
+            List<NekoTradeItemDisplay> displays = trades.getOrDefault(category, java.util.Collections.emptyList());
+            updateWidgetList(displayedTradesTiles.get(category), displays);
+            updateWidgetList(displayedTradesList.get(category), displays);
+        }
+    }
 
-            for (int i = 0; i < widgets.size(); i++) {
-                if (i < displaySize) {
-                    widgets.get(i)
-                        .setDisplay(displayList.get(i));
-                } else {
-                    widgets.get(i)
-                        .setDisplay(null);
-                }
-            }
+    private void updateWidgetList(List<NekoTradeItemDisplayWidget> widgets, List<NekoTradeItemDisplay> displays) {
+        if (widgets == null) return;
+        for (int i = 0; i < widgets.size(); i++) {
+            NekoTradeItemDisplayWidget widget = widgets.get(i);
+            NekoTradeItemDisplay display = i < displays.size() ? displays.get(i) : null;
+            if (widget.getDisplay() != display) widget.setDisplay(display);
         }
     }
 
@@ -2203,7 +2105,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             if (!NekoTradeDefinition.matches(groupId, tradeIndex, parts[2])) {
                 tradeResultMessage = EnumChatFormatting.RED + "交易内容已更新，请等待界面刷新后重试";
                 if (tradeResultSync != null) tradeResultSync.notifyUpdate();
-                statusCodec.markTradeableStatusDirtyAndNotify();
                 return;
             }
             NekoTradeResult result = multiblock.processTrade(playerId, groupId, tradeIndex);
@@ -2216,10 +2117,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 // v1.7.12：移除此处的 forceSyncOutputSlots——交易成功时物品尚未落槽（仍在 outputBuffer），
                 // 同步空槽无意义。物品落槽依赖 ModularContainer.detectAndSendChanges 原生同步
                 // （ItemSlotSH.checkUpdate 检测到变化后发 SYNC_ITEM，客户端 changeListener 触发下落动画）。
-                // 复刻 VM 父类 sendTradeUpdate：交易成功后显式触发同步，
-                // 让客户端立即收到最新的可交易状态、冷却状态和交易结果。
-                // 可交易置脏 + 可交易/冷却/团队缩放三通道级联（A01 蓝图 G5 收编 StatusCodec）
-                statusCodec.notifyTradeStatusChanged();
                 if (tradeResultSync != null) {
                     tradeResultSync.notifyUpdate();
                 }
@@ -2229,10 +2126,14 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 }
             } else {
                 tradeResultMessage = EnumChatFormatting.RED + getTradeResultMessage(result);
-                statusCodec.markTradeableStatusDirtyAndNotify();
                 if (tradeResultSync != null) {
                     tradeResultSync.notifyUpdate();
                 }
+            }
+            try {
+                statusCodec.notifyTradeStatusChanged(playerId, groupId, tradeIndex);
+            } catch (RuntimeException e) {
+                LOG.error("[NekoVMV2] Failed to synchronize the requested trade status", e);
             }
         } catch (Throwable t) {
             LOG.error("[NekoVMV2] processTradeRequest 异常!", t);

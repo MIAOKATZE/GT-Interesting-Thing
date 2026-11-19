@@ -1,0 +1,1408 @@
+{
+  "aliases": {
+    "gtit:neko_pocket_upgrade_distill_fast": "gtit:neko_pocket_upgrade_mage"
+  },
+  "items": {
+    "gtit:float_core": {
+      "common": [
+        {
+          "type": "line",
+          "text": "装备在饰品栏后获得§a创造飞行§r。"
+        },
+        {
+          "type": "line",
+          "text": "饥饿值至少 §b6 点§r（3 格）；飞行每秒增加 0.4 疲劳，先耗饱和度。"
+        },
+        {
+          "type": "line",
+          "text": "停飞不产生消耗；创造模式免除消耗与饥饿门槛。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "装备在饰品栏后获得§a创造飞行§r。"
+        },
+        {
+          "type": "line",
+          "text": "飞行消耗饱和度与饥饿值；至少保持 §b6 点§r饥饿值（3 格）。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:electric_float_core": {
+      "common": [
+        {
+          "type": "line",
+          "text": "装备在饰品栏，获得§a创造飞行§r。"
+        },
+        {
+          "type": "line",
+          "text": "§aLV§r 充电，上限 §b32 EU/t§r；容量 §b32,000,000 EU§r。"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "供能",
+            "条件",
+            "飞行消耗"
+          ],
+          "rows": [
+            [
+              "§a电力",
+              "电量 ≥ 128 EU",
+              "§b128 EU/t"
+            ],
+            [
+              "§6食物",
+              "饥饿值 ≥ 6 点",
+              "§b0.2 疲劳/秒"
+            ]
+          ]
+        },
+        {
+          "type": "line",
+          "text": "优先用电；食物供能先消耗饱和度。"
+        },
+        {
+          "type": "line",
+          "text": "停飞无消耗；创造模式不受限制。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "装备在任意饰品栏，获得§a创造飞行§r；飞行消耗 §b128 EU/t§r。"
+        },
+        {
+          "type": "line",
+          "text": "电力不足时改耗饱和度与饥饿值，至少需 §b6 点§r饥饿值（3 格）。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:neko_coin": {
+      "common": [
+        {
+          "type": "line",
+          "text": " [item:gregtech:gt.blockmachines@14610|猫猫售货机] 的§6普通货币§r；两种币分别记账。"
+        },
+        {
+          "type": "line",
+          "text": "从售货机输入栏存入团队钱包，也可取回实体币。"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "操作",
+            "普通币掉率（默认）"
+          ],
+          "rows": [
+            [
+              "成功钓鱼",
+              "9.8%"
+            ],
+            [
+              "收获成熟作物",
+              "1.96%"
+            ],
+            [
+              "击杀敌对生物",
+              "0.98%"
+            ]
+          ]
+        },
+        {
+          "type": "line",
+          "text": "每次至多获得一种币。瓜、南瓜、机器钓鱼和假玩家不计。"
+        },
+        {
+          "type": "line",
+          "text": "背包满时，硬币掉在脚边。"
+        },
+        {
+          "type": "line",
+          "text": "§7宝箱来源：地牢、铁匠铺、废弃矿井、神庙、要塞。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": " [item:gregtech:gt.blockmachines@14610|猫猫售货机] 的§6普通货币§r，§a团队钱包§r余额由队员共享。"
+        },
+        {
+          "type": "line",
+          "text": "可从宝箱或亲手钓鱼、收获成熟作物、击杀敌对生物获得。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:shimmering_neko_coin": {
+      "common": [
+        {
+          "type": "line",
+          "text": " [item:gregtech:gt.blockmachines@14610|猫猫售货机] 的§d稀有货币§r；两种币分别记账。"
+        },
+        {
+          "type": "line",
+          "text": "从售货机输入栏存入团队钱包，也可取回实体币。"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "操作",
+            "闪烁币掉率（默认）"
+          ],
+          "rows": [
+            [
+              "成功钓鱼",
+              "2%"
+            ],
+            [
+              "收获成熟作物",
+              "0.4%"
+            ],
+            [
+              "击杀敌对生物",
+              "0.2%"
+            ]
+          ]
+        },
+        {
+          "type": "line",
+          "text": "每次至多获得一种币。瓜、南瓜、机器钓鱼和假玩家不计。"
+        },
+        {
+          "type": "line",
+          "text": "背包满时，硬币掉在脚边。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": " [item:gregtech:gt.blockmachines@14610|猫猫售货机] 的§d稀有货币§r，与普通 [item:gtit:neko_coin@0|猫猫币] 分别记账。"
+        },
+        {
+          "type": "line",
+          "text": "亲手钓鱼、收获成熟作物或击杀敌对生物时，有小概率获得。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:ring_distant_grasp": {
+      "common": [
+        {
+          "type": "line",
+          "text": "戒指栏：每枚增加 §b2 格§r方块交互距离。"
+        },
+        {
+          "type": "line",
+          "text": "同时佩戴两枚：交互距离 §b+4 格§r。"
+        },
+        {
+          "type": "line",
+          "text": "§7来源：宝箱战利品。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "equipped"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "佩戴于戒指栏，每枚增加 §b2 格§r§a方块交互距离§r，可叠加。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "equipped"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:ring_skywalk": {
+      "common": [
+        {
+          "type": "line",
+          "text": "佩戴于戒指栏，行走时可直接§a跨上§r §b1 格§r高差，无需起跳。"
+        },
+        {
+          "type": "line",
+          "text": "跨步高度设为 §b1.1 格§r；卸下最后一枚后恢复为 0.6 格。"
+        },
+        {
+          "type": "line",
+          "text": "§7来源：宝箱战利品。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "equipped"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "佩戴于戒指栏，行走时可直接§a跨上§r §b1 格§r高差，无需起跳。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "equipped"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:ring_windrider": {
+      "common": [
+        {
+          "type": "line",
+          "text": "戒指栏：获得§a创造飞行§r，不耗电或饥饿。"
+        },
+        {
+          "type": "line",
+          "text": "卸下后，仅在仍有可用飞行装备时保留飞行。"
+        },
+        {
+          "type": "line",
+          "text": "合成：其余七种戒指各 §b1 枚§r、 [item:gtit:neko_coin@0|猫猫币] 2 枚。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "equipped"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "佩戴于戒指栏，获得§a创造式飞行能力§r，本戒指无消耗。"
+        },
+        {
+          "type": "warning",
+          "text": "卸下后若无其他可用飞行来源，将结束飞行。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "equipped"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:ring_gluttony": {
+      "common": [
+        {
+          "type": "line",
+          "text": "佩戴在戒指栏，§a每秒恢复§r一次。"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "饥饿值",
+            "恢复效果"
+          ],
+          "rows": [
+            [
+              "未满",
+              "§b+1 点§r饥饿值"
+            ],
+            [
+              "已满",
+              "§b+1 点§r饱和度，最高 20 点"
+            ]
+          ]
+        },
+        {
+          "type": "line",
+          "text": "低于 §b5 点§r时可一次补满饥饿值与饱和度；每枚冷却 §b60 秒§r。"
+        },
+        {
+          "type": "line",
+          "text": "新世界的首分钟内无法触发补满。"
+        },
+        {
+          "type": "line",
+          "text": "§7来源：宝箱战利品。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "equipped"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "佩戴于戒指栏，每秒恢复 §b1 点§r饥饿值，满后改为恢复§a饱和度§r。"
+        },
+        {
+          "type": "line",
+          "text": "饥饿值低于 §b5 点§r时触发应急补满，冷却 60 秒。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "equipped"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:ring_ironheart": {
+      "common": [
+        {
+          "type": "line",
+          "text": "戒指栏：每枚增加 §b10 颗心§r的生命上限，可叠加。"
+        },
+        {
+          "type": "line",
+          "text": "提高上限不回复当前生命。"
+        },
+        {
+          "type": "line",
+          "text": "§7来源：宝箱战利品。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "equipped"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "佩戴于戒指栏，每枚增加 §b20 点§r§a生命上限§r（10 颗心），可叠加。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "equipped"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:ring_dragon_breath": {
+      "common": [
+        {
+          "type": "line",
+          "text": "戒指栏：§a抗火、夜视§r、§d生命恢复 I、抗性提升 I§r。"
+        },
+        {
+          "type": "line",
+          "text": "每 §b5 秒§r将药效刷新至 30 秒；卸下后自然到期。"
+        },
+        {
+          "type": "line",
+          "text": "同类戒指不叠加药效等级。"
+        },
+        {
+          "type": "line",
+          "text": "§7来源：宝箱战利品。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "equipped"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "戒指栏：§a抗火、夜视§r、§d生命恢复 I、抗性提升 I§r。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "equipped"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:ring_mountainbreaker": {
+      "common": [
+        {
+          "type": "line",
+          "text": "戒指栏：§a力量 II§r 与§a急迫 II§r。"
+        },
+        {
+          "type": "line",
+          "text": "每 §b5 秒§r将药效刷新至 30 秒；卸下后自然到期。"
+        },
+        {
+          "type": "line",
+          "text": "同类戒指不叠加药效等级。"
+        },
+        {
+          "type": "line",
+          "text": "§7来源：宝箱战利品。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "equipped"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "戒指栏：§a力量 II§r 与§a急迫 II§r。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "equipped"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:ring_tempest": {
+      "common": [
+        {
+          "type": "line",
+          "text": "戒指栏：§a速度 II§r 与§a跳跃提升 II§r。"
+        },
+        {
+          "type": "line",
+          "text": "每 §b5 秒§r将药效刷新至 30 秒；卸下后自然到期。"
+        },
+        {
+          "type": "line",
+          "text": "同类戒指不叠加药效等级。"
+        },
+        {
+          "type": "line",
+          "text": "§7来源：宝箱战利品。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "equipped"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "戒指栏：§a速度 II§r 与§a跳跃提升 II§r。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "equipped"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:reincarnation_crystal": {
+      "common": [
+        {
+          "type": "line",
+          "text": "手持 §e[right:右击]§r 打开§a周目面板§r，寄存要带入新周目的物品。"
+        },
+        {
+          "type": "line",
+          "text": "仅限单人存档；对局域网开放后无法使用。"
+        },
+        {
+          "type": "divider"
+        },
+        {
+          "type": "line",
+          "text": "每列累计投入 16 个对应档位的机械外壳即可解锁；蒸汽列使用 [item:gregtech:gt.blockcasings@10|镀铜砖块]。"
+        },
+        {
+          "type": "line",
+          "text": "每个已解锁物品格可寄存 1 件；确认前可以调整或取出。"
+        },
+        {
+          "type": "line",
+          "text": "寄存只保留物品种类与附加值；附魔、充电与容器内容等 NBT 数据不会保留。"
+        },
+        {
+          "type": "warning",
+          "text": "在面板内完成二次确认后，消耗背包中的 1 枚水晶，并删除当前存档。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "§a单人存档§r中手持 §e[right:右击]§r 打开§a周目面板§r，寄存要带入新周目的物品。"
+        },
+        {
+          "type": "warning",
+          "text": "确认轮回消耗 1 枚水晶，并删除当前存档。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:telekinesis_ore_scanner_core": {
+      "common": [
+        {
+          "type": "line",
+          "text": "探测§a矿脉§r或§d地下流体§r，在旅行地图标记结果；需要 VisualProspecting。"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "操作",
+            "行为"
+          ],
+          "rows": [
+            [
+              "§e[right:右击]§r",
+              "探测当前区域"
+            ],
+            [
+              "§e[key-right:Shift+右击]§r",
+              "切换矿石／流体"
+            ]
+          ]
+        },
+        {
+          "type": "line",
+          "text": "生存：至少 §b6 点§r饥饿值；每次扫描增加 24 疲劳，先耗饱和度。"
+        },
+        {
+          "type": "line",
+          "text": "矿脉：水平半径 §b144 格§r，边界按矿脉区域对齐。地下流体按油田整区探测。"
+        },
+        {
+          "type": "line",
+          "text": "切换模式无消耗；创造模式扫描不耗食物。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "mode"
+        },
+        {
+          "type": "dynamic",
+          "binding": "dependency"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "探测§a矿脉§r或§d地下流体§r，在旅行地图标记结果。"
+        },
+        {
+          "type": "line",
+          "text": "§e[right:右击]§r探测；§e[key-right:Shift+右击]§r切换模式。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "mode"
+        },
+        {
+          "type": "dynamic",
+          "binding": "dependency"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:gtit.neko_infinity_unit": {
+      "common": [
+        {
+          "type": "line",
+          "text": "占用 §b1 个§r [item:appliedenergistics2:tile.BlockDrive@0|ME 驱动器] 槽位，独立存放物品、流体与源质。"
+        },
+        {
+          "type": "line",
+          "text": "§b1 AE/t§r 空闲功耗，无需按字节扩容。"
+        },
+        {
+          "type": "divider"
+        },
+        {
+          "type": "line",
+          "text": "§a物品通道§r：可设置分区、升级卡和模糊过滤。"
+        },
+        {
+          "type": "line",
+          "text": "§d其他通道§r：须由整合包注册，不沿用物品过滤设置。"
+        },
+        {
+          "type": "warning",
+          "text": "合成 [item:gtit:neko_dimension_pocket@0|次元口袋] 会消耗本单元，请先转出库存。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "cell"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "一枚 ME 存储单元，同时存放§a物品、流体§r与已注册通道的§d源质§r，各通道独立。"
+        },
+        {
+          "type": "line",
+          "text": "无需按字节扩容；空闲功耗 §b1 AE/t§r。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "cell"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:neko_dimension_pocket": {
+      "common": [
+        {
+          "type": "line",
+          "text": "随身收纳§a物品§r、§b流体§r和§d源质§r，可蒸馏物品中的源质。"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "存储位置",
+            "基础容量",
+            "满级容量"
+          ],
+          "rows": [
+            [
+              "物品格 ×207",
+              "原堆叠上限",
+              "§b65,536 件"
+            ],
+            [
+              "流体罐 ×30",
+              "2,000 万 mB",
+              "§b20 亿 mB"
+            ],
+            [
+              "每种源质",
+              "256 点",
+              "§b4,096 点"
+            ]
+          ]
+        },
+        {
+          "type": "line",
+          "text": "不可堆叠物品每格 1 件。"
+        },
+        {
+          "type": "line",
+          "text": "§d蒸馏§r：每格每轮消耗 1 件。周期 §b5 秒§r，魔法使升级后 §b1 秒§r。"
+        },
+        {
+          "type": "line",
+          "text": "源质空间不足时，跳过该格。"
+        },
+        {
+          "type": "divider"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "操作",
+            "行为"
+          ],
+          "rows": [
+            [
+              "§e[right:右击]§r",
+              "手持打开口袋"
+            ],
+            [
+              "§e[key:B]§r（默认）",
+              "打开佩戴的口袋，其次主手"
+            ],
+            [
+              "§e[key-right:Shift+右击]§r",
+              "手持口袋，从 GT 机器抽液"
+            ],
+            [
+              "§e[key-right:Alt+右击]§r",
+              "佩戴口袋，空手抽取 GT 机器流体"
+            ]
+          ]
+        },
+        {
+          "type": "line",
+          "text": "§b次元通道§r：绑定元件、声明需求即可补货或上传；目标须加载。"
+        },
+        {
+          "type": "line",
+          "text": "口袋在主背包或饰品栏时，被动功能生效。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "elements"
+        },
+        {
+          "type": "divider"
+        },
+        {
+          "type": "warning",
+          "text": "口袋遗失，库存随之遗失。"
+        },
+        {
+          "type": "warning",
+          "text": "合成消耗 [item:gtit:gtit.neko_infinity_unit@0|无限存储单元]；请先转出单元库存。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "quarantine"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "§a随身收纳§r物品、流体与§d源质§r，也能蒸馏物品中的源质。"
+        },
+        {
+          "type": "line",
+          "text": "手持 §e[right:右击]§r 打开；佩戴后用 §e[key:B]§r 打开（默认键）。"
+        },
+        {
+          "type": "warning",
+          "text": "口袋遗失，袋内库存也会遗失。"
+        },
+        {
+          "type": "warning",
+          "text": "合成会消耗 [item:gtit:gtit.neko_infinity_unit@0|无限存储单元]；先转出该单元的库存。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "quarantine"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:neko_pocket_upgrade_capacity": {
+      "common": [
+        {
+          "type": "line",
+          "text": "提高口袋 §b30 个§r独立流体罐的容量。"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "安装数量",
+            "单罐容量（mB）"
+          ],
+          "rows": [
+            [
+              "未装／关闭",
+              "2,000 万"
+            ],
+            [
+              "1～63 枚",
+              "2,000 万 + §b3,000 万§r × 枚数"
+            ],
+            [
+              "64 枚",
+              "§b20 亿§r（最后一枚 +9,000 万）"
+            ]
+          ]
+        },
+        {
+          "type": "warning",
+          "text": "第 1 个插件格，固化后不可拆除。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "提高口袋每个§a流体罐§r的容量，最多安装 §b64 枚§r。"
+        },
+        {
+          "type": "warning",
+          "text": "装入对应插件格即固化，不可拆除；可关闭效果。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:neko_pocket_upgrade_stack": {
+      "common": [
+        {
+          "type": "line",
+          "text": "提高口袋的§a单格堆叠§r和§d源质容量§r。"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "存储对象",
+            "关闭插件",
+            "启用插件"
+          ],
+          "rows": [
+            [
+              "可堆叠物品",
+              "原堆叠上限，至多 64",
+              "§b1,024 × 枚数"
+            ],
+            [
+              "不可堆叠物品",
+              "1 件",
+              "1 件"
+            ],
+            [
+              "每种源质",
+              "256 点",
+              "§b4,096 点"
+            ]
+          ]
+        },
+        {
+          "type": "line",
+          "text": "安装 §b1～64 枚§r；满级物品每格 §b65,536 件§r，源质上限不随枚数增加。"
+        },
+        {
+          "type": "warning",
+          "text": "第 2 个插件格，固化后不可拆除。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "提高口袋§a物品格§r与§d源质§r的存量上限。"
+        },
+        {
+          "type": "line",
+          "text": "物品每格上限 = 生效插件数 × 1,024；不可堆叠物品仍为 1。"
+        },
+        {
+          "type": "warning",
+          "text": "最多固化 64 枚，不可拆除；可关闭效果。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:neko_pocket_upgrade_magnet": {
+      "common": [
+        {
+          "type": "line",
+          "text": "口袋在主背包或饰品栏时，自动拾取 §b8 格§r内的掉落物。"
+        },
+        {
+          "type": "line",
+          "text": "拾取目标：§a口袋§r或§a玩家背包§r。装不下的物品留在原地。"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "过滤模式",
+            "拾取范围"
+          ],
+          "rows": [
+            [
+              "白名单",
+              "仅名单内"
+            ],
+            [
+              "黑名单",
+              "仅名单外"
+            ],
+            [
+              "无限制",
+              "全部，保留原名单"
+            ]
+          ]
+        },
+        {
+          "type": "line",
+          "text": "按物品种类与附加值匹配，忽略 NBT。"
+        },
+        {
+          "type": "warning",
+          "text": "第 3 个插件格，固化后不可拆除；可关闭磁力。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "§a自动拾取§r周围 §b8 格§r内的掉落物。"
+        },
+        {
+          "type": "warning",
+          "text": "装入口袋即固化，不可拆除；可关闭磁力。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:neko_pocket_upgrade_channel_persist": {
+      "common": [
+        {
+          "type": "line",
+          "text": "让§a次元通道§r持续运行，无需消耗 [item:gtit:neko_coin@0|猫猫币]。"
+        },
+        {
+          "type": "line",
+          "text": "安装后默认关闭；在口袋主界面开启，仍需先绑定存储元件，且目标保持加载。"
+        },
+        {
+          "type": "line",
+          "text": "每批间隔可设 §b1～60 秒§r，默认 5 秒；开启时立即执行第一批，之后按所设间隔运行。"
+        },
+        {
+          "type": "line",
+          "text": "此间隔仅影响持续化通道；每批服务的元件与通道对数由服务器配置决定。"
+        },
+        {
+          "type": "warning",
+          "text": "装入第 4 个插件格即固化，不可拆除；可随时关闭持续化。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "让§a次元通道§r持续运行，无需消耗 [item:gtit:neko_coin@0|猫猫币]。"
+        },
+        {
+          "type": "line",
+          "text": "安装后默认关闭；在口袋主界面开启。"
+        },
+        {
+          "type": "warning",
+          "text": "装入口袋即固化，不可拆除。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:neko_pocket_upgrade_mage": {
+      "common": [
+        {
+          "type": "line",
+          "text": "§d蒸馏§r：下一轮起由 §b5 秒§r缩至 §b1 秒§r，产量不变。"
+        },
+        {
+          "type": "line",
+          "text": "§d法杖§r：每 §b0.25 秒§r为一支充能，每种至多 §b5 点§r。主手优先。"
+        },
+        {
+          "type": "line",
+          "text": "六种元素各存 §b500 点§r，与源质分别计数。"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "转换",
+            "速率／产物",
+            "默认"
+          ],
+          "rows": [
+            [
+              " [item:gtit:neko_coin@0|猫猫币] 补能",
+              "各元素：普通 §b+1§r／闪烁 §b+10",
+              "§a开"
+            ],
+            [
+              "元始源质",
+              "每秒各 §b1 点§r → 对应元素 1 点",
+              "§a开"
+            ],
+            [
+              "蒸馏结晶",
+              "每枚结晶含 §b1 点§r源质",
+              "§7关"
+            ]
+          ]
+        },
+        {
+          "type": "line",
+          "text": "§6补能§r：每秒至多扣 1 枚币，先口袋后背包；六种元素都装得下才扣币。"
+        },
+        {
+          "type": "line",
+          "text": "§d源质§r：逐种转换，保留复合源质。"
+        },
+        {
+          "type": "line",
+          "text": "§d结晶§r：口袋 → 背包 → 脚下。已有源质不变。"
+        },
+        {
+          "type": "warning",
+          "text": "第 5 格固化，不可拆除。主效果与三项设置均可关闭。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "§a蒸馏§r由每 §b5 秒§r一轮加速至 1 秒，并用口袋元素为§d法杖§r充能。"
+        },
+        {
+          "type": "warning",
+          "text": " [item:gtit:neko_coin@0|猫猫币] 补能、源质转换默认开启；会消耗币与元始源质，可分别关闭。"
+        },
+        {
+          "type": "warning",
+          "text": "装入口袋即固化，不可拆除；可关闭主效果。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:neko_vending_terminal": {
+      "common": [
+        {
+          "type": "line",
+          "text": "远程打开已绑定的 [item:gregtech:gt.blockmachines@14610|猫猫售货机]，支持§a跨维度§r。"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "目标",
+            "操作",
+            "行为"
+          ],
+          "rows": [
+            [
+              "售货机",
+              "§e[right:右击]§r",
+              "绑定或改绑"
+            ],
+            [
+              "已绑定终端",
+              "手持 §e[right:右击]§r",
+              "打开交易界面"
+            ]
+          ]
+        },
+        {
+          "type": "line",
+          "text": "目标维度和区块须已加载，并有使用权限。"
+        },
+        {
+          "type": "line",
+          "text": "保持手持同一终端；切换槽位、跨维度、目标卸载或失去权限会断开连接。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "terminal"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "§e[right:右击]§r [item:gregtech:gt.blockmachines@14610|猫猫售货机] 绑定，随后手持 §e[right:右击]§r 远程打开§a交易界面§r。"
+        },
+        {
+          "type": "line",
+          "text": "目标维度与区块须已加载。"
+        },
+        {
+          "type": "dynamic",
+          "binding": "terminal"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:neko_vending_machine": {
+      "common": [
+        {
+          "type": "line",
+          "text": "用物品和§6 [item:gtit:neko_coin@0|猫猫币] §r交易，钱包余额由团队共享。"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "交易",
+            "供料",
+            "产物去向"
+          ],
+          "rows": [
+            [
+              "本机",
+              "32 个输入槽",
+              "100 个输出槽"
+            ],
+            [
+              "接入 ME",
+              " [item:gregtech:gt.blockmachines@14611|猫猫售货机 ME 上行链路仓] ",
+              "启用输出后送入网络"
+            ]
+          ]
+        },
+        {
+          "type": "line",
+          "text": "ME 须通电并分配频道。开启输出时已有产物也会送出，放不下则留在输出栏。"
+        },
+        {
+          "type": "line",
+          "text": "绑定§a [item:gtit:neko_vending_terminal@0|猫猫贸易机便携终端] §r可跨维度访问。"
+        },
+        {
+          "type": "divider"
+        },
+        {
+          "type": "line",
+          "text": "结构：§b5 宽 × 4 高 × 2 深§r，最多 1 个 [item:gregtech:gt.blockmachines@14611|猫猫售货机 ME 上行链路仓]。"
+        },
+        {
+          "type": "line",
+          "text": "按住§e[key:左 Shift]§r查看结构。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "用§6 [item:gtit:neko_coin@0|猫猫币] §r与物品完成交易，货币可由§a团队钱包§r支付。"
+        },
+        {
+          "type": "line",
+          "text": "结构：5 宽 × 4 高 × 2 深；可选装 1 个 [item:gregtech:gt.blockmachines@14611|猫猫售货机 ME 上行链路仓]。"
+        },
+        {
+          "type": "line",
+          "text": "按住 §e[key:左 Shift]§r 查看结构指导。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    },
+    "gtit:neko_vending_uplink_hatch": {
+      "common": [
+        {
+          "type": "line",
+          "text": "为 [item:gregtech:gt.blockmachines@14610|猫猫售货机] 接入 §bME 网络§r，可取料和输出产物。"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "接入条件",
+            "要求"
+          ],
+          "rows": [
+            [
+              "安装位置",
+              "替换 1 个售货机机械方块，整机至多 1 个"
+            ],
+            [
+              "ME 网络",
+              "通电并分配频道"
+            ],
+            [
+              "线缆连接",
+              "默认正面；可切为全侧"
+            ]
+          ]
+        },
+        {
+          "type": "line",
+          "text": "用剪线钳 §e[right:右击]§r 切换连接面，再次操作可恢复。"
+        },
+        {
+          "type": "divider"
+        },
+        {
+          "type": "line",
+          "text": "在售货机启用 §aME 输出§r后，已有和后续产物均送入网络。"
+        },
+        {
+          "type": "line",
+          "text": "网络放不下的物品留在输出栏。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ],
+      "quick": [
+        {
+          "type": "line",
+          "text": "为 [item:gregtech:gt.blockmachines@14610|猫猫售货机] 接入 §aME 物品网络§r，供交易取料与输出产物。"
+        },
+        {
+          "type": "line",
+          "text": "替换任意 1 个机械方块；整机至多 1 个，网络须通电并分配频道。"
+        },
+        {
+          "type": "line",
+          "text": "§f添加模组： §bGT§a-§6Interesting§c-§9Thing",
+          "role": "credit"
+        }
+      ]
+    }
+  }
+}

@@ -4,10 +4,14 @@
 package com.miaokatze.gtit.client.gui;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import net.minecraft.item.Item;
@@ -25,6 +29,8 @@ import com.cleanroommc.modularui.screen.viewport.LocatedWidget;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import com.miaokatze.gtit.gui.vm.NekoVendingLayout;
+import com.miaokatze.gtit.gui.vm.StatusCodec.TradeKey;
+import com.miaokatze.gtit.gui.vm.StatusCodec.TradeStatus;
 import com.miaokatze.gtit.trade.v2.NekoFavouritesTracker;
 import com.miaokatze.gtit.trade.v2.NekoTrade;
 import com.miaokatze.gtit.trade.v2.NekoTradeCategory;
@@ -173,7 +179,9 @@ public class NekoTradeMainPanel extends ModularPanel {
          * @param tradeIndex 交易在组内的索引
          * @return 服务端同步的冷却剩余秒数，未同步时为 0
          */
-        long getSyncedCooldownRemaining(UUID groupId, int tradeIndex);
+        default long getSyncedCooldownRemaining(UUID groupId, int tradeIndex) {
+            return 0;
+        }
 
         default boolean getSyncedOneTimeRedeemed(UUID groupId, int tradeIndex) {
             return false;
@@ -220,7 +228,22 @@ public class NekoTradeMainPanel extends ModularPanel {
          * @param tradeIndex 交易在组内的索引
          * @return 服务端同步的可交易状态，未同步返回 null
          */
-        Boolean getSyncedTradeableStatus(UUID groupId, int tradeIndex);
+        default Boolean getSyncedTradeableStatus(UUID groupId, int tradeIndex) {
+            return null;
+        }
+
+        default TradeStatus getSyncedTradeStatus(TradeKey key) {
+            return null;
+        }
+
+        default Map<TradeKey, TradeStatus> takeTradeStatusChanges() {
+            return Collections.emptyMap();
+        }
+
+        default void onTradeCategoriesReordered(Set<NekoTradeCategory> categories,
+            Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades) {
+            onTradeDisplayUpdated(trades);
+        }
 
         /**
          * 通知交易显示数据已更新
@@ -231,11 +254,6 @@ public class NekoTradeMainPanel extends ModularPanel {
          * @param trades 按分类组织的交易显示数据
          */
         void onTradeDisplayUpdated(Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades);
-
-        /** Update state on the same display objects without replacing the widgets' item/definition data. */
-        default void onTradeStatusUpdated(Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades) {
-            onTradeDisplayUpdated(trades);
-        }
 
         /**
          * 通知需要恢复之前的设置
@@ -296,9 +314,6 @@ public class NekoTradeMainPanel extends ModularPanel {
     /** 当前玩家 UUID（客户端延迟初始化，等同步管理器就绪后获取） */
     private UUID playerId = null;
 
-    /** GUI 打开后的 tick 计数器，用于定期刷新判断 */
-    private int ticksOpen = 0;
-
     /** 当前鼠标悬停的交易组 UUID（供外部读取，与 VM 一致） */
     public UUID currentSelected = null;
 
@@ -306,12 +321,13 @@ public class NekoTradeMainPanel extends ModularPanel {
     private boolean forceRefresh = false;
     /** A registry replacement must rebuild item data even while Shift/Ctrl holds the normal sort order. */
     private boolean registryRefresh;
-    private final Map<String, NekoTradeItemDisplay> definitionDisplays = new HashMap<>();
+    private final Map<TradeKey, NekoTradeItemDisplay> definitionDisplays = new HashMap<>();
     private long definitionDisplayVersion = -1L;
     private Map<NekoTradeCategory, List<NekoTradeItemDisplay>> lastPresentedTrades;
+    private final Set<NekoTradeCategory> categoriesToSort = new HashSet<>();
 
     /** 货币更新标志（外部通知有货币变化时设置，触发强制刷新） */
-    private boolean hasCurrencyUpdate = false;
+    private final AtomicBoolean presentationChanged = new AtomicBoolean();
     /**
      * 上一次感知到的交易数据库版本号（v1.7.32）
      * <p>
@@ -490,6 +506,7 @@ public class NekoTradeMainPanel extends ModularPanel {
             // 全量刷新：重新从数据库构建交易显示数据
             Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades = formatTrades();
             publishTradeDisplay(trades);
+            categoriesToSort.clear();
         }
         registryRefresh = false;
     }
@@ -537,27 +554,8 @@ public class NekoTradeMainPanel extends ModularPanel {
                     continue;
                 }
 
-                // 更新 BQ 锁定状态（前置任务是否未满足）
-                boolean bqLocked = playerId != null && !group.isConditionsSatisfied(playerId);
-                display.setBqLocked(bqLocked);
-
-                // 更新冷却剩余时间（服务端同步值）
-                long cooldownRemaining = callback
-                    .getSyncedCooldownRemaining(display.getGroupId(), display.getTradeIndex());
-                display.setCooldownRemaining(cooldownRemaining);
-                display.setOneTimeOnly(group.getCooldown() == -1);
-                display.setOneTimeRedeemed(
-                    callback.getSyncedOneTimeRedeemed(display.getGroupId(), display.getTradeIndex()));
-
-                // 更新可交易状态（优先使用服务端同步值，未同步则回退 BQ+冷却）
-                Boolean syncedTradeable = callback
-                    .getSyncedTradeableStatus(display.getGroupId(), display.getTradeIndex());
-                if (syncedTradeable != null) {
-                    display.setTradeable(syncedTradeable);
-                } else {
-                    display.setTradeable(!bqLocked && cooldownRemaining <= 0 && !display.isOneTimeRedeemed());
-                }
-
+                TradeKey key = new TradeKey(display.getGroupId(), display.getTradeIndex());
+                applyTradeStatus(display, group, callback.getSyncedTradeStatus(key));
                 // 更新收藏状态
                 display.setFavourite(callback.getSyncedFavourite(display.getGroupId(), display.getTradeIndex()));
             }
@@ -570,13 +568,88 @@ public class NekoTradeMainPanel extends ModularPanel {
     }
 
     private void publishTradeDisplay(Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades) {
-        if (lastPresentedTrades == null || !lastPresentedTrades.equals(trades)) {
-            callback.onTradeDisplayUpdated(trades);
-        } else {
-            callback.onTradeStatusUpdated(trades);
-        }
+        if (lastPresentedTrades != null && lastPresentedTrades.equals(trades)) return;
+        callback.onTradeDisplayUpdated(trades);
         // Keep the old membership/order independently of the mutable state stored in each display object.
         lastPresentedTrades = copyTradeLists(trades);
+    }
+
+    /** Patch the shared display object so the active tab, favourites and details all see the same state. */
+    void applyTradeStatusChanges(Map<TradeKey, TradeStatus> changes) {
+        NekoSortMode sortMode = callback.getSortMode();
+        NekoWalletMode walletMode = callback.getWalletMode();
+        for (Map.Entry<TradeKey, TradeStatus> change : changes.entrySet()) {
+            TradeKey key = change.getKey();
+            NekoTradeItemDisplay display = definitionDisplays.get(key);
+            if (display == null) continue; // A later scope/search refresh reads the latest cached state.
+            NekoTradeGroup group = NekoTradeDatabase.INSTANCE.getTradeGroup(key.groupId());
+            if (group == null) continue; // The catalogue revision removes the obsolete definition.
+            int rank = getRank(display, walletMode);
+            long cooldown = display.getCooldownRemaining();
+            applyTradeStatus(display, group, change.getValue());
+            if (sortMode == NekoSortMode.SMART
+                && (rank != getRank(display, walletMode) || cooldown != display.getCooldownRemaining())) {
+                NekoTradeCategory category = group.getCategory();
+                categoriesToSort.add(category == null ? NekoTradeCategory.UNKNOWN : category);
+            }
+        }
+        if (shiftHeld || ctrlHeld || lastPresentedTrades == null || categoriesToSort.isEmpty()) return;
+
+        Set<NekoTradeCategory> reordered = new HashSet<>();
+        boolean reorderFavourites = false;
+        for (NekoTradeCategory category : categoriesToSort) {
+            List<NekoTradeItemDisplay> displays = lastPresentedTrades.get(category);
+            if (displays == null || displays.size() < 2) continue;
+            List<NekoTradeItemDisplay> previous = new ArrayList<>(displays);
+            displays.sort((left, right) -> compareTrades(left, right, sortMode, walletMode));
+            if (displays.equals(previous)) continue;
+            reordered.add(category);
+            if (!reorderFavourites) reorderFavourites = displays.stream()
+                .anyMatch(NekoTradeItemDisplay::isFavourite);
+        }
+        categoriesToSort.clear();
+        if (reorderFavourites) {
+            List<NekoTradeItemDisplay> favourites = new ArrayList<>();
+            for (Map.Entry<NekoTradeCategory, List<NekoTradeItemDisplay>> category : lastPresentedTrades.entrySet()) {
+                if (!category.getKey()
+                    .isFavourites()) {
+                    for (NekoTradeItemDisplay display : category.getValue()) {
+                        if (display.isFavourite()) favourites.add(display);
+                    }
+                }
+            }
+            List<NekoTradeItemDisplay> oldFavourites = lastPresentedTrades
+                .put(NekoTradeCategory.FAVOURITES, favourites);
+            if (!favourites.equals(oldFavourites)) reordered.add(NekoTradeCategory.FAVOURITES);
+        }
+        if (!reordered.isEmpty()) callback.onTradeCategoriesReordered(reordered, lastPresentedTrades);
+    }
+
+    private void applyTradeStatus(NekoTradeItemDisplay display, NekoTradeGroup group, TradeStatus status) {
+        display.setOneTimeOnly(group.getCooldown() == -1);
+        if (status != null) {
+            display.setBqLocked(status.locked());
+            display.setCooldownRemaining(Math.max(0, status.cooldown()));
+            display.setOneTimeRedeemed(status.cooldown() == -1);
+            display.setTradeable(status.tradeable());
+            display.setMaxTradesInCooldown(status.maxTrades());
+            display.setUsedTradesInCooldown(status.usedTrades());
+            display.setTradeFailure(status.failure());
+            return;
+        }
+        UUID groupId = display.getGroupId();
+        int tradeIndex = display.getTradeIndex();
+        boolean locked = playerId != null && !group.isConditionsSatisfied(playerId);
+        long remaining = callback.getSyncedCooldownRemaining(groupId, tradeIndex);
+        boolean redeemed = callback.getSyncedOneTimeRedeemed(groupId, tradeIndex);
+        Boolean tradeable = callback.getSyncedTradeableStatus(groupId, tradeIndex);
+        display.setBqLocked(locked);
+        display.setCooldownRemaining(remaining);
+        display.setOneTimeRedeemed(redeemed);
+        display.setTradeable(tradeable != null ? tradeable : !locked && remaining <= 0 && !redeemed);
+        display.setMaxTradesInCooldown(1);
+        display.setUsedTradesInCooldown(0);
+        display.setTradeFailure("");
     }
 
     private static Map<NekoTradeCategory, List<NekoTradeItemDisplay>> copyTradeLists(
@@ -650,7 +723,7 @@ public class NekoTradeMainPanel extends ModularPanel {
                     }
 
                     // 从 V2 交易数据构建显示对象
-                    String identity = group.getId() + ":" + i;
+                    TradeKey identity = new TradeKey(group.getId(), i);
                     NekoTradeItemDisplay display = definitionDisplays.get(identity);
                     if (display == null) {
                         display = NekoTradeItemDisplay.fromNekoTrade(trade, group, i);
@@ -660,23 +733,7 @@ public class NekoTradeMainPanel extends ModularPanel {
                     // 设置收藏状态
                     display.setFavourite(callback.getSyncedFavourite(group.getId(), i));
 
-                    // 设置 BQ 锁定状态
-                    boolean bqLocked = playerId != null && !group.isConditionsSatisfied(playerId);
-                    display.setBqLocked(bqLocked);
-
-                    // 设置冷却状态（服务端同步值）
-                    long cooldownRemaining = callback.getSyncedCooldownRemaining(group.getId(), i);
-                    display.setCooldownRemaining(cooldownRemaining);
-                    display.setOneTimeRedeemed(callback.getSyncedOneTimeRedeemed(group.getId(), i));
-
-                    // 设置可交易状态（优先使用服务端同步值，未同步则回退 BQ+冷却）
-                    Boolean syncedTradeable = callback.getSyncedTradeableStatus(group.getId(), i);
-                    if (syncedTradeable != null) {
-                        display.setTradeable(syncedTradeable);
-                    } else {
-                        display.setTradeable(!bqLocked && cooldownRemaining <= 0 && !display.isOneTimeRedeemed());
-                    }
-
+                    applyTradeStatus(display, group, callback.getSyncedTradeStatus(identity));
                     // 添加到对应分类
                     trades.get(category)
                         .add(display);
@@ -858,9 +915,8 @@ public class NekoTradeMainPanel extends ModularPanel {
      * <ol>
      * <li>延迟初始化玩家 UUID（等同步管理器就绪后获取）</li>
      * <li>检测货币更新并触发强制刷新</li>
-     * <li>按刷新间隔或强制刷新标志触发 updateGui()</li>
+     * <li>应用服务端状态差量；查询或目录变化时重新组织展示</li>
      * <li>追踪鼠标悬停的交易（更新 currentSelected）</li>
-     * <li>递增 tick 计数器</li>
      * </ol>
      * <p>
      * <b>VM 适配</b>：VM 中 walletMode 同步逻辑（shouldSyncWalletMode）由 GUI 控制器处理，
@@ -878,10 +934,11 @@ public class NekoTradeMainPanel extends ModularPanel {
         // 延迟初始化玩家 UUID（等同步管理器就绪后从回调获取）
         if (this.playerId == null && this.syncManager.isInitialised()) {
             this.playerId = callback.getPlayerId();
+            if (this.playerId != null) setForceRefresh();
         }
 
         // 货币更新检测（外部通过 notifyCurrencyUpdate() 通知）
-        if (hasCurrencyUpdate) {
+        if (presentationChanged.getAndSet(false)) {
             setForceRefresh();
         }
 
@@ -896,18 +953,12 @@ public class NekoTradeMainPanel extends ModularPanel {
             this.lastDbVersion = currentDbVersion;
         }
 
-        // 刷新判断：强制刷新 或 定期刷新
-        int refreshInterval = callback.getRefreshInterval();
-        if (refreshInterval <= 0) {
-            refreshInterval = 20; // 默认 20 tick（1秒）
-        }
-
-        if (forceRefresh || (this.ticksOpen % refreshInterval == 0 && this.playerId != null)) {
-            updateGui();
+        Map<TradeKey, TradeStatus> statusChanges = callback.takeTradeStatusChanges();
+        if (forceRefresh) {
             resetForceRefresh();
-            hasCurrencyUpdate = false;
+            updateGui();
         }
-
+        if (!statusChanges.isEmpty() || !categoriesToSort.isEmpty()) applyTradeStatusChanges(statusChanges);
         // 鼠标悬停追踪：检测当前鼠标悬停在哪个交易 Widget 上
         NekoTradeCategory activeCategory = callback.getActiveCategory();
         NekoDisplayType displayType = callback.getDisplayType();
@@ -924,9 +975,6 @@ public class NekoTradeMainPanel extends ModularPanel {
                 }
             }
         }
-
-        // 递增 tick 计数器
-        this.ticksOpen += 1;
 
         // GUI 控制器客户端轮询回调（v1.8.17：默认贸易组同步询问等延迟弹框）
         callback.onMainPanelUpdate();
@@ -997,7 +1045,7 @@ public class NekoTradeMainPanel extends ModularPanel {
      * 对应 VM 的 {@code TradeManager.INSTANCE.hasCurrencyUpdate}。
      */
     public void notifyCurrencyUpdate() {
-        hasCurrencyUpdate = true;
+        presentationChanged.set(true);
     }
 
     /**

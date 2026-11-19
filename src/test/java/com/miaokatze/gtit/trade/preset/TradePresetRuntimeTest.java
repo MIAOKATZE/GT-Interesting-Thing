@@ -191,7 +191,7 @@ public final class TradePresetRuntimeTest {
             "disabled defaults preserve imported custom preset category and trade");
         flags(true);
 
-        StatusCodec codec = new StatusCodec(null, null, () -> {});
+        StatusCodec codec = new StatusCodec(null, () -> {});
         NekoTradeGroup oneTimeGroup = NekoTradeDatabase.INSTANCE
             .getTradeGroup(NekoTradeRegistryV2.parseTradeGroupId(customPresetTrade.getId()));
         oneTimeGroup.setCooldown(-1);
@@ -203,32 +203,29 @@ public final class TradePresetRuntimeTest {
         UUID statusPlayer = UUID.randomUUID();
         com.miaokatze.gtit.trade.v2.NekoTradeHistory oneTimeHistory = com.miaokatze.gtit.trade.v2.NekoHistoryManager.INSTANCE
             .getHistory(statusPlayer, oneTimeGroup.getId());
-        java.lang.reflect.Method buildCooldown = StatusCodec.class
-            .getDeclaredMethod("buildCooldownStatusString", UUID.class);
-        java.lang.reflect.Method parseCooldown = StatusCodec.class
-            .getDeclaredMethod("parseCooldownStatus", String.class);
-        buildCooldown.setAccessible(true);
-        parseCooldown.setAccessible(true);
-        String oneTimeKey = oneTimeGroup.getId() + ":0";
-        parseCooldown.invoke(codec, buildCooldown.invoke(codec, statusPlayer));
-        check(!codec.isOneTimeRedeemed(oneTimeKey), "unredeemed one-time status is independent of affordability");
-        oneTimeHistory.recordTrade(-1);
-        parseCooldown.invoke(codec, buildCooldown.invoke(codec, statusPlayer));
+        java.lang.reflect.Method groupStatus = StatusCodec.class
+            .getDeclaredMethod("groupStatus", UUID.class, NekoTradeGroup.class, int.class);
+        groupStatus.setAccessible(true);
+        java.lang.reflect.Method cooldown = groupStatus.getReturnType()
+            .getDeclaredMethod("cooldown");
+        cooldown.setAccessible(true);
         check(
-            codec.isOneTimeRedeemed(oneTimeKey) && codec.getCooldownRemaining(oneTimeKey) == 0,
-            "redeemed one-time state synchronizes without negative countdown seconds");
+            ((Long) cooldown.invoke(groupStatus.invoke(codec, statusPlayer, oneTimeGroup, 1))) == 0,
+            "unredeemed one-time status is independent of affordability");
+        oneTimeHistory.recordTrade(-1);
+        check(
+            ((Long) cooldown.invoke(groupStatus.invoke(codec, statusPlayer, oneTimeGroup, 1))) == -1,
+            "redeemed one-time state emits the dedicated marker");
         oneTimeHistory.reset();
-        parseCooldown.invoke(codec, buildCooldown.invoke(codec, statusPlayer));
-        check(!codec.isOneTimeRedeemed(oneTimeKey), "explicit history reset clears synchronized one-time marker");
-        set(codec, "cachedTradeableStatusString", "stale removed trade");
-        set(codec, "tradeableStatusDirty", false);
-        set(codec, "lastTradeRegistryVersion", NekoTradeDatabase.INSTANCE.getVersion());
+        check(
+            ((Long) cooldown.invoke(groupStatus.invoke(codec, statusPlayer, oneTimeGroup, 1))) == 0,
+            "explicit history reset clears the one-time marker");
         NekoTradeDatabase.INSTANCE.clear();
-        java.lang.reflect.Method status = StatusCodec.class.getDeclaredMethod("buildTradeableStatusString", UUID.class);
+        java.lang.reflect.Method status = StatusCodec.class.getDeclaredMethod("buildRows", UUID.class);
         status.setAccessible(true);
         check(
-            "".equals(status.invoke(codec, UUID.randomUUID())),
-            "open container status cache invalidates immediately");
+            ((java.util.Map<?, ?>) status.invoke(codec, statusPlayer)).isEmpty(),
+            "the next sync has no obsolete rows after clearing the registry");
         com.miaokatze.gtit.gui.vm.TradeWidgetEditModeTest.run();
         com.miaokatze.gtit.trade.v2.NekoHistoryManager.INSTANCE.unloadAll();
         System.out.println("TradePresetRuntimeTest: 22 checks passed");
@@ -254,13 +251,6 @@ public final class TradePresetRuntimeTest {
         DefaultContentConfig.init(
             Paths.get("config")
                 .toFile());
-    }
-
-    private static void set(Object target, String name, Object value) throws Exception {
-        java.lang.reflect.Field field = target.getClass()
-            .getDeclaredField(name);
-        field.setAccessible(true);
-        field.set(target, value);
     }
 
     private static String read(String path) throws Exception {

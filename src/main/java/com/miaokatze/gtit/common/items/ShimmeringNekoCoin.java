@@ -11,6 +11,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.util.StatCollector;
 
+import com.miaokatze.gtit.common.util.AuthoredTooltips;
 import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.register.CreativeTabManager;
 
@@ -35,6 +36,8 @@ public class ShimmeringNekoCoin extends Item {
 
     @Override
     public void addInformation(ItemStack stack, EntityPlayer player, List tooltip, boolean showAdvanced) {
+        if (AuthoredTooltips.append(stack, tooltip, "gtit:shimmering_neko_coin")) return;
+
         for (int i = 0;; i++) {
             String key = "item.shimmering_neko_coin.tooltip." + i;
             String line = StatCollector.translateToLocal(key);

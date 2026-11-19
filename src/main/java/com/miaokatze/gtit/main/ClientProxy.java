@@ -22,8 +22,18 @@ public class ClientProxy extends CommonProxy {
 
         @cpw.mods.fml.common.eventhandler.SubscribeEvent
         public void describe(net.minecraftforge.event.entity.player.ItemTooltipEvent e) {
-            if (!(gregtech.common.blocks.ItemMachines.getMetaTileEntity(
-                e.itemStack) instanceof com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2)) return;
+            gregtech.api.interfaces.metatileentity.IMetaTileEntity machine = gregtech.common.blocks.ItemMachines
+                .getMetaTileEntity(e.itemStack);
+            String id;
+            if (machine instanceof com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2) {
+                id = "gtit:neko_vending_machine";
+            } else if (machine instanceof com.miaokatze.gtit.common.machine.v2.MTENekoVendingUplinkHatch) {
+                id = "gtit:neko_vending_uplink_hatch";
+            } else return;
+            com.miaokatze.miaokatzecore.api.tooltip.component.NativeTooltipPage page = com.miaokatze.gtit.common.util.AuthoredTooltips
+                .page(e.itemStack, id);
+            if (page != null && page.apply(e.itemStack, e.toolTip)) return;
+            if (!(machine instanceof com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2)) return;
             com.miaokatze.miaokatzecore.api.tooltip.MachineTooltipPages
                 .apply(e.itemStack, e.toolTip, "gtit.machine.vending.compact", null);
             String brand = com.miaokatze.gtit.common.util.GTITUtils.getAddedByLine();

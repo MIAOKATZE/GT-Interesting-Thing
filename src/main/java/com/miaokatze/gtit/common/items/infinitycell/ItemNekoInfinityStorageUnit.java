@@ -10,6 +10,7 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.StatCollector;
 
+import com.miaokatze.gtit.common.util.AuthoredTooltips;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 import appeng.api.exceptions.AppEngException;
@@ -65,6 +66,15 @@ public class ItemNekoInfinityStorageUnit extends ItemInfinityStorageCell {
     @Override
     public void addInformation(final ItemStack stack, final EntityPlayer player, final List<String> lines,
         final boolean displayMoreInfo) {
+        if (AuthoredTooltips.append(stack, lines, "gtit:gtit.neko_infinity_unit", (binding, page) -> {
+            if ("cell".equals(binding)) {
+                List<String> inherited = new java.util.ArrayList<>();
+                super.addInformation(stack, player, inherited, displayMoreInfo);
+                // The parent owns two static description lines and its final brand; the middle is live AE state.
+                for (String line : inherited.subList(2, inherited.size() - 1)) page.line(line);
+            }
+        })) return;
+
         lines.add(StatCollector.translateToLocal("item.gtit.neko_infinity_unit.tooltip.channel"));
         super.addInformation(stack, player, lines, displayMoreInfo);
     }

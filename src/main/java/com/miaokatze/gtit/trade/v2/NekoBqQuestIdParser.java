@@ -3,6 +3,7 @@
 
 package com.miaokatze.gtit.trade.v2;
 
+import java.nio.ByteBuffer;
 import java.util.Base64;
 import java.util.UUID;
 
@@ -34,72 +35,42 @@ public class NekoBqQuestIdParser {
      * @return 解析后的 UUID，无效格式返回 null
      */
     public static UUID parse(String input) {
-        if (input == null || input.isEmpty()) {
-            return null;
-        }
+        if (input == null) return null;
+        String value = input.trim();
 
         try {
-            // 格式1：high:low 格式（如 "0:0"）
-            if (input.contains(":")) {
-                String[] parts = input.split(":", 2);
-                if (parts.length == 2) {
-                    long msb = Long.parseLong(parts[0].trim());
-                    long lsb = Long.parseLong(parts[1].trim());
-                    return new UUID(msb, lsb);
-                }
-                return null;
+            int separator = value.indexOf(':');
+            if (separator >= 0) {
+                return new UUID(
+                    Long.parseLong(
+                        value.substring(0, separator)
+                            .trim()),
+                    Long.parseLong(
+                        value.substring(separator + 1)
+                            .trim()));
             }
 
-            // 格式2：标准 UUID 格式（如 "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"）
-            if (input.contains("-")) {
-                try {
-                    return UUID.fromString(input);
-                } catch (IllegalArgumentException e) {
-                    // 含 '-' 但不是合法 UUID，继续尝试 URL-safe Base64 解码
-                }
-            }
-
-            // 格式3：Base64 格式（16字节），支持标准 Base64 与 URL-safe Base64（可无 padding）
-            String base64 = input;
-            int padding = (4 - base64.length() % 4) % 4;
-            if (padding > 0) {
-                StringBuilder sb = new StringBuilder(base64);
-                for (int i = 0; i < padding; i++) {
-                    sb.append('=');
-                }
-                base64 = sb.toString();
-            }
-
-            byte[] bytes;
-            if (base64.contains("-") || base64.contains("_")) {
-                bytes = Base64.getUrlDecoder()
-                    .decode(base64);
-            } else {
-                try {
-                    bytes = Base64.getDecoder()
-                        .decode(base64);
-                } catch (IllegalArgumentException e) {
-                    bytes = Base64.getUrlDecoder()
-                        .decode(base64);
-                }
-            }
-            if (bytes.length == 16) {
-                long msb = 0;
-                long lsb = 0;
-                // 前8字节为 msb（Big-Endian）
-                for (int i = 0; i < 8; i++) {
-                    msb = (msb << 8) | (bytes[i] & 0xff);
-                }
-                // 后8字节为 lsb（Big-Endian）
-                for (int i = 8; i < 16; i++) {
-                    lsb = (lsb << 8) | (bytes[i] & 0xff);
-                }
-                return new UUID(msb, lsb);
-            }
-
+            // UUID.fromString also accepts abbreviated UUIDs, which can look like an unpadded BQ ID.
+            UUID compact = parseCompact(value);
+            if (compact != null) return compact;
+            return value.contains("-") ? UUID.fromString(value) : null;
+        } catch (IllegalArgumentException e) {
             return null;
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            // 解析异常（格式不合法、Base64 解码失败等）
+        }
+    }
+
+    private static UUID parseCompact(String value) {
+        if (value.length() < 22 || value.length() > 24) return null;
+        // Accept an existing ID with only one of its two padding characters.
+        if (value.length() == 23 && value.endsWith("=")) value += "=";
+        Base64.Decoder decoder = value.contains("-") || value.contains("_") ? Base64.getUrlDecoder()
+            : Base64.getDecoder();
+        try {
+            byte[] bytes = decoder.decode(value);
+            if (bytes.length != 16) return null;
+            ByteBuffer buffer = ByteBuffer.wrap(bytes);
+            return new UUID(buffer.getLong(), buffer.getLong());
+        } catch (IllegalArgumentException e) {
             return null;
         }
     }

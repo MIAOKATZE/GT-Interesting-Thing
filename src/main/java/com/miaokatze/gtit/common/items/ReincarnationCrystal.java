@@ -10,6 +10,7 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.world.World;
 
+import com.miaokatze.gtit.common.util.AuthoredTooltips;
 import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.register.CreativeTabManager;
@@ -49,6 +50,8 @@ public class ReincarnationCrystal extends Item {
 
     @Override
     public void addInformation(ItemStack stack, EntityPlayer player, List tooltip, boolean showAdvanced) {
+        if (AuthoredTooltips.append(stack, tooltip, "gtit:reincarnation_crystal")) return;
+
         tooltip.add(net.minecraft.util.StatCollector.translateToLocal("item.reincarnation_crystal.tooltip.access"));
         tooltip.add(net.minecraft.util.StatCollector.translateToLocal("item.reincarnation_crystal.tooltip.confirm"));
         tooltip.add(GTITUtils.getAddedByLine());

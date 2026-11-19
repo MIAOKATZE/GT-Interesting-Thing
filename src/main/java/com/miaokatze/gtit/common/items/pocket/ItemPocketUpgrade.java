@@ -11,6 +11,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.util.StatCollector;
 
+import com.miaokatze.gtit.common.util.AuthoredTooltips;
 import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
 import com.miaokatze.gtit.main.GTInterestingThing;
@@ -169,6 +170,8 @@ public class ItemPocketUpgrade extends Item {
      */
     @Override
     public void addInformation(ItemStack stack, EntityPlayer player, List tooltip, boolean showAdvanced) {
+        if (AuthoredTooltips.append(stack, tooltip, "gtit:" + ID_PREFIX + tokenOf(type))) return;
+
         final String effect = StatCollector.translateToLocal(TOOLTIP_KEYS[type.ordinal()]);
         tooltip.add(
             EnumChatFormatting.GRAY + (type == PocketUpgradeType.STACK && effect.contains("%")

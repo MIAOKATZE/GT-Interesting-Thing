@@ -567,6 +567,16 @@ public final class GiftSystemTest {
             NekoBqQuestIdParser.parse("0:44")
                 .equals(NekoBqQuestIdParser.parse("AAAAAAAAAAAAAAAAAAAALA==")),
             "BQ IDs use trade-machine parser");
+        UUID quest = UUID.fromString("d34d34d3-4d34-fb5f-b5fb-5fb4d34d34d0");
+        for (String id : Arrays.asList(
+            quest.toString(),
+            quest.getMostSignificantBits() + ":" + quest.getLeastSignificantBits(),
+            " 00000000-1-1-1-000000A== ",
+            "00000000-1-1-1-000000A",
+            "00000000+1+1+1+000000A==")) {
+            check(quest.equals(NekoBqQuestIdParser.parse(id)), "BQ ID resolves to the same quest: " + id);
+        }
+        check(NekoBqQuestIdParser.parse("0:44:4") == null, "Invalid quest ID is rejected");
         ItemStack packageItem = new ItemStack(Items.bread, 1);
         ItemStack[] smallInventory = { packageItem, null, null };
         java.util.List<ItemStack> largeGift = Arrays.asList(

@@ -13,6 +13,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.util.StatCollector;
 
+import com.miaokatze.gtit.common.util.AuthoredTooltips;
 import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.register.CreativeTabManager;
 
@@ -61,6 +62,14 @@ public abstract class BaseRing extends Item implements IBauble {
 
     @Override
     public void addInformation(ItemStack stack, EntityPlayer player, List tooltip, boolean showAdvanced) {
+        if (AuthoredTooltips.append(stack, tooltip, "gtit:" + ringName, (binding, page) -> {
+            if ("equipped".equals(binding)) {
+                List<String> equipped = new java.util.ArrayList<>();
+                if (player != null) addStackableInfo(stack, player, equipped);
+                for (String line : equipped) page.line(line);
+            }
+        })) return;
+
         // 逐行读取 tooltip.0, tooltip.1, tooltip.2...
         for (int i = 0;; i++) {
             String key = "item." + ringName + ".tooltip." + i;

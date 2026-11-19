@@ -751,7 +751,10 @@ final class GiftPanel {
             46,
             () -> session.draft.questId,
             value -> session.draft.questId = value,
-            128);
+            128).hintText("UUID / Base64URL")
+                .tooltipBuilder(
+                    t -> NekoVendingTheme.tooltip(t)
+                        .addLine(IKey.lang("gtit.bq.quest_id.input_hint")));
         field(
             root,
             sm,
@@ -1082,8 +1085,8 @@ final class GiftPanel {
         return value;
     }
 
-    private static void field(ParentWidget<?> root, PanelSyncManager sm, GiftEditorSession session, String key,
-        String label, int y, Supplier<String> getter, Consumer<String> setter, int limit) {
+    private static UtilityControls.Field field(ParentWidget<?> root, PanelSyncManager sm, GiftEditorSession session,
+        String key, String label, int y, Supplier<String> getter, Consumer<String> setter, int limit) {
         root.child(
             IKey.lang(label)
                 .asWidget()
@@ -1110,6 +1113,7 @@ final class GiftPanel {
                     .scale(0.8f)
                     .setEnabledIf(w -> !editable.getBoolValue()));
         }
+        return input;
     }
 
     private static UtilityControls.ActionButton button(PanelSyncManager sm, GiftEditorSession session, String key,

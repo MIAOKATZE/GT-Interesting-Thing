@@ -657,6 +657,7 @@ gtit.gift.icon.trade=Trade Coin Gift Box
 gtit.gift.ui.title=Gift Center
 gtit.gift.ui.presets=Trade presets
 gtit.gift.ui.quest=BQ quest ID
+gtit.bq.quest_id.input_hint=Paste the Base64URL ID copied from the BQ quest book, or enter a UUID or high:low.
 gtit.gift.ui.reward_summary=Guaranteed types / random pool types × draws
 gtit.gift.ui.claim=Claim unlocked gift
 gtit.gift.ui.edit=Edit gift
@@ -1000,3 +1001,9 @@ item.neko_dimension_pocket.reserve_heading=§bElement reserves
 item.neko_dimension_pocket.compact.items=§bItems §8· §e%1$d§f storage slots, plus essentia storage.
 item.neko_dimension_pocket.compact.fluids=§3Fluids §8· §e%8$d§f independent tanks, §e%5$,d§f mB each.
 gtit.pocket.upgrade.mage.compact_modes=§dModes §8· §fCoin charging and transmutation start on; crystallization starts off.
+
+gtit.tooltip.authored_locale=en_US
+gtit.tooltip.scanner.mode=§eMode: %s
+gtit.tooltip.pocket.elements=§dElement reserves§r:
+
+gtit.tooltip.terminal.unbound=Not bound to a [item:gregtech:gt.blockmachines@14610|Neko Vending Machine]

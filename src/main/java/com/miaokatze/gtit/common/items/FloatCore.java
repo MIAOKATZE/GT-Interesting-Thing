@@ -13,6 +13,7 @@ import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.util.StatCollector;
 import net.minecraft.world.World;
 
+import com.miaokatze.gtit.common.util.AuthoredTooltips;
 import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.register.CreativeTabManager;
 
@@ -119,6 +120,8 @@ public class FloatCore extends Item implements IBauble {
 
     @Override
     public void addInformation(ItemStack stack, EntityPlayer player, List tooltip, boolean showAdvanced) {
+        if (AuthoredTooltips.append(stack, tooltip, "gtit:float_core")) return;
+
         for (int i = 0;; i++) {
             String key = "item.float_core.tooltip." + i;
             String line = StatCollector.translateToLocal(key);
