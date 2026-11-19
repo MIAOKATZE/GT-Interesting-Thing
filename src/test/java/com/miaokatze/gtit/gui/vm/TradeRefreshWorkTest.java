@@ -4,23 +4,20 @@
 package com.miaokatze.gtit.gui.vm;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Supplier;
 
 import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
 
-import com.cleanroommc.modularui.network.NetworkUtils;
-import com.cleanroommc.modularui.utils.ICopy;
-import com.cleanroommc.modularui.value.sync.GenericListSyncHandler;
 import com.cleanroommc.modularui.value.sync.ModularSyncManager;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
@@ -30,6 +27,8 @@ import com.miaokatze.gtit.client.gui.NekoSortMode;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplay;
 import com.miaokatze.gtit.client.gui.NekoTradeMainPanel;
 import com.miaokatze.gtit.client.gui.NekoWalletMode;
+import com.miaokatze.gtit.gui.vm.StatusCodec.TradeKey;
+import com.miaokatze.gtit.gui.vm.StatusCodec.TradeStatus;
 import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 import com.miaokatze.gtit.trade.v2.NekoTrade;
@@ -59,80 +58,12 @@ public final class TradeRefreshWorkTest {
                 + " source_panel="
                 + NekoTradeMainPanel.class.getProtectionDomain()
                     .getCodeSource());
-        if (args.length == 0 || !"client".equals(args[0])) serverNotifications();
-        if (args.length == 0 || !"server".equals(args[0])) clientCatalogue();
+        clientCatalogue();
         System.out.println(
             "TradeRefreshWorkTest PASS checks=" + checks
                 + " definitions="
                 + definitionWrites
                 + " entries=360 game_started=false fps_measured=false");
-    }
-
-    private static final class CountedString extends StringSyncValue {
-
-        int sends;
-
-        CountedString(Supplier<String> getter) {
-            super(getter);
-        }
-
-        @Override
-        protected void sync() {
-            sends++; // Capture the network boundary; native change detection/listeners remain intact.
-        }
-    }
-
-    private static final class CountedFailures extends GenericListSyncHandler<String> {
-
-        int sends;
-
-        CountedFailures(Supplier<List<String>> getter) {
-            super(getter, null, NetworkUtils::readStringSafe, NetworkUtils::writeStringSafe, null, ICopy.immutable());
-        }
-
-        @Override
-        protected void sync() {
-            sends++;
-        }
-    }
-
-    private static void serverNotifications() throws Exception {
-        StatusCodec codec = new StatusCodec(null, null, () -> {});
-        AtomicReference<String> available = new AtomicReference<>("before");
-        AtomicReference<String> cooldown = new AtomicReference<>("before");
-        AtomicReference<String> team = new AtomicReference<>("before");
-        AtomicReference<List<String>> failures = new AtomicReference<>(Collections.emptyList());
-        int[] reads = { 0 };
-        CountedString tradeable = new CountedString(() -> {
-            reads[0]++;
-            return available.get();
-        });
-        CountedString cooldownValue = new CountedString(cooldown::get);
-        CountedString teamValue = new CountedString(team::get);
-        CountedFailures failureValue = new CountedFailures(failures::get);
-        set(codec, "tradeableStatusSync", tradeable);
-        set(codec, "cooldownStatusSync", cooldownValue);
-        set(codec, "teamScaleSync", teamValue);
-        set(codec, "tradeFailureSync", failureValue);
-        cooldownValue.setChangeListener(codec::markTradeableStatusDirtyAndNotify);
-        reads[0] = 0;
-        available.set("after");
-        cooldown.set("after");
-        team.set("after");
-        failures.set(Collections.singletonList("after"));
-        codec.notifyTradeStatusChanged();
-        check(reads[0] == 1, "one availability evaluation despite the native cooldown change listener");
-        check(
-            tradeable.sends == 1 && cooldownValue.sends == 1 && teamValue.sends == 1 && failureValue.sends == 1,
-            "each changed native handler sends once");
-        codec.notifyTradeStatusChanged();
-        check(
-            tradeable.sends == 1 && cooldownValue.sends == 1 && teamValue.sends == 1 && failureValue.sends == 1,
-            "identical explicit notifications do not send again");
-        available.set("same-tick-next-change");
-        codec.markTradeableStatusDirtyAndNotify();
-        check(tradeable.sends == 2 && teamValue.sends == 1, "later same-tick invalidation is not delayed or lost");
-        System.out.println("SERVER refresh counters: first_evaluation=1 changed_sends=4 duplicate_sends=0");
     }
 
     private static final class CountedTrade extends NekoTrade {
@@ -151,7 +82,7 @@ public final class TradeRefreshWorkTest {
             group(SECOND, 5002, 180);
             View view = new View();
             PanelSyncManager manager = new PanelSyncManager(new ModularSyncManager(true), true);
-            StatusCodec codec = new StatusCodec(null, null, () -> view.notifications++);
+            StatusCodec codec = new StatusCodec(null, () -> view.notifications++);
             codec.registerSyncValues(manager, PLAYER);
             manager.initialize("trade_refresh_contract");
             NekoTradeMainPanel.PanelCallback callback = (NekoTradeMainPanel.PanelCallback) Proxy.newProxyInstance(
@@ -174,49 +105,80 @@ public final class TradeRefreshWorkTest {
             NekoTradeCategory category = NekoTradeCategory.ofTabId(5001);
             NekoTradeItemDisplay identity = find(view.trades, FIRST, 0);
 
-            String allAvailable = availability(first, true) + ","
-                + availability(NekoTradeDatabase.INSTANCE.getTradeGroup(SECOND), true);
-            receive(manager, "nekoV2TradeableStatus", allAvailable);
-            int notified = view.notifications;
-            for (int i = 0; i < 20; i++) receive(manager, "nekoV2TradeableStatus", allAvailable);
-            check(view.notifications == notified, "identical native S2C packets do not request another refresh");
-            panel.updateGui();
-            check(view.structures == 1 && view.states == 2, "unchanged membership uses the state-only callback");
-
-            for (int seconds = 40; seconds >= 17; seconds--) {
-                receive(manager, "nekoV2CooldownStatus", FIRST + ":0:" + seconds);
-                panel.updateGui();
-                check(find(view.trades, FIRST, 0) == identity, "status changes retain the display definition instance");
-                check(identity.getCooldownRemaining() == seconds, "changed cooldown is immediately visible");
-            }
-            check(definitionWrites == built, "24 received status changes never serialize/build definitions again");
-            check(view.structures == 2, "SMART ranking changes structure once; countdown-only changes reuse widgets");
+            TradeKey clicked = new TradeKey(FIRST, 0);
+            TradeStatus firstCooldown = new TradeStatus(false, 40, false, 1, 1, "冷却");
+            NekoTradeItemDisplay untouched = find(view.trades, SECOND, 0);
+            untouched.setTradeFailure("outside the patch");
+            StatusCodecSyncTest.receiveRows(manager, Collections.singletonMap(clicked, firstCooldown));
+            Map<TradeKey, TradeStatus> changes = codec.takeClientChanges();
+            check(
+                changes.keySet()
+                    .equals(Collections.singleton(clicked)),
+                "exactly the clicked row reaches presentation");
+            applyChanges(panel, changes);
+            check(identity.getCooldownRemaining() == 40, "the changed cooldown reaches its existing display");
+            check(
+                untouched.getTradeFailure()
+                    .equals("outside the patch"),
+                "unrelated rows are not rewritten");
+            check(
+                view.reordered.equals(Collections.singleton(category)),
+                "only the affected SMART category is rebound");
             check(
                 view.trades.get(category)
                     .get(179) == identity,
-                "SMART sort moves the cooling trade behind available trades");
+                "SMART moves the cooling row behind available rows");
+
+            for (int i = 0; i < 20; i++)
+                StatusCodecSyncTest.receiveRows(manager, Collections.singletonMap(clicked, firstCooldown));
+            check(
+                codec.takeClientChanges()
+                    .isEmpty(),
+                "replayed packets produce no more changes");
+            check(view.notifications == 0, "row updates never request a catalogue refresh");
+
+            for (int seconds = 39; seconds >= 17; seconds--) {
+                TradeStatus status = new TradeStatus(false, seconds, false, 1, 1, "冷却");
+                StatusCodecSyncTest.receiveRows(manager, Collections.singletonMap(clicked, status));
+                applyChanges(panel, codec.takeClientChanges());
+                check(find(view.trades, FIRST, 0) == identity, "status changes retain the existing display");
+                check(identity.getCooldownRemaining() == seconds, "countdowns patch immediately");
+            }
+            check(definitionWrites == built && view.reorders == 1, "countdowns do not rebuild or rebind the display");
 
             List<NekoTradeItemDisplay> held = new ArrayList<>(view.trades.get(category));
             panel.shiftHeld = true;
-            receive(manager, "nekoV2CooldownStatus", FIRST + ":179:50");
-            panel.updateGui();
-            check(held.equals(view.trades.get(category)), "Shift preserves current ordering while applying state");
+            TradeKey other = new TradeKey(FIRST, 2);
+            StatusCodecSyncTest
+                .receiveRows(manager, Collections.singletonMap(other, new TradeStatus(false, 50, false, 1, 1, "冷却")));
+            applyChanges(panel, codec.takeClientChanges());
+            check(held.equals(view.trades.get(category)), "Shift preserves the current ordering");
+            check(find(view.trades, FIRST, 2).getCooldownRemaining() == 50, "the held row still updates");
             panel.shiftHeld = false;
+            applyChanges(panel, Collections.emptyMap());
+            check(view.reorders == 2, "the postponed SMART order applies after releasing Shift");
             panel.ctrlHeld = true;
-            receive(manager, "nekoV2FavouriteStatus", FIRST + ":179");
+            receive(manager, "nekoV2FavouriteStatus", FIRST + ":2");
             panel.updateGui();
             check(
                 view.trades.get(NekoTradeCategory.FAVOURITES)
                     .size() == 1,
-                "favourites membership changes immediately while Ctrl holds ordinary ordering");
+                "Ctrl updates favourites membership");
+            NekoTradeItemDisplay favourite = view.trades.get(NekoTradeCategory.FAVOURITES)
+                .get(0);
+            StatusCodecSyncTest
+                .receiveRows(manager, Collections.singletonMap(other, new TradeStatus(false, 49, false, 1, 1, "冷却")));
+            applyChanges(panel, codec.takeClientChanges());
+            check(
+                favourite == find(view.trades, FIRST, 2) && favourite.getCooldownRemaining() == 49,
+                "the favourite and tab share the same patched display");
             panel.ctrlHeld = false;
             receive(manager, "nekoV2FavouriteStatus", "");
             panel.updateGui();
             check(
                 view.trades.get(NekoTradeCategory.FAVOURITES)
                     .isEmpty(),
-                "unfavourite removes the old derived membership");
-
+                "unfavourite removes derived membership");
             view.scope = 5001;
             panel.updateGui();
             check(!view.trades.containsKey(NekoTradeCategory.ofTabId(5002)), "scope hides the other category");
@@ -256,7 +218,8 @@ public final class TradeRefreshWorkTest {
 
     private static final class View {
 
-        int notifications, structures, states, scope;
+        int notifications, structures, reorders, scope;
+        Set<NekoTradeCategory> reordered;
         String search = "";
         NekoSortMode sort = NekoSortMode.SMART;
         Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades;
@@ -284,22 +247,25 @@ public final class TradeRefreshWorkTest {
                     return scope == 0 || NekoTradeCategory.ofTabId(scope)
                         .equals(values[0]);
                 case "getSyncedCooldownRemaining":
-                    return codec.getCooldownRemaining(values[0] + ":" + values[1]);
+                    return 0L;
                 case "getSyncedOneTimeRedeemed":
-                    return codec.isOneTimeRedeemed(values[0] + ":" + values[1]);
+                    return false;
                 case "getSyncedFavourite":
                     return codec.isFavourite((UUID) values[0], (Integer) values[1]);
                 case "getSyncedTradeableStatus":
-                    return codec.getTradeable(values[0] + ":" + values[1]);
+                    return null;
+                case "getSyncedTradeStatus":
+                    return codec.clientStatus((TradeKey) values[0]);
                 case "getDisplayedWidgets":
                     return Collections.emptyList();
                 case "onTradeDisplayUpdated":
                     structures++;
                     trades = (Map<NekoTradeCategory, List<NekoTradeItemDisplay>>) values[0];
                     return null;
-                case "onTradeStatusUpdated":
-                    states++;
-                    trades = (Map<NekoTradeCategory, List<NekoTradeItemDisplay>>) values[0];
+                case "onTradeCategoriesReordered":
+                    reorders++;
+                    reordered = new java.util.HashSet<>((Set<NekoTradeCategory>) values[0]);
+                    trades = (Map<NekoTradeCategory, List<NekoTradeItemDisplay>>) values[1];
                     return null;
                 case "isSearchBarFocused":
                 case "isEditOverlayOpen":
@@ -325,13 +291,6 @@ public final class TradeRefreshWorkTest {
         }
         NekoTradeDatabase.INSTANCE.addTradeGroup(group);
         return group;
-    }
-
-    private static String availability(NekoTradeGroup group, boolean available) {
-        List<String> entries = new ArrayList<>();
-        for (int i = 0; i < group.getTrades()
-            .size(); i++) entries.add(group.getId() + ":" + i + ":" + available);
-        return String.join(",", entries);
     }
 
     private static NekoTradeItemDisplay find(Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades, UUID group,
@@ -364,10 +323,10 @@ public final class TradeRefreshWorkTest {
         }
     }
 
-    private static void set(Object target, String name, Object value) throws Exception {
-        Field field = StatusCodec.class.getDeclaredField(name);
-        field.setAccessible(true);
-        field.set(target, value);
+    private static void applyChanges(NekoTradeMainPanel panel, Map<TradeKey, TradeStatus> changes) throws Exception {
+        Method method = NekoTradeMainPanel.class.getDeclaredMethod("applyTradeStatusChanges", Map.class);
+        method.setAccessible(true);
+        method.invoke(panel, changes);
     }
 
     private static void check(boolean condition, String message) {

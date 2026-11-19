@@ -3,30 +3,33 @@
 
 package com.miaokatze.gtit.gui.vm;
 
-import java.nio.charset.StandardCharsets;
+import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Base64;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
+import net.minecraft.network.PacketBuffer;
 
 import com.cleanroommc.modularui.network.NetworkUtils;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
-import com.cleanroommc.modularui.value.sync.GenericListSyncHandler;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
+import com.cleanroommc.modularui.value.sync.SyncHandler;
+import com.github.bsideup.jabel.Desugar;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.TeamDataProvider;
 import com.miaokatze.gtit.trade.v2.NekoFavouritesTracker;
 import com.miaokatze.gtit.trade.v2.NekoHistoryManager;
-import com.miaokatze.gtit.trade.v2.NekoTrade;
 import com.miaokatze.gtit.trade.v2.NekoTradeCategory;
 import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
 import com.miaokatze.gtit.trade.v2.NekoTradeExecutor;
@@ -34,102 +37,51 @@ import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
 import com.miaokatze.gtit.trade.v2.NekoTradeHistory;
 import com.miaokatze.gtit.trade.v2.NekoTradeResult;
 
-import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
-
-/**
- * S2C 状态字符串编解码器（A01 蓝图 G5 抽取自 NekoVMGuiV2，方法体逐字搬移）
- * <p>
- * 持有 BQ 锁定/冷却/可交易/团队缩放及收藏的 S2C 同步值、客户端缓存
- * 与服务端重建缓存（脏标记 + tick 窗口）。
- * 宿主与 {@code processTradeRequest} 等交易编排经本类的标记/通知 API 触发重算，
- * 不再直摸通道字段。
- * <p>
- * 按蓝图同批携带交易分类图标/名称辅助（{@link #getCategoryIcon}/{@link #getCategoryName}，
- * 无实例状态，静态供标签列消费）。
- * <p>
- * <b>双端镜像构建</b>：本类在服务端同样实例化与调用（v1.7.17），类内不得有客户端专属 API。
- */
+/** Per-window trade status. A click sends one row; ordinary polling publishes changes to shared state. */
 public final class StatusCodec {
 
-    /** 机器引用（checkTrade 综合判定） */
-    private final MTENekoVendingMachineV2 multiblock;
-    /** 基础 TE 引用（世界 tick 取时） */
-    private final IGregTechTileEntity baseMetaTileEntity;
-    /** 客户端收到可交易状态后请求宿主通知主面板刷新货币（mainPanel.notifyCurrencyUpdate 委托） */
-    private final Runnable requestCurrencyNotify;
-
-    /** BQ 锁定状态字符串（S2C：服务端构建 "groupId:true/false,..." 发送到客户端） */
-    private StringSyncValue bqLockStatusSync;
-    /** 冷却状态字符串（S2C：seconds>0 为剩余秒；-1 为一次性交易已兑换）。 */
-    private StringSyncValue cooldownStatusSync;
-    /** 可交易状态字符串（S2C：服务端构建 "groupId:tradeIndex:true/false,..." 发送到客户端） */
-    private StringSyncValue tradeableStatusSync;
-    private GenericListSyncHandler<String> tradeFailureSync;
-    private final Map<String, String> tradeFailureMap = new HashMap<>();
-    private List<String> cachedTradeFailures = new ArrayList<>();
+    static final String ROWS_CHANNEL = "nekoV2TradeStatusRows";
+    private static final int STATUS_REFRESH_TICKS = 20;
+    private static final int MAX_BATCH_ROWS = 256;
+    private static final int MAX_BATCH_BYTES = 30_000;
     private static final int MAX_FAILURE_LENGTH = 1024;
-    /**
-     * 团队缩放状态字符串（S2C：服务端构建 "groupId:maxTrades:usedTrades,..." 发送到客户端）
-     * <p>
-     * 用于 tooltip 显示"冷却: X/Y 次（团队缩放）"信息。
-     * 仅对有冷却（{@code group.getCooldown() > 0}）的交易组输出。
-     * 客户端无法直接调用 GTNHLib Teams API，必须通过此同步值获取缩放信息。
-     * </p>
-     */
-    private StringSyncValue teamScaleSync;
 
-    /** 服务端按实际钱包路由同步来源；客户端不查询 Teams 静态存储。 */
-    private BooleanSyncValue teamWalletSync;
-    private boolean teamWallet;
+    @Desugar
+    public record TradeKey(UUID groupId, int tradeIndex) {}
 
-    /** 玩家收藏的只读 S2C 快照；客户端不访问服务端收藏存储。 */
-    private StringSyncValue favouriteStatusSync;
-    private final Set<String> favouriteStatus = new HashSet<>();
+    /** Cooldown -1 denotes a completed one-time redemption. */
+    @Desugar
+    public record TradeStatus(boolean locked, long cooldown, boolean tradeable, int maxTrades, long usedTrades,
+        String failure) {
 
-    /** BQ 锁定状态映射：groupId → 是否锁定（true=锁定） */
-    private final Map<UUID, Boolean> bqLockStatusMap = new HashMap<>();
-    /** 冷却状态映射："groupId:tradeIndex" → 剩余秒数，或 -1 已兑换标记。 */
-    private final Map<String, Long> cooldownStatusMap = new HashMap<>();
-    /** 可交易状态映射："groupId:tradeIndex" → 是否可交易（true=可交易） */
-    private final Map<String, Boolean> tradeableStatusMap = new HashMap<>();
-
-    /**
-     * 团队缩放状态映射：groupId → [maxTrades, usedTrades]
-     * <p>
-     * 由服务端通过团队缩放同步值同步到客户端。
-     * 存储每个有冷却的交易组的团队缩放信息（冷却内最大次数和已用次数），
-     * 用于 tooltip 显示"冷却: X/Y 次（团队缩放）"。
-     * </p>
-     */
-    private final Map<UUID, long[]> teamScaleMap = new HashMap<>();
-
-    /** 可交易状态字符串缓存（服务端，减少频繁调用 checkTrade） */
-    private String cachedTradeableStatusString = "";
-    /** 可交易状态是否需要重新计算（服务端，依赖项变化时置 true） */
-    private boolean tradeableStatusDirty = true;
-    /** 上次重建可交易状态字符串时的世界 tick */
-    private long lastTradeableStatusRebuildTick = -1;
-    private long lastTradeRegistryVersion = -1;
-    private long lastMachineRevision = -1;
-    /** 可交易状态缓存有效 tick 数（20 tick = 1 秒） */
-    private static final long TRADEABLE_STATUS_CACHE_TICKS = 20;
-    private boolean synchronizingTradeStatus;
-    private final Map<String, String> receivedStatusStrings = new HashMap<>();
-    private List<String> receivedTradeFailures = java.util.Collections.emptyList();
-
-    public StatusCodec(MTENekoVendingMachineV2 multiblock, IGregTechTileEntity baseMetaTileEntity,
-        Runnable requestCurrencyNotify) {
-        this.multiblock = multiblock;
-        this.baseMetaTileEntity = baseMetaTileEntity;
-        this.requestCurrencyNotify = requestCurrencyNotify;
+        public TradeStatus {
+            if (failure.length() > MAX_FAILURE_LENGTH) {
+                failure = failure.substring(0, MAX_FAILURE_LENGTH - 16) + "…请查看交易需求清单";
+            }
+        }
     }
 
-    /**
-     * 注册 S2C 状态通道
-     *
-     * @param syncManager 面板同步管理器
-     * @param playerId    玩家 UUID（服务端查询用）
-     */
+    @Desugar
+    private record GroupStatus(boolean locked, long cooldown, int maxTrades, long usedTrades) {}
+
+    private final MTENekoVendingMachineV2 machine;
+    private final Runnable presentationChanged;
+    private BooleanSyncValue teamWalletSync;
+    private volatile boolean teamWallet;
+    private StringSyncValue favouriteStatusSync;
+    private volatile Set<String> favourites = Collections.emptySet();
+    private TradeRowsSync rowsSync;
+    private final Map<TradeKey, TradeStatus> publishedRows = new LinkedHashMap<>();
+
+    // MUI2's packet callback can run off the client thread. Publish whole rows under one lock.
+    private final Map<TradeKey, TradeStatus> clientRows = new HashMap<>();
+    private final Map<TradeKey, TradeStatus> pendingRows = new HashMap<>();
+
+    public StatusCodec(MTENekoVendingMachineV2 machine, Runnable presentationChanged) {
+        this.machine = machine;
+        this.presentationChanged = presentationChanged;
+    }
+
     public void registerSyncValues(PanelSyncManager syncManager, UUID playerId) {
         teamWalletSync = new BooleanSyncValue(
             () -> syncManager.isClient() ? teamWallet
@@ -137,173 +89,54 @@ public final class StatusCodec {
             value -> {
                 if (teamWallet == value) return;
                 teamWallet = value;
-                requestCurrencyNotify.run();
+                presentationChanged.run();
             });
         syncManager.syncValue("nekoV2TeamWallet", teamWalletSync);
 
-        // StringSyncValue 构造时立即读取 getter；客户端只接收 S2C 状态，不查询服务端存储。
-        // --- BQ 锁定状态（S2C，同步所有交易组的状态）---
-        bqLockStatusSync = new StringSyncValue(
-            () -> syncManager.isClient() ? "" : buildBqLockStatusString(playerId),
-            val -> receiveStatus("bq", val, () -> parseBqLockStatus(val)));
-        syncManager.syncValue("nekoV2BqLockStatus", bqLockStatusSync);
-
-        // --- 冷却状态（S2C，同步所有交易组的状态）---
-        cooldownStatusSync = new StringSyncValue(
-            () -> syncManager.isClient() ? "" : buildCooldownStatusString(playerId),
-            val -> receiveStatus("cooldown", val, () -> parseCooldownStatus(val)));
-        syncManager.syncValue("nekoV2CooldownStatus", cooldownStatusSync);
-
-        // --- 可交易状态（S2C，服务端综合 BQ/冷却/钱包/输入物品计算）---
-        tradeableStatusSync = new StringSyncValue(
-            () -> syncManager.isClient() ? "" : buildTradeableStatusString(playerId),
-            val -> receiveStatus("tradeable", val, () -> parseTradeableStatus(val)));
-        syncManager.syncValue("nekoV2TradeableStatus", tradeableStatusSync);
-
-        // Each entry is bounded independently; a list avoids StringSyncValue truncating all trade reasons at 32 KiB.
-        tradeFailureSync = GenericListSyncHandler.<String>builder()
-            .getter(() -> {
-                if (syncManager.isClient()) return java.util.Collections.emptyList();
-                buildTradeableStatusString(playerId);
-                return cachedTradeFailures;
-            })
-            .setter(this::parseTradeFailures)
-            .serializer(NetworkUtils::writeStringSafe)
-            .deserializer(NetworkUtils::readStringSafe)
-            .immutableCopy()
-            .build();
-        syncManager.syncValue("nekoV2TradeFailures", tradeFailureSync);
-
-        // --- 团队缩放状态（S2C，同步冷却内最大次数和已用次数，用于 tooltip 展示）---
-        // 客户端无法直接调用 GTNHLib Teams API，必须通过此同步值获取缩放信息
-        teamScaleSync = new StringSyncValue(
-            () -> syncManager.isClient() ? "" : buildTeamScaleString(playerId),
-            val -> receiveStatus("team", val, () -> parseTeamScaleString(val)));
-        syncManager.syncValue("nekoV2TeamScale", teamScaleSync);
+        rowsSync = new TradeRowsSync(playerId);
+        syncManager.syncValue(ROWS_CHANNEL, rowsSync);
 
         favouriteStatusSync = new StringSyncValue(
             () -> syncManager.isClient() ? "" : buildFavouriteStatusString(playerId),
-            val -> receiveStatus("favourites", val, () -> parseFavouriteStatus(val)));
+            this::receiveFavourites);
         syncManager.syncValue("nekoV2FavouriteStatus", favouriteStatusSync);
-
-        // BQ 锁定/冷却状态变化时也需要重新计算可交易状态
-        if (!syncManager.isClient()) {
-            Runnable tradeableStatusDirtyMarker = this::markTradeableStatusDirtyAndNotify;
-            bqLockStatusSync.setChangeListener(tradeableStatusDirtyMarker);
-            cooldownStatusSync.setChangeListener(tradeableStatusDirtyMarker);
-        }
     }
 
     public boolean isTeamWallet() {
         return teamWalletSync != null && teamWalletSync.getBoolValue();
     }
 
-    /**
-     * 交易编排钩子：标记可交易状态为脏，立即重检并只同步实际变化。
-     */
-    public void markTradeableStatusDirtyAndNotify() {
-        tradeableStatusDirty = true;
-        synchronizeTradeStatus(false);
+    public synchronized TradeStatus clientStatus(TradeKey key) {
+        return clientRows.get(key);
     }
 
-    /**
-     * 交易编排钩子：交易成功后的状态通道级联刷新
-     * <p>
-     * 先合并冷却监听器的失效，再重检可交易/失败原因，避免同一批状态重复计算及发送。
-     */
-    public void notifyTradeStatusChanged() {
-        tradeableStatusDirty = true;
-        synchronizeTradeStatus(true);
+    /** Called during the GUI tick. A null value removes a row after a definition reload. */
+    public synchronized Map<TradeKey, TradeStatus> takeClientChanges() {
+        if (pendingRows.isEmpty()) return Collections.emptyMap();
+        Map<TradeKey, TradeStatus> changes = new HashMap<>(pendingRows);
+        pendingRows.clear();
+        return changes;
     }
 
-    private void synchronizeTradeStatus(boolean refreshCooldown) {
-        if (synchronizingTradeStatus) return;
-        synchronizingTradeStatus = true;
-        try {
-            // Cooldown listeners can invalidate availability. Finish that invalidation before computing it once.
-            if (refreshCooldown && cooldownStatusSync != null) cooldownStatusSync.detectAndSendChanges(false);
-            if (teamScaleSync != null) teamScaleSync.detectAndSendChanges(false);
-            if (tradeableStatusSync != null) tradeableStatusSync.detectAndSendChanges(false);
-            if (tradeFailureSync != null) tradeFailureSync.detectAndSendChanges(false);
-        } finally {
-            synchronizingTradeStatus = false;
+    private synchronized void receiveRows(Map<TradeKey, TradeStatus> changes) {
+        for (Map.Entry<TradeKey, TradeStatus> change : changes.entrySet()) {
+            TradeKey key = change.getKey();
+            TradeStatus status = change.getValue();
+            TradeStatus previous = status == null ? clientRows.remove(key) : clientRows.put(key, status);
+            if (!java.util.Objects.equals(previous, status)) pendingRows.put(key, status);
         }
-    }
-
-    private void receiveStatus(String channel, String value, Runnable parse) {
-        String normalized = value == null ? "" : value;
-        if (java.util.Objects.equals(receivedStatusStrings.getOrDefault(channel, ""), normalized)) return;
-        receivedStatusStrings.put(channel, normalized);
-        parse.run();
-        requestCurrencyNotify.run();
-    }
-
-    /** 客户端读：BQ 锁定状态（缺省 false=未锁定） */
-    public boolean getBqLocked(UUID groupId) {
-        return bqLockStatusMap.getOrDefault(groupId, false);
-    }
-
-    /** 客户端读：冷却剩余秒数（"groupId:tradeIndex" 键） */
-    public long getCooldownRemaining(String key) {
-        Long remaining = cooldownStatusMap.get(key);
-        return remaining != null && remaining > 0L ? remaining : 0L;
-    }
-
-    /** Server-synchronized lifetime success marker, separate from generic affordability/quest failures. */
-    public boolean isOneTimeRedeemed(String key) {
-        return Long.valueOf(-1L)
-            .equals(cooldownStatusMap.get(key));
-    }
-
-    /** 客户端读：可交易状态（"groupId:tradeIndex" 键，null=未同步） */
-    public Boolean getTradeable(String key) {
-        return tradeableStatusMap.get(key);
-    }
-
-    public String getTradeFailure(String key) {
-        return tradeFailureMap.getOrDefault(key, "");
-    }
-
-    static String encodeTradeFailure(String key, String reason) {
-        if (reason.length() > MAX_FAILURE_LENGTH) reason = reason.substring(0, MAX_FAILURE_LENGTH - 16) + "…请查看交易需求清单";
-        return key + ":"
-            + Base64.getEncoder()
-                .encodeToString(reason.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private void parseTradeFailures(List<String> entries) {
-        List<String> incoming = entries == null ? java.util.Collections.emptyList() : entries;
-        if (receivedTradeFailures.equals(incoming)) return;
-        receivedTradeFailures = new ArrayList<>(incoming);
-        tradeFailureMap.clear();
-        if (entries != null) for (String entry : entries) {
-            if (entry == null || entry.length() > MAX_FAILURE_LENGTH * 4 + 64) continue;
-            String[] parts = entry.split(":", 3);
-            if (parts.length != 3) continue;
-            try {
-                UUID.fromString(parts[0]);
-                if (Integer.parseInt(parts[1]) < 0) continue;
-                String reason = new String(
-                    Base64.getDecoder()
-                        .decode(parts[2]),
-                    StandardCharsets.UTF_8);
-                if (reason.length() <= MAX_FAILURE_LENGTH) tradeFailureMap.put(parts[0] + ":" + parts[1], reason);
-            } catch (IllegalArgumentException ignored) {}
-        }
-        requestCurrencyNotify.run();
-    }
-
-    /** 客户端读：团队缩放 [maxTrades, usedTrades]（null=未同步） */
-    public long[] getTeamScale(UUID groupId) {
-        return teamScaleMap.get(groupId);
     }
 
     public boolean isFavourite(UUID groupId, int tradeIndex) {
-        return favouriteStatus.contains(groupId + ":" + tradeIndex);
+        return favourites.contains(groupId + ":" + tradeIndex);
     }
 
     public void notifyFavouritesChanged() {
         if (favouriteStatusSync != null) favouriteStatusSync.detectAndSendChanges(false);
+    }
+
+    public void requestRegularRefresh() {
+        if (rowsSync != null) rowsSync.ticks = STATUS_REFRESH_TICKS;
     }
 
     private String buildFavouriteStatusString(UUID playerId) {
@@ -312,286 +145,190 @@ public final class StatusCodec {
             .stream()
             .map(favourite -> favourite.getLeft() + ":" + favourite.getRight())
             .sorted()
-            .collect(java.util.stream.Collectors.joining(","));
+            .collect(Collectors.joining(","));
     }
 
-    private void parseFavouriteStatus(String status) {
-        favouriteStatus.clear();
-        if (status == null || status.isEmpty()) return;
-        java.util.Collections.addAll(favouriteStatus, status.split(","));
+    private void receiveFavourites(String status) {
+        Set<String> received = status == null || status.isEmpty() ? Collections.emptySet()
+            : new java.util.HashSet<>(Arrays.asList(status.split(",")));
+        if (received.equals(favourites)) return;
+        favourites = received;
+        presentationChanged.run();
     }
 
-    // ==================== BQ 锁定状态编解码 ====================
+    /** Only the requested trade is checked here, even when another row shares its group or materials. */
+    public void notifyTradeStatusChanged(UUID playerId, UUID groupId, int tradeIndex) {
+        if (rowsSync == null || playerId == null) return;
+        NekoTradeGroup group = NekoTradeDatabase.INSTANCE.getTradeGroup(groupId);
+        if (group == null || tradeIndex < 0
+            || tradeIndex >= group.getTrades()
+                .size())
+            return;
+        TradeKey key = new TradeKey(groupId, tradeIndex);
+        TradeStatus status = buildRow(
+            playerId,
+            key,
+            groupStatus(playerId, group, NekoTradeExecutor.getTeamMaxTrades(playerId)));
+        if (status.equals(publishedRows.get(key))) return;
+        rowsSync.sendRows(Collections.singletonMap(key, status));
+        publishedRows.put(key, status);
+    }
 
-    /**
-     * 构建 BQ 锁定状态字符串（服务端）
-     * <p>
-     * 遍历所有交易组，检查前置条件是否满足。
-     *
-     * @param playerId 玩家 UUID
-     * @return BQ 锁定状态字符串
-     */
-    private String buildBqLockStatusString(UUID playerId) {
-        if (playerId == null) return "";
-        StringBuilder sb = new StringBuilder();
+    Map<TradeKey, TradeStatus> buildRows(UUID playerId) {
+        Map<TradeKey, TradeStatus> rows = new LinkedHashMap<>();
+        if (playerId == null) return rows;
+        int teamMaxTrades = NekoTradeExecutor.getTeamMaxTrades(playerId);
         for (NekoTradeGroup group : NekoTradeDatabase.INSTANCE.getAllTradeGroups()
             .values()) {
-            if (sb.length() > 0) sb.append(",");
-            sb.append(
-                group.getId()
-                    .toString())
-                .append(":")
-                .append(!group.isConditionsSatisfied(playerId));
-        }
-        return sb.toString();
-    }
-
-    /**
-     * 解析 BQ 锁定状态字符串（客户端）
-     *
-     * @param status BQ 锁定状态字符串
-     */
-    private void parseBqLockStatus(String status) {
-        bqLockStatusMap.clear();
-        if (status == null || status.isEmpty()) return;
-        String[] entries = status.split(",");
-        for (String entry : entries) {
-            String[] parts = entry.split(":");
-            if (parts.length == 2) {
-                try {
-                    UUID groupId = UUID.fromString(parts[0]);
-                    boolean locked = Boolean.parseBoolean(parts[1]);
-                    bqLockStatusMap.put(groupId, locked);
-                } catch (Exception ignored) {}
+            GroupStatus status = groupStatus(playerId, group, teamMaxTrades);
+            for (int index = 0; index < group.getTrades()
+                .size(); index++) {
+                TradeKey key = new TradeKey(group.getId(), index);
+                rows.put(key, buildRow(playerId, key, status));
             }
         }
+        return rows;
     }
 
-    // ==================== 冷却状态编解码 ====================
+    private GroupStatus groupStatus(UUID playerId, NekoTradeGroup group, int teamMaxTrades) {
+        boolean locked = !group.isConditionsSatisfied(playerId);
+        int cooldown = group.getCooldown();
+        if (cooldown == 0) return new GroupStatus(locked, 0, 1, 0);
+        NekoTradeHistory history = NekoHistoryManager.INSTANCE.getHistory(playerId, group.getId());
+        if (cooldown == -1) return new GroupStatus(locked, history.getTradeCount() > 0 ? -1 : 0, 1, 0);
+        return new GroupStatus(
+            locked,
+            history.getCooldownRemaining(cooldown),
+            teamMaxTrades,
+            history.getCooldownTradeCount());
+    }
 
-    /**
-     * 构建冷却状态字符串（服务端）
-     * <p>
-     * 遍历所有交易组，获取冷却剩余时间。
-     *
-     * @param playerId 玩家 UUID
-     * @return 冷却状态字符串
-     */
-    private String buildCooldownStatusString(UUID playerId) {
-        if (playerId == null) return "";
-        StringBuilder sb = new StringBuilder();
-        for (NekoTradeGroup group : NekoTradeDatabase.INSTANCE.getAllTradeGroups()
-            .values()) {
-            int cooldown = group.getCooldown();
-            if (cooldown == 0) continue;
+    private TradeStatus buildRow(UUID playerId, TradeKey key, GroupStatus group) {
+        NekoTradeResult result = machine.checkTrade(playerId, key.groupId(), key.tradeIndex());
+        boolean tradeable = result != null && result.isSuccess();
+        return new TradeStatus(
+            group.locked(),
+            group.cooldown(),
+            tradeable,
+            group.maxTrades(),
+            group.usedTrades(),
+            result == null || tradeable ? "" : result.getDisplayMessage());
+    }
 
-            NekoTradeHistory history = NekoHistoryManager.INSTANCE.getHistory(playerId, group.getId());
-            long remaining = cooldown == -1 ? (history.getTradeCount() > 0 ? -1L : 0L)
-                : history.getCooldownRemaining(cooldown);
+    private static Map<TradeKey, TradeStatus> delta(Map<TradeKey, TradeStatus> previous,
+        Map<TradeKey, TradeStatus> rows) {
+        Map<TradeKey, TradeStatus> changes = new LinkedHashMap<>();
+        for (Map.Entry<TradeKey, TradeStatus> row : rows.entrySet()) {
+            if (!row.getValue()
+                .equals(previous.get(row.getKey()))) changes.put(row.getKey(), row.getValue());
+        }
+        for (TradeKey removed : previous.keySet()) {
+            if (!rows.containsKey(removed)) changes.put(removed, null);
+        }
+        return changes;
+    }
 
-            if (remaining != 0) {
-                for (int i = 0; i < group.getTrades()
-                    .size(); i++) {
-                    if (sb.length() > 0) sb.append(",");
-                    sb.append(
-                        group.getId()
-                            .toString())
-                        .append(":")
-                        .append(i)
-                        .append(":")
-                        .append(remaining);
+    private final class TradeRowsSync extends SyncHandler<TradeRowsSync> {
+
+        private final UUID playerId;
+        private int ticks;
+        private long registryVersion = -1;
+
+        private TradeRowsSync(UUID playerId) {
+            this.playerId = playerId;
+        }
+
+        @Override
+        public void detectAndSendChanges(boolean init) {
+            if (getSyncManager().isClient()) return;
+            long version = NekoTradeDatabase.INSTANCE.getVersion();
+            if (!init && ++ticks < STATUS_REFRESH_TICKS && registryVersion == version) return;
+            Map<TradeKey, TradeStatus> rows = buildRows(playerId);
+            Map<TradeKey, TradeStatus> changes = delta(publishedRows, rows);
+            if (init) changes.putAll(rows);
+            sendRows(changes);
+            publishedRows.clear();
+            publishedRows.putAll(rows);
+            ticks = 0;
+            registryVersion = version;
+        }
+
+        private void sendRows(Map<TradeKey, TradeStatus> changes) {
+            List<Map.Entry<TradeKey, TradeStatus>> batch = new ArrayList<>();
+            int bytes = 2; // Count prefix.
+            for (Map.Entry<TradeKey, TradeStatus> row : changes.entrySet()) {
+                TradeStatus status = row.getValue();
+                int estimate = 56 + (status == null ? 0
+                    : 3 * status.failure()
+                        .length());
+                if (batch.size() >= MAX_BATCH_ROWS || bytes + estimate > MAX_BATCH_BYTES) {
+                    sendBatch(batch);
+                    batch.clear();
+                    bytes = 2;
                 }
+                batch.add(row);
+                bytes += estimate;
             }
+            if (!batch.isEmpty()) sendBatch(batch);
         }
-        return sb.toString();
-    }
 
-    /**
-     * 解析冷却状态字符串（客户端）
-     *
-     * @param status 冷却状态字符串
-     */
-    private void parseCooldownStatus(String status) {
-        cooldownStatusMap.clear();
-        if (status == null || status.isEmpty()) return;
-        String[] entries = status.split(",");
-        for (String entry : entries) {
-            String[] parts = entry.split(":");
-            if (parts.length == 3) {
-                try {
-                    String key = parts[0] + ":" + parts[1];
-                    long seconds = Long.parseLong(parts[2]);
-                    cooldownStatusMap.put(key, seconds);
-                } catch (Exception ignored) {}
+        private void sendBatch(List<Map.Entry<TradeKey, TradeStatus>> batch) {
+            syncToClient(0, packet -> {
+                packet.writeVarIntToBuffer(batch.size());
+                for (Map.Entry<TradeKey, TradeStatus> row : batch) writeRow(packet, row.getKey(), row.getValue());
+            });
+        }
+
+        @Override
+        public void readOnClient(int id, PacketBuffer packet) throws IOException {
+            if (id != 0 || packet.readableBytes() > MAX_BATCH_BYTES) throw new IOException("Trade status packet");
+            int count = packet.readVarIntFromBuffer();
+            if (count < 0 || count > MAX_BATCH_ROWS) throw new IOException("Trade status row count");
+            Map<TradeKey, TradeStatus> changes = new LinkedHashMap<>();
+            for (int i = 0; i < count; i++) {
+                TradeKey key = new TradeKey(
+                    new UUID(packet.readLong(), packet.readLong()),
+                    packet.readVarIntFromBuffer());
+                if (key.tradeIndex() < 0 || changes.containsKey(key)) throw new IOException("Trade status identity");
+                changes.put(key, packet.readBoolean() ? readStatus(packet) : null);
             }
-        }
-    }
-
-    // ==================== 可交易状态编解码（服务端综合计算 BQ/冷却/钱包/输入物品） ====================
-
-    /**
-     * 构建可交易状态字符串（服务端）
-     * <p>
-     * 遍历所有交易组及其交易，调用 {@link MTENekoVendingMachineV2#checkTrade} 综合判断
-     * BQ 锁定、冷却、钱包余额和输入物品是否满足，生成格式字符串：
-     * {@code "groupId:tradeIndex:true,groupId:tradeIndex:false,..."}。
-     * <p>
-     * 为降低性能开销，使用缓存策略：仅在脏标记为 true
-     * 或距离上次重建超过 {@link #TRADEABLE_STATUS_CACHE_TICKS} tick 时重新计算。
-     *
-     * @param playerId 玩家 UUID
-     * @return 可交易状态字符串
-     */
-    private String buildTradeableStatusString(UUID playerId) {
-        if (playerId == null) return "";
-        long machineRevision = multiblock == null ? -1 : multiblock.getTradeStateRevision();
-        if (lastMachineRevision != machineRevision) {
-            tradeableStatusDirty = true;
-            lastMachineRevision = machineRevision;
-        }
-        long registryVersion = NekoTradeDatabase.INSTANCE.getVersion();
-        if (lastTradeRegistryVersion != registryVersion) {
-            tradeableStatusDirty = true;
-            lastTradeRegistryVersion = registryVersion;
+            if (packet.isReadable()) throw new IOException("Trade status trailing bytes");
+            receiveRows(changes);
         }
 
-        long currentTick = (baseMetaTileEntity != null && baseMetaTileEntity.getWorld() != null)
-            ? baseMetaTileEntity.getWorld()
-                .getTotalWorldTime()
-            : lastTradeableStatusRebuildTick;
-
-        // 未脏且仍在缓存有效期内，直接返回缓存值
-        if (!tradeableStatusDirty && currentTick - lastTradeableStatusRebuildTick < TRADEABLE_STATUS_CACHE_TICKS) {
-            return cachedTradeableStatusString;
-        }
-
-        StringBuilder sb = new StringBuilder();
-        List<String> failures = new ArrayList<>();
-        Map<UUID, NekoTradeGroup> groups = NekoTradeDatabase.INSTANCE.getAllTradeGroups();
-        if (groups != null) {
-            for (NekoTradeGroup group : groups.values()) {
-                if (group == null) continue;
-                List<NekoTrade> trades = group.getTrades();
-                if (trades == null) continue;
-                for (int i = 0; i < trades.size(); i++) {
-                    NekoTradeResult result = multiblock.checkTrade(playerId, group.getId(), i);
-                    boolean tradeable = result != null && result.isSuccess();
-                    if (!tradeable && result != null)
-                        failures.add(encodeTradeFailure(group.getId() + ":" + i, result.getDisplayMessage()));
-                    if (sb.length() > 0) sb.append(",");
-                    sb.append(
-                        group.getId()
-                            .toString())
-                        .append(":")
-                        .append(i)
-                        .append(":")
-                        .append(tradeable);
-                }
-            }
-        }
-
-        cachedTradeableStatusString = sb.toString();
-        cachedTradeFailures = failures;
-        tradeableStatusDirty = false;
-        lastTradeableStatusRebuildTick = currentTick;
-        return cachedTradeableStatusString;
-    }
-
-    /**
-     * 解析可交易状态字符串（客户端）
-     * <p>
-     * 将 {@code "groupId:tradeIndex:true/false,..."} 解析为
-     * 可交易状态 Map："groupId:tradeIndex" → boolean。
-     *
-     * @param status 可交易状态字符串
-     */
-    private void parseTradeableStatus(String status) {
-        tradeableStatusMap.clear();
-        if (status == null || status.isEmpty()) return;
-        String[] entries = status.split(",");
-        for (String entry : entries) {
-            String[] parts = entry.split(":");
-            if (parts.length == 3) {
-                try {
-                    String key = parts[0] + ":" + parts[1];
-                    boolean tradeable = Boolean.parseBoolean(parts[2]);
-                    tradeableStatusMap.put(key, tradeable);
-                } catch (Exception ignored) {}
-            }
+        @Override
+        public void readOnServer(int id, PacketBuffer packet) throws IOException {
+            throw new IOException("Trade status rows are server-to-client only");
         }
     }
 
-    // ==================== 团队缩放状态编解码（S2C，用于 tooltip 冷却缩放展示） ====================
-
-    /**
-     * 构建团队缩放状态字符串（服务端）
-     * <p>
-     * 遍历所有有冷却（{@code cooldown > 0}）的交易组，通过
-     * {@link NekoTradeExecutor#getTeamMaxTrades(UUID)} 获取团队缩放值（冷却内最大次数），
-     * 通过 {@link NekoTradeHistory#getCooldownTradeCount()} 获取当前冷却周期内已用次数。
-     * <p>
-     * 字符串格式：{@code "groupId:maxTrades:usedTrades,groupId:maxTrades:usedTrades,..."}
-     * <p>
-     * <b>设计说明</b>：客户端无法直接调用 GTNHLib Teams API（服务端专属），
-     * 因此通过此同步值将缩放信息传递到客户端，用于 tooltip 显示。
-     *
-     * @param playerId 玩家 UUID
-     * @return 团队缩放状态字符串，无冷却交易组时返回空字符串
-     */
-    private String buildTeamScaleString(UUID playerId) {
-        if (playerId == null) return "";
-        // 获取团队缩放值（团队成员数 = 冷却内最大交易次数）
-        // 同一玩家的所有交易组共享相同的缩放值，只需查询一次
-        int maxTrades = NekoTradeExecutor.getTeamMaxTrades(playerId);
-
-        StringBuilder sb = new StringBuilder();
-        Map<UUID, NekoTradeGroup> groups = NekoTradeDatabase.INSTANCE.getAllTradeGroups();
-        if (groups != null) {
-            for (NekoTradeGroup group : groups.values()) {
-                if (group == null) continue;
-                // 仅对有冷却的交易组输出缩放信息
-                if (group.getCooldown() <= 0) continue;
-
-                // 查询该玩家对此交易组的冷却内已用次数
-                NekoTradeHistory history = NekoHistoryManager.INSTANCE.getHistory(playerId, group.getId());
-                long usedTrades = history != null ? history.getCooldownTradeCount() : 0;
-
-                if (sb.length() > 0) sb.append(",");
-                sb.append(
-                    group.getId()
-                        .toString())
-                    .append(":")
-                    .append(maxTrades)
-                    .append(":")
-                    .append(usedTrades);
-            }
-        }
-        return sb.toString();
+    static void writeRow(PacketBuffer packet, TradeKey key, TradeStatus status) {
+        packet.writeLong(
+            key.groupId()
+                .getMostSignificantBits());
+        packet.writeLong(
+            key.groupId()
+                .getLeastSignificantBits());
+        packet.writeVarIntToBuffer(key.tradeIndex());
+        packet.writeBoolean(status != null);
+        if (status == null) return;
+        packet.writeBoolean(status.locked());
+        packet.writeLong(status.cooldown());
+        packet.writeBoolean(status.tradeable());
+        packet.writeVarIntToBuffer(status.maxTrades());
+        packet.writeLong(status.usedTrades());
+        NetworkUtils.writeStringSafe(packet, status.failure());
     }
 
-    /**
-     * 解析团队缩放状态字符串（客户端）
-     * <p>
-     * 将 {@code "groupId:maxTrades:usedTrades,..."} 解析为
-     * 团队缩放 Map：groupId → [maxTrades, usedTrades]。
-     *
-     * @param status 团队缩放状态字符串
-     */
-    private void parseTeamScaleString(String status) {
-        teamScaleMap.clear();
-        if (status == null || status.isEmpty()) return;
-        String[] entries = status.split(",");
-        for (String entry : entries) {
-            String[] parts = entry.split(":");
-            if (parts.length == 3) {
-                try {
-                    UUID groupId = UUID.fromString(parts[0]);
-                    long maxTrades = Long.parseLong(parts[1]);
-                    long usedTrades = Long.parseLong(parts[2]);
-                    teamScaleMap.put(groupId, new long[] { maxTrades, usedTrades });
-                } catch (Exception ignored) {}
-            }
-        }
+    private static TradeStatus readStatus(PacketBuffer packet) throws IOException {
+        boolean locked = packet.readBoolean();
+        long cooldown = packet.readLong();
+        boolean tradeable = packet.readBoolean();
+        int maxTrades = packet.readVarIntFromBuffer();
+        long usedTrades = packet.readLong();
+        String reason = NetworkUtils.readStringSafe(packet);
+        if (reason == null || reason.length() > MAX_FAILURE_LENGTH) throw new IOException("Trade status reason");
+        return new TradeStatus(locked, cooldown, tradeable, maxTrades, usedTrades, reason);
     }
 
     // ==================== 交易分类图标/名称辅助（蓝图随批携带，静态无状态） ====================

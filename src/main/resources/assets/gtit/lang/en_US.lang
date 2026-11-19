@@ -657,6 +657,7 @@ gtit.gift.icon.trade=Trade Coin Gift Box
 gtit.gift.ui.title=Gift Center
 gtit.gift.ui.presets=Trade presets
 gtit.gift.ui.quest=BQ quest ID
+gtit.bq.quest_id.input_hint=Paste the Base64URL ID copied from the BQ quest book, or enter a UUID or high:low.
 gtit.gift.ui.reward_summary=Guaranteed types / random pool types × draws
 gtit.gift.ui.claim=Claim unlocked gift
 gtit.gift.ui.edit=Edit gift

@@ -633,6 +633,7 @@ gtit.gift.icon.trade=铜币交易礼盒
 gtit.gift.ui.title=礼包中心
 gtit.gift.ui.presets=贸易预设
 gtit.gift.ui.quest=BQ 任务 ID
+gtit.bq.quest_id.input_hint=可直接粘贴 BQ 任务书复制的 Base64URL，也可填写 UUID 或 high:low。
 gtit.gift.ui.reward_summary=必得种类 / 随机池种类 × 抽取次数
 gtit.gift.ui.claim=领取已解锁礼包
 gtit.gift.ui.edit=编辑礼包

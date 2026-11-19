@@ -122,10 +122,6 @@ public final class IoColumnPanel {
                     24 + (index / 16) * 19,
                     18,
                     18));
-            slot.changeListener(
-                (newItem, onlyAmountChanged, client, init) -> {
-                    if (!client && !init) gui.markTradeableStatusDirty();
-                });
             gui.coinOps.getInputSlotRefs()
                 .add(itemSlot);
             input.child(itemSlot);

@@ -5,21 +5,29 @@ package com.miaokatze.gtit.gui.vm;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 
 import com.cleanroommc.modularui.screen.ModularContainer;
 import com.cleanroommc.modularui.utils.item.ItemStackHandler;
+import com.cleanroommc.modularui.value.sync.ModularSyncManager;
+import com.cleanroommc.modularui.value.sync.PanelSyncManager;
+import com.cleanroommc.modularui.value.sync.SyncHandler;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.cleanroommc.modularui.widgets.slot.SlotGroup;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplay;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.gui.vm.StatusCodec.TradeKey;
+import com.miaokatze.gtit.gui.vm.StatusCodec.TradeStatus;
 import com.miaokatze.gtit.testutil.NativeAeTestBootstrap;
 import com.miaokatze.gtit.trade.TeamDataProvider;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
@@ -59,10 +67,11 @@ public final class VendingConcurrencyTest {
         actorDeposits();
         shiftTransfers();
         sharedStateAndCompetition();
+        singleTradeRefresh();
         disconnectedMeRefund();
         oldDisplayOrders();
         canonicalDefinition();
-        System.out.println("VendingConcurrencyTest: 6 cases passed");
+        System.out.println("VendingConcurrencyTest: 7 cases passed");
         CoinWithdrawalCapacityTest.run();
         WalletCreditCapacityTest.run();
         com.miaokatze.gtit.trade.WalletConservationTest.run();
@@ -186,10 +195,10 @@ public final class VendingConcurrencyTest {
         return group;
     }
 
-    private static String status(StatusCodec codec, UUID player) throws Exception {
-        Method build = StatusCodec.class.getDeclaredMethod("buildTradeableStatusString", UUID.class);
-        build.setAccessible(true);
-        return (String) build.invoke(codec, player);
+    private static boolean isAvailable(StatusCodec codec, UUID player, UUID groupId) {
+        return codec.buildRows(player)
+            .get(new StatusCodec.TradeKey(groupId, 0))
+            .tradeable();
     }
 
     private static void sharedStateAndCompetition() throws Exception {
@@ -197,12 +206,11 @@ public final class VendingConcurrencyTest {
         NekoTradeGroup group = group();
         UUID a = UUID.randomUUID(), b = UUID.randomUUID();
         try {
-            StatusCodec first = new StatusCodec(machine, null, () -> {});
-            StatusCodec second = new StatusCodec(machine, null, () -> {});
+            StatusCodec first = new StatusCodec(machine, () -> {});
+            StatusCodec second = new StatusCodec(machine, () -> {});
             machine.inputItems.setStackInSlot(0, new ItemStack(Items.iron_ingot));
             check(
-                status(first, a).contains(group.getId() + ":0:true")
-                    && status(second, b).contains(group.getId() + ":0:true"),
+                isAvailable(first, a, group.getId()) && isAvailable(second, b, group.getId()),
                 "both viewers initially see the same last input");
             long before = machine.getTradeStateRevision();
             VendingInputSlot validator = new VendingInputSlot(
@@ -230,8 +238,8 @@ public final class VendingConcurrencyTest {
                         .getTradeCount() == 0,
                 "only the successful actor records history");
             check(
-                status(second, b).contains(group.getId() + ":0:false"),
-                "the other viewer's cached ready flag expires in the same tick via machine revision");
+                !isAvailable(second, b, group.getId()),
+                "the other viewer's regular status snapshot sees the consumed input");
             machine = machine();
             machine.inputItems.setStackInSlot(0, new ItemStack(Items.iron_ingot, 2));
             for (int i = 0; i < MTENekoVendingMachineV2.OUTPUT_SLOTS - 1; i++)
@@ -283,6 +291,84 @@ public final class VendingConcurrencyTest {
                 "a freshly rebuilt display executes the new definition normally");
         } finally {
             NekoTradeDatabase.INSTANCE.removeTradeGroup(group.getId());
+        }
+    }
+
+    private static void singleTradeRefresh() throws Exception {
+        List<TradeKey> checks = new ArrayList<>();
+        MTENekoVendingMachineV2 machine = new MTENekoVendingMachineV2("single_trade_refresh") {
+
+            @Override
+            public NekoTradeResult checkTrade(UUID playerId, UUID groupId, int tradeIndex) {
+                checks.add(new TradeKey(groupId, tradeIndex));
+                return super.checkTrade(playerId, groupId, tradeIndex);
+            }
+        };
+        field(machine.getClass(), "mMachine").setBoolean(machine, true);
+        NekoTradeGroup clickedGroup = group();
+        NekoTradeGroup sharedStock = group();
+        NekoTrade clicked = clickedGroup.getTrades()
+            .get(0);
+        clickedGroup.setCooldown(-1);
+        clickedGroup.getTrades()
+            .add(clicked);
+        UUID player = UUID.randomUUID();
+        TradeKey clickedKey = new TradeKey(clickedGroup.getId(), 0);
+        try {
+            NekoVMGuiV2 gui = new NekoVMGuiV2(machine);
+            StatusCodec codec = (StatusCodec) field(NekoVMGuiV2.class, "statusCodec").get(gui);
+            Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+            Field unsafe = field(unsafeClass, "theUnsafe");
+            EntityPlayerMP actor = (EntityPlayerMP) unsafeClass.getMethod("allocateInstance", Class.class)
+                .invoke(unsafe.get(null), EntityPlayerMP.class);
+            field(EntityPlayerMP.class, "entityUniqueID").set(actor, player);
+            ModularSyncManager sync = new ModularSyncManager(false) {
+
+                @Override
+                public EntityPlayerMP getPlayer() {
+                    return actor;
+                }
+            };
+            PanelSyncManager manager = new PanelSyncManager(sync, false);
+            codec.registerSyncValues(manager, player);
+            manager.initialize("trade_row_server");
+            SyncHandler<?> rows = manager.findSyncHandler(StatusCodec.ROWS_CHANNEL);
+            @SuppressWarnings("unchecked")
+            Map<TradeKey, TradeStatus> published = (Map<TradeKey, TradeStatus>) field(
+                StatusCodec.class,
+                "publishedRows").get(codec);
+            TradeKey sibling = new TradeKey(clickedGroup.getId(), 1);
+            TradeKey shared = new TradeKey(sharedStock.getId(), 0);
+            machine.inputItems.setStackInSlot(0, new ItemStack(Items.iron_ingot));
+            rows.detectAndSendChanges(true);
+            check(checks.size() == 3, "initial sync evaluates every defined row once");
+            checks.clear();
+
+            Method receive = NekoVMGuiV2.class.getDeclaredMethod("processTradeRequest", String.class, UUID.class);
+            receive.setAccessible(true);
+            String request = clickedGroup.getId() + ":0:" + NekoTradeDefinition.fingerprint(clickedGroup, clicked);
+            receive.invoke(gui, request, player);
+            check(checks.equals(Arrays.asList(clickedKey)), "real purchase checks only the clicked display row");
+            check(machine.getOutputBufferSize() == 1, "purchase still pays for exactly one output");
+            check(
+                published.get(clickedKey)
+                    .cooldown() == -1 && published.get(sibling)
+                        .tradeable()
+                    && published.get(shared)
+                        .tradeable(),
+                "the immediate redemption changes the published clicked row alone");
+            for (int i = 0; i < 19; i++) rows.detectAndSendChanges(false);
+            check(checks.equals(Arrays.asList(clickedKey)), "the purchase does not force early catalogue polling");
+            rows.detectAndSendChanges(false);
+            check(
+                checks.size() == 4 && published.get(sibling)
+                    .cooldown() == -1
+                    && !published.get(shared)
+                        .tradeable(),
+                "regular polling reconciles shared cooldown and shared stock");
+        } finally {
+            NekoTradeDatabase.INSTANCE.removeTradeGroup(clickedGroup.getId());
+            NekoTradeDatabase.INSTANCE.removeTradeGroup(sharedStock.getId());
         }
     }
 

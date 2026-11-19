@@ -282,6 +282,10 @@ public final class TradeEditor {
                 .background(NekoVendingTheme.INPUT)
                 .value(new StringValue.Dynamic(() -> editBqQuestId, val -> editBqQuestId = val))
                 .setMaxLength(60)
+                .hintText("UUID / Base64URL")
+                .tooltipBuilder(
+                    t -> NekoVendingTheme.tooltip(t)
+                        .addLine(IKey.lang("gtit.bq.quest_id.input_hint")))
                 .left(labelWidth)
                 .top(fieldY)
                 .widthRelOffset(1f, -82)

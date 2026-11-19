@@ -8,6 +8,8 @@ import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -18,12 +20,11 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.network.PacketBuffer;
 
-import com.cleanroommc.modularui.network.NetworkUtils;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
-import com.cleanroommc.modularui.value.sync.GenericListSyncHandler;
 import com.cleanroommc.modularui.value.sync.ModularSyncManager;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
+import com.cleanroommc.modularui.value.sync.SyncHandler;
 import com.cleanroommc.modularui.value.sync.ValueSyncHandler;
 import com.gtnewhorizon.gtnhlib.teams.ITeamData;
 import com.gtnewhorizon.gtnhlib.teams.Team;
@@ -34,6 +35,8 @@ import com.miaokatze.gtit.client.gui.NekoTradeItemDisplay;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplayWidget;
 import com.miaokatze.gtit.client.gui.NekoTradeMainPanel;
 import com.miaokatze.gtit.client.gui.NekoWalletMode;
+import com.miaokatze.gtit.gui.vm.StatusCodec.TradeKey;
+import com.miaokatze.gtit.gui.vm.StatusCodec.TradeStatus;
 import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
 import com.miaokatze.gtit.testutil.SimpleAssert;
 import com.miaokatze.gtit.trade.NekoPageConfig;
@@ -56,8 +59,7 @@ public final class StatusCodecSyncTest {
     private static final UUID PLAYER = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID COOLDOWN_GROUP = UUID.fromString("00000000-0000-0000-0000-000000000002");
     private static final UUID ONE_TIME_GROUP = UUID.fromString("00000000-0000-0000-0000-000000000003");
-    private static final String[] CHANNELS = { "nekoV2BqLockStatus", "nekoV2CooldownStatus", "nekoV2TradeableStatus",
-        "nekoV2TeamScale", "nekoV2FavouriteStatus" };
+    private static final String FAVOURITES_CHANNEL = "nekoV2FavouriteStatus";
 
     public static void main(String[] args) throws Exception {
         if (!MinecraftTestBootstrap.enter(StatusCodecSyncTest.class, args)) return;
@@ -129,7 +131,7 @@ public final class StatusCodecSyncTest {
             cache.clear();
             teams.add(team);
             map.put(team.getTeamId(), team);
-            StatusCodec client = new StatusCodec(null, null, () -> {});
+            StatusCodec client = new StatusCodec(null, () -> {});
             PanelSyncManager clientManager = manager(true);
             client.registerSyncValues(clientManager, PLAYER);
             clientManager.initialize("wallet_client");
@@ -151,26 +153,20 @@ public final class StatusCodecSyncTest {
             }
             SimpleAssert.eq(0, queries[0], "client construction, getter and source refresh never query Teams");
 
-            StatusCodec server = new StatusCodec(null, null, () -> {});
+            StatusCodec server = new StatusCodec(null, () -> {});
             PanelSyncManager serverManager = manager(false);
             server.registerSyncValues(serverManager, PLAYER);
             BooleanSyncValue serverValue = serverManager.findSyncHandler("nekoV2TeamWallet", BooleanSyncValue.class);
-            GenericListSyncHandler<?> failureHandler = serverManager
-                .findSyncHandler("nekoV2TradeFailures", GenericListSyncHandler.class);
-            SimpleAssert.that(!failureHandler.isAllowC2S(), "server failure reasons are S2C only");
+            SyncHandler<?> rows = serverManager.findSyncHandler(StatusCodec.ROWS_CHANNEL, SyncHandler.class);
+            SimpleAssert.that(!rows.isAllowC2S(), "trade status rows are S2C only");
+            TradeKey key = new TradeKey(COOLDOWN_GROUP, 0);
             PacketBuffer forged = new PacketBuffer(Unpooled.buffer());
             try {
                 forged.writeVarIntToBuffer(1);
-                NetworkUtils.writeStringSafe(forged, StatusCodec.encodeTradeFailure(COOLDOWN_GROUP + ":0", "伪造原因"));
-                serverManager.receiveWidgetUpdate(
-                    PanelSyncManager.makeSyncKey("nekoV2TradeFailures", 0),
-                    false,
-                    ValueSyncHandler.SYNC_VALUE,
-                    forged);
-                SimpleAssert.eq(
-                    "",
-                    server.getTradeFailure(COOLDOWN_GROUP + ":0"),
-                    "C2S cannot replace an authoritative failure");
+                StatusCodec.writeRow(forged, key, failed("伪造原因"));
+                serverManager
+                    .receiveWidgetUpdate(PanelSyncManager.makeSyncKey(StatusCodec.ROWS_CHANNEL, 0), false, 0, forged);
+                SimpleAssert.eq(null, server.clientStatus(key), "C2S cannot replace an authoritative row");
             } finally {
                 forged.release();
             }
@@ -191,7 +187,7 @@ public final class StatusCodecSyncTest {
             receiveWallet(clientManager, serverValue);
             SimpleAssert.eq(NekoWalletMode.PERSONAL, gui.getWalletMode(), "server route changes refresh client mode");
             receiveWallet(clientManager, new BooleanSyncValue(() -> true));
-            StatusCodec reopened = new StatusCodec(null, null, () -> {});
+            StatusCodec reopened = new StatusCodec(null, () -> {});
             reopened.registerSyncValues(manager(true), PLAYER);
             SimpleAssert.that(!reopened.isTeamWallet(), "a new connection/view cannot inherit old wallet mode");
         } finally {
@@ -232,79 +228,62 @@ public final class StatusCodecSyncTest {
         // A null machine also makes an accidental client checkTrade call fail immediately.
         StatusCodec codec = new StatusCodec(
             null,
-            null,
             () -> { throw new AssertionError("Construction must not invoke the receive callback"); });
         PanelSyncManager manager = manager(true);
         codec.registerSyncValues(manager, PLAYER);
         manager.initialize("status_codec_client");
-        for (String channel : CHANNELS) {
-            StringSyncValue value = manager.findSyncHandler(channel, StringSyncValue.class);
-            SimpleAssert.eq("", value.getValue(), channel + " starts empty on the logical client");
-            SimpleAssert.that(!value.isAllowC2S(), channel + " remains S2C only");
-            value.updateCacheFromSource(true);
-            SimpleAssert.eq("", value.getValue(), channel + " client getter stays safe after construction");
-        }
-        GenericListSyncHandler<?> reasons = manager
-            .findSyncHandler("nekoV2TradeFailures", GenericListSyncHandler.class);
+        StringSyncValue favourites = manager.findSyncHandler(FAVOURITES_CHANNEL, StringSyncValue.class);
+        SimpleAssert.eq("", favourites.getValue(), "remote favourites start empty");
+        SimpleAssert.that(!favourites.isAllowC2S(), "favourite status remains S2C only");
+        favourites.updateCacheFromSource(true);
+        SyncHandler<?> rows = manager.findSyncHandler(StatusCodec.ROWS_CHANNEL, SyncHandler.class);
+        SimpleAssert.that(!rows.isAllowC2S(), "trade status rows start empty and read only");
+        rows.detectAndSendChanges(false);
         SimpleAssert.that(
-            !reasons.isAllowC2S() && reasons.getValue()
+            codec.takeClientChanges()
                 .isEmpty(),
-            "failure list starts empty and read only");
-        reasons.updateCacheFromSource(true);
-        SimpleAssert.that(
-            reasons.getValue()
-                .isEmpty(),
-            "failure source refresh never queries server stores on a client");
+            "a client tick never builds server rows");
         historyRemainsUnavailable();
     }
 
     private static void receivedFailureReasons() throws Exception {
-        StatusCodec codec = new StatusCodec(null, null, () -> {});
+        StatusCodec codec = new StatusCodec(null, () -> {});
         PanelSyncManager manager = manager(true);
         codec.registerSyncValues(manager, PLAYER);
         manager.initialize("failure_reasons");
-        String key = COOLDOWN_GROUP + ":0";
-        AtomicReference<List<String>> values = new AtomicReference<>(
-            Arrays.asList(StatusCodec.encodeTradeFailure(key, "缺少：猫猫币 × 3；材料[a:b,c] × 2（NBT 不符）")));
-        GenericListSyncHandler<String> source = GenericListSyncHandler.<String>builder()
-            .getter(values::get)
-            .serializer(NetworkUtils::writeStringSafe)
-            .deserializer(NetworkUtils::readStringSafe)
-            .immutableCopy()
-            .build();
-        receiveFailures(manager, source);
+        TradeKey key = new TradeKey(COOLDOWN_GROUP, 0);
+        String shortageDetail = "缺少：猫猫币 × 3；材料[a:b,c] × 2（NBT 不符）";
+        receiveRows(manager, Collections.singletonMap(key, failed(shortageDetail)));
         SimpleAssert.eq(
-            "缺少：猫猫币 × 3；材料[a:b,c] × 2（NBT 不符）",
-            codec.getTradeFailure(key),
-            "actual MUI2 list packet preserves UTF8 and punctuation");
-        values.set(Arrays.asList(StatusCodec.encodeTradeFailure(key, "输出总线已满")));
-        SimpleAssert.that(source.updateCacheFromSource(false), "a same-size changed list invalidates the MUI2 cache");
-        receiveFailures(manager, source);
-        SimpleAssert.eq("输出总线已满", codec.getTradeFailure(key), "updated reason replaces old material shortage");
-        List<String> large = new java.util.ArrayList<>();
-        String longReason = String.join("", java.util.Collections.nCopies(180, "缺料"));
-        for (int i = 0; i < 100; i++) large.add(StatusCodec.encodeTradeFailure(COOLDOWN_GROUP + ":" + i, longReason));
-        values.set(large);
-        source.updateCacheFromSource(false);
-        receiveFailures(manager, source);
+            shortageDetail,
+            codec.clientStatus(key)
+                .failure(),
+            "rows preserve UTF8 and punctuation");
+        receiveRows(manager, Collections.singletonMap(key, failed("输出总线已满")));
+        SimpleAssert.eq(
+            "输出总线已满",
+            codec.clientStatus(key)
+                .failure(),
+            "a changed reason replaces the previous one");
+        String longReason = String.join("", Collections.nCopies(180, "缺料"));
+        for (int start = 0; start < 100; start += 25) {
+            Map<TradeKey, TradeStatus> rows = new LinkedHashMap<>();
+            for (int i = start; i < start + 25; i++) rows.put(new TradeKey(COOLDOWN_GROUP, i), failed(longReason));
+            receiveRows(manager, rows);
+        }
         SimpleAssert.eq(
             longReason,
-            codec.getTradeFailure(COOLDOWN_GROUP + ":99"),
-            "reason list beyond 32 KiB retains its last entry");
-        values.set(
-            Arrays.asList(
-                StatusCodec.encodeTradeFailure(key, String.join("", java.util.Collections.nCopies(2000, "长")))));
-        source.updateCacheFromSource(false);
-        receiveFailures(manager, source);
+            codec.clientStatus(new TradeKey(COOLDOWN_GROUP, 99))
+                .failure(),
+            "reason data beyond 32 KiB retains the last row across batches");
+        receiveRows(manager, Collections.singletonMap(key, failed(String.join("", Collections.nCopies(2000, "长")))));
         SimpleAssert.that(
-            codec.getTradeFailure(key)
+            codec.clientStatus(key)
+                .failure()
                 .length() <= 1024,
             "each reason has a bounded length");
-        values.set(java.util.Collections.emptyList());
-        source.updateCacheFromSource(false);
-        receiveFailures(manager, source);
-        SimpleAssert.eq("", codec.getTradeFailure(key), "success/empty snapshot clears the stale failure");
-
+        receiveRows(manager, Collections.singletonMap(key, null));
+        SimpleAssert.eq(null, codec.clientStatus(key), "row removal clears the stale result");
         Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
         Field unsafeField = unsafeClass.getDeclaredField("theUnsafe");
         unsafeField.setAccessible(true);
@@ -324,17 +303,19 @@ public final class StatusCodecSyncTest {
         historyRemainsUnavailable();
     }
 
-    private static void receiveFailures(PanelSyncManager manager, GenericListSyncHandler<String> source)
-        throws Exception {
+    private static TradeStatus failed(String reason) {
+        return new TradeStatus(false, 0, false, 1, 0, reason);
+    }
+
+    static void receiveRows(PanelSyncManager manager, Map<TradeKey, TradeStatus> rows) throws Exception {
         PacketBuffer packet = new PacketBuffer(Unpooled.buffer());
         try {
-            source.write(packet);
-            manager.receiveWidgetUpdate(
-                PanelSyncManager.makeSyncKey("nekoV2TradeFailures", 0),
-                false,
-                ValueSyncHandler.SYNC_VALUE,
-                packet);
-            SimpleAssert.that(!packet.isReadable(), "failure list consumes its actual MUI2 packet");
+            packet.writeVarIntToBuffer(rows.size());
+            for (Map.Entry<TradeKey, TradeStatus> row : rows.entrySet()) {
+                StatusCodec.writeRow(packet, row.getKey(), row.getValue());
+            }
+            manager.receiveWidgetUpdate(PanelSyncManager.makeSyncKey(StatusCodec.ROWS_CHANNEL, 0), false, 0, packet);
+            SimpleAssert.that(!packet.isReadable(), "the MUI2 path consumes the full row delta");
         } finally {
             packet.release();
         }
@@ -350,7 +331,7 @@ public final class StatusCodecSyncTest {
         };
         NekoTradeDatabase.INSTANCE.addTradeGroup(guarded);
         try {
-            new StatusCodec(null, null, () -> {}).registerSyncValues(manager(true), PLAYER);
+            new StatusCodec(null, () -> {}).registerSyncValues(manager(true), PLAYER);
         } finally {
             NekoTradeDatabase.INSTANCE.removeTradeGroup(guarded.getId());
         }
@@ -358,42 +339,33 @@ public final class StatusCodecSyncTest {
 
     private static void receivedStatuses() throws Exception {
         int[] refreshes = { 0 };
-        StatusCodec codec = new StatusCodec(null, null, () -> refreshes[0]++);
+        StatusCodec codec = new StatusCodec(null, () -> refreshes[0]++);
         PanelSyncManager manager = manager(true);
         codec.registerSyncValues(manager, PLAYER);
         manager.initialize("status_codec_receive");
-        String cooldownKey = COOLDOWN_GROUP + ":0";
-        String oneTimeKey = ONE_TIME_GROUP + ":0";
+        TradeKey cooldownKey = new TradeKey(COOLDOWN_GROUP, 0);
+        TradeKey oneTimeKey = new TradeKey(ONE_TIME_GROUP, 0);
+        TradeStatus cooldown = new TradeStatus(true, 37, false, 4, 2, "冷却");
+        TradeStatus redeemed = new TradeStatus(false, -1, false, 1, 0, "已兑换");
+        Map<TradeKey, TradeStatus> initial = new LinkedHashMap<>();
+        initial.put(cooldownKey, cooldown);
+        initial.put(oneTimeKey, redeemed);
+        receiveRows(manager, initial);
+        SimpleAssert.eq(cooldown, codec.clientStatus(cooldownKey), "BQ, cooldown and team data round-trip together");
+        SimpleAssert.eq(redeemed, codec.clientStatus(oneTimeKey), "one-time redemption survives decoding");
+        SimpleAssert.eq(initial, codec.takeClientChanges(), "one registration produces two changed rows");
+        receiveRows(manager, initial);
+        SimpleAssert.that(
+            codec.takeClientChanges()
+                .isEmpty(),
+            "replayed identical rows do not invalidate the host");
 
-        receive(manager, CHANNELS[0], COOLDOWN_GROUP + ":true," + ONE_TIME_GROUP + ":false");
-        receive(manager, CHANNELS[1], cooldownKey + ":37," + oneTimeKey + ":-1");
-        receive(manager, CHANNELS[2], cooldownKey + ":false," + oneTimeKey + ":true");
-        receive(manager, CHANNELS[3], COOLDOWN_GROUP + ":4:2");
-        SimpleAssert.that(codec.getBqLocked(COOLDOWN_GROUP), "S2C BQ lock reaches the client cache");
-        SimpleAssert.that(!codec.getBqLocked(ONE_TIME_GROUP), "S2C unlocked group stays unlocked");
-        SimpleAssert.eq(37L, codec.getCooldownRemaining(cooldownKey), "S2C positive cooldown survives decoding");
-        SimpleAssert.that(codec.isOneTimeRedeemed(oneTimeKey), "S2C one-time redemption marker survives decoding");
-        SimpleAssert.eq(0L, codec.getCooldownRemaining(oneTimeKey), "one-time marker is not a countdown");
-        SimpleAssert.eq(Boolean.FALSE, codec.getTradeable(cooldownKey), "S2C unavailable trade reaches the client");
-        SimpleAssert.eq(Boolean.TRUE, codec.getTradeable(oneTimeKey), "S2C available trade reaches the client");
-        long[] team = codec.getTeamScale(COOLDOWN_GROUP);
-        SimpleAssert
-            .that(team != null && team[0] == 4L && team[1] == 2L, "S2C team capacity and usage survive decoding");
-        SimpleAssert.eq(4, refreshes[0], "each changed status channel invalidates the host immediately");
-        receive(manager, CHANNELS[0], COOLDOWN_GROUP + ":true," + ONE_TIME_GROUP + ":false");
-        receive(manager, CHANNELS[1], cooldownKey + ":37," + oneTimeKey + ":-1");
-        receive(manager, CHANNELS[2], cooldownKey + ":false," + oneTimeKey + ":true");
-        receive(manager, CHANNELS[3], COOLDOWN_GROUP + ":4:2");
-        SimpleAssert.eq(4, refreshes[0], "replayed identical S2C snapshots do not invalidate the host");
-
-        for (String channel : CHANNELS) receive(manager, channel, "");
-        SimpleAssert.that(!codec.getBqLocked(COOLDOWN_GROUP), "empty update clears old BQ locks");
-        SimpleAssert.eq(0L, codec.getCooldownRemaining(cooldownKey), "empty update clears old cooldowns");
-        SimpleAssert.that(!codec.isOneTimeRedeemed(oneTimeKey), "empty update clears old one-time markers");
-        SimpleAssert.eq(null, codec.getTradeable(cooldownKey), "empty update clears old tradeable states");
-        SimpleAssert.eq(null, codec.getTeamScale(COOLDOWN_GROUP), "empty update clears old team usage");
-        SimpleAssert
-            .eq(8, refreshes[0], "clearing changed status channels invalidates the host; empty favourites do not");
+        Map<TradeKey, TradeStatus> removal = Collections.singletonMap(cooldownKey, null);
+        receiveRows(manager, removal);
+        SimpleAssert.eq(null, codec.clientStatus(cooldownKey), "the tombstone clears only the specified row");
+        SimpleAssert.eq(redeemed, codec.clientStatus(oneTimeKey), "a separate row still has its prior state");
+        SimpleAssert.eq(removal, codec.takeClientChanges(), "only the removed row is queued");
+        SimpleAssert.eq(0, refreshes[0], "changed rows never request a catalogue refresh");
         historyRemainsUnavailable();
     }
 
@@ -439,7 +411,7 @@ public final class StatusCodecSyncTest {
         NekoPageSource[] sources = { NekoPageSource.DEFAULT, NekoPageSource.CUSTOM, NekoPageSource.PRESET };
         NekoPageEntry[] entries = new NekoPageEntry[3];
         UUID[] groups = { UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID() };
-        StatusCodec codec = new StatusCodec(null, null, () -> {});
+        StatusCodec codec = new StatusCodec(null, () -> {});
         PanelSyncManager manager = manager(true);
         codec.registerSyncValues(manager, PLAYER);
         manager.initialize("favourite_receive");
@@ -574,7 +546,7 @@ public final class StatusCodecSyncTest {
             build.setAccessible(true);
             String snapshot = (String) build.invoke(codec, PLAYER);
             NekoFavouritesTracker.INSTANCE.clearAll();
-            receive(manager, CHANNELS[4], snapshot);
+            receive(manager, FAVOURITES_CHANNEL, snapshot);
             for (int i = 0; i < groups.length; i++) {
                 scope.setInt(tradePage, i);
                 Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades = panel.formatTrades();
@@ -593,7 +565,7 @@ public final class StatusCodecSyncTest {
                         .get(NekoTradeCategory.FAVOURITES)
                         .size(),
                     "Held Ctrl refresh never duplicates old favourites");
-                receive(manager, CHANNELS[4], "");
+                receive(manager, FAVOURITES_CHANNEL, "");
                 incremental.invoke(panel, trades);
                 SimpleAssert.eq(
                     0,
@@ -601,7 +573,7 @@ public final class StatusCodecSyncTest {
                         .get(NekoTradeCategory.FAVOURITES)
                         .size(),
                     "Unfavourite applies on the first incremental refresh");
-                receive(manager, CHANNELS[4], snapshot);
+                receive(manager, FAVOURITES_CHANNEL, snapshot);
                 incremental.invoke(panel, trades);
                 SimpleAssert.eq(
                     1,
@@ -635,8 +607,8 @@ public final class StatusCodecSyncTest {
 
     private static void serverStillRequiresHistory() {
         try {
-            new StatusCodec(null, null, () -> {}).registerSyncValues(manager(false), PLAYER);
-            throw new AssertionError("Server construction must retain the history readiness check");
+            new StatusCodec(null, () -> {}).buildRows(PLAYER);
+            throw new AssertionError("Server polling must retain the history readiness check");
         } catch (IllegalStateException expected) {
             SimpleAssert.eq(
                 "History storage is not ready for this world",
