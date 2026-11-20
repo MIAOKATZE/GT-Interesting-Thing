@@ -442,7 +442,7 @@ public final class TradePresetProbe {
             .get();
         checks.put(
             "imported_preset_is_custom_with_synced_source",
-            customPage <= -500000 && !importedPage.isPresetBuiltin()
+            customPage <= -600000 && !importedPage.isPresetBuiltin()
                 && importedPage.getSourcePresetId()
                     .equals("imported-copy")
                 && !importedPage.getSourcePresetName()
@@ -685,7 +685,7 @@ public final class TradePresetProbe {
             .fromJson(read(root.resolve(TradePresetLayout.tabPath(customPage))), NekoTradeConfig.TabFileData.class);
         checks.put(
             "legacy_custom_namespace_migrates_away_from_base_and_clears_wrong_default_flags",
-            customPage <= -500000 && installed.getTrades()
+            customPage <= -600000 && installed.getTrades()
                 .get(0)
                 .getId()
                 .equals("MIAO900123456789")

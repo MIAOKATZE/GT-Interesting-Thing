@@ -1,0 +1,635 @@
+{
+  "schemaVersion": 1,
+  "id": "gtit-neko-exchange",
+  "name": "猫猫币兑换（改进版）",
+  "description": "电路到猫猫币的整档兑换：ULV–LuV 每级单件与整组两档，ZPM 直换闪烁猫猫币，另含两级猫猫币互兑。共 21 条、1 个标签页。",
+  "icon": {
+    "item": "gtit:neko_coin",
+    "meta": 0,
+    "nbtBase64": ""
+  },
+  "mutuallyExclusiveIds": [],
+  "tabs": [
+    {
+      "page": {
+        "id": 1,
+        "name": "猫猫币兑换",
+        "iconItem": "gtit:neko_coin",
+        "iconMeta": 0,
+        "iconNbt": "",
+        "isDefault": false
+      },
+      "trades": [
+        {
+          "id": "gtit-neko-exchange-ulv-1x",
+          "tabId": 1,
+          "orderId": 0,
+          "fromItems": [
+            {
+              "item": "dreamcraft:CircuitULV",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:neko_coin",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 0,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-ulv-64x",
+          "tabId": 1,
+          "orderId": 1,
+          "fromItems": [
+            {
+              "item": "dreamcraft:CircuitULV",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:neko_coin",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 8,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-lv-1x",
+          "tabId": 1,
+          "orderId": 2,
+          "fromItems": [
+            {
+              "item": "dreamcraft:CircuitLV",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:neko_coin",
+              "meta": 0,
+              "amount": 2,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 0,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-lv-64x",
+          "tabId": 1,
+          "orderId": 3,
+          "fromItems": [
+            {
+              "item": "dreamcraft:CircuitLV",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:neko_coin",
+              "meta": 0,
+              "amount": 128,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 10,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-mv-1x",
+          "tabId": 1,
+          "orderId": 4,
+          "fromItems": [
+            {
+              "item": "dreamcraft:CircuitMV",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:neko_coin",
+              "meta": 0,
+              "amount": 4,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 0,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-mv-64x",
+          "tabId": 1,
+          "orderId": 5,
+          "fromItems": [
+            {
+              "item": "dreamcraft:CircuitMV",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:neko_coin",
+              "meta": 0,
+              "amount": 256,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 100,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-hv-1x",
+          "tabId": 1,
+          "orderId": 6,
+          "fromItems": [
+            {
+              "item": "dreamcraft:CircuitHV",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:neko_coin",
+              "meta": 0,
+              "amount": 8,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 0,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-hv-64x",
+          "tabId": 1,
+          "orderId": 7,
+          "fromItems": [
+            {
+              "item": "dreamcraft:CircuitHV",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:neko_coin",
+              "meta": 0,
+              "amount": 512,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 1000,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-ev-1x",
+          "tabId": 1,
+          "orderId": 8,
+          "fromItems": [
+            {
+              "item": "dreamcraft:CircuitEV",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:neko_coin",
+              "meta": 0,
+              "amount": 16,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 0,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-ev-64x",
+          "tabId": 1,
+          "orderId": 9,
+          "fromItems": [
+            {
+              "item": "dreamcraft:CircuitEV",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:neko_coin",
+              "meta": 0,
+              "amount": 1024,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 10000,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-iv-1x",
+          "tabId": 1,
+          "orderId": 10,
+          "fromItems": [
+            {
+              "item": "dreamcraft:CircuitIV",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:neko_coin",
+              "meta": 0,
+              "amount": 32,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 0,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-iv-64x",
+          "tabId": 1,
+          "orderId": 11,
+          "fromItems": [
+            {
+              "item": "dreamcraft:CircuitIV",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:neko_coin",
+              "meta": 0,
+              "amount": 2048,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 10000,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-luv-1x",
+          "tabId": 1,
+          "orderId": 12,
+          "fromItems": [
+            {
+              "item": "dreamcraft:CircuitLuV",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:neko_coin",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 0,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-luv-64x",
+          "tabId": 1,
+          "orderId": 13,
+          "fromItems": [
+            {
+              "item": "dreamcraft:CircuitLuV",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:neko_coin",
+              "meta": 0,
+              "amount": 4096,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 10000,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-zpm-1x",
+          "tabId": 1,
+          "orderId": 14,
+          "fromItems": [
+            {
+              "item": "dreamcraft:CircuitZPM",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:shimmering_neko_coin",
+              "meta": 0,
+              "amount": 2,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 0,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-zpm-64x",
+          "tabId": 1,
+          "orderId": 15,
+          "fromItems": [
+            {
+              "item": "dreamcraft:CircuitZPM",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:shimmering_neko_coin",
+              "meta": 0,
+              "amount": 128,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 10000,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-shimmering-to-coin-64",
+          "tabId": 1,
+          "orderId": 16,
+          "fromItems": [
+            {
+              "item": "gtit:shimmering_neko_coin",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:neko_coin",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 0,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-shimmering-to-coin-4096",
+          "tabId": 1,
+          "orderId": 17,
+          "fromItems": [
+            {
+              "item": "gtit:shimmering_neko_coin",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:neko_coin",
+              "meta": 0,
+              "amount": 4096,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 0,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-coin-to-shimmering-1",
+          "tabId": 1,
+          "orderId": 18,
+          "fromItems": [
+            {
+              "item": "gtit:neko_coin",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:shimmering_neko_coin",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 0,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-coin-to-shimmering-8",
+          "tabId": 1,
+          "orderId": 19,
+          "fromItems": [
+            {
+              "item": "gtit:neko_coin",
+              "meta": 0,
+              "amount": 512,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:shimmering_neko_coin",
+              "meta": 0,
+              "amount": 8,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 0,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-neko-exchange-coin-to-shimmering-64",
+          "tabId": 1,
+          "orderId": 20,
+          "fromItems": [
+            {
+              "item": "gtit:neko_coin",
+              "meta": 0,
+              "amount": 4096,
+              "nbtBase64": null
+            }
+          ],
+          "toItems": [
+            {
+              "item": "gtit:shimmering_neko_coin",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 0,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "dreamcraft",
+            "gtit"
+          ]
+        }
+      ]
+    }
+  ]
+}
