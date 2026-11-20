@@ -64,8 +64,8 @@ public final class GtmbProjectorCompatibilityTest {
         check(
             JarAssetManifest.readJsonResource("assets/gtit/bqtrades/base_trades.json")
                 .getAsJsonArray("trades")
-                .size() == 92,
-            "main default group retains all 92 entries");
+                .size() == 95,
+            "main default group contains 95 entries after the circuit exchange update");
         check(
             !JarAssetManifest.readJsonResource("assets/gtit/bqquests/index.json")
                 .toString()
