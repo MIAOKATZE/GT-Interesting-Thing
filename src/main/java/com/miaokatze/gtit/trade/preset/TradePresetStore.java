@@ -39,7 +39,7 @@ import com.miaokatze.gtit.trade.NekoTradeJson;
 final class TradePresetStore {
 
     static final List<String> BUILTIN_IDS = Arrays
-        .asList("gtit-ae-basic", "gtit-ae-advanced", "gtit-base-decoration", "gtit-base");
+        .asList("gtit-ae-basic", "gtit-ae-advanced", "gtit-base-decoration", "gtit-base", "gtit-neko-exchange");
     static final Gson GSON = new GsonBuilder().setPrettyPrinting()
         .serializeNulls()
         .disableHtmlEscaping()
@@ -812,7 +812,7 @@ final class TradePresetStore {
                     trade.setDefaultEntry(false);
                     trade.setPresetBuiltin(false);
                 }
-                if (owned.tabId > -500000 && TradePresetLayout.isManagedPage(owned.tabId)) {
+                if (TradePresetLayout.isBuiltinBand(owned.tabId)) {
                     int oldId = owned.tabId;
                     int newId = TradePresetLayout.customPageId(owned.presetId + ":" + oldId, occupied);
                     occupied.add(newId);

@@ -17,12 +17,19 @@ public final class TradePresetLayout {
     public static final String PAGES_PATH = "config/gtit/trade/preset_pages.json";
     public static final String TRADES_PATH = "config/gtit/trade/preset_tabs";
     private static final List<String> IDS = Arrays
-        .asList("gtit-ae-basic", "gtit-ae-advanced", "gtit-base-decoration", "gtit-base");
+        .asList("gtit-ae-basic", "gtit-ae-advanced", "gtit-base-decoration", "gtit-base", "gtit-neko-exchange");
+    // Custom preset pages start below the last built-in band so a new built-in series never reclaims them.
+    private static final int CUSTOM_PAGE_BASE = -(IDS.size() + 1) * 100000;
 
     private TradePresetLayout() {}
 
     public static boolean isManagedPage(int id) {
         return id <= -100001;
+    }
+
+    /** True for the negative namespace reserved for built-in groups; custom presets must be renumbered out of it. */
+    public static boolean isBuiltinBand(int id) {
+        return id <= -100001 && id > CUSTOM_PAGE_BASE;
     }
 
     static int pageId(String presetId, int sourceId) {
@@ -33,7 +40,7 @@ public final class TradePresetLayout {
         return -(series * 100000 + sourceId);
     }
 
-    /** MIAO100/200/300/400 built-in and MIAO900 custom-preset series, independent of page/order allocation. */
+    /** MIAO100/200/300/400/500 built-in and MIAO900 custom-preset series, independent of page/order allocation. */
     static String tradeId(String presetId, String sourceId) {
         int series = IDS.indexOf(presetId) + 1;
         try {
@@ -47,14 +54,17 @@ public final class TradePresetLayout {
     }
 
     static int customPageId(String key, Set<Integer> occupied) {
-        // Built-in ranges end at -499999. Persist the chosen slot so catalog ordering never changes identity.
-        int candidate = -500000 - Math.floorMod(key.hashCode(), Integer.MAX_VALUE - 500000);
-        while (occupied.contains(candidate)) candidate = candidate == Integer.MIN_VALUE ? -500000 : candidate - 1;
+        // Built-in ranges end one band above CUSTOM_PAGE_BASE. Persist the chosen slot so catalog ordering
+        // never changes identity.
+        int range = Integer.MAX_VALUE - Math.abs(CUSTOM_PAGE_BASE);
+        int candidate = CUSTOM_PAGE_BASE - Math.floorMod(key.hashCode(), range);
+        while (occupied.contains(candidate))
+            candidate = candidate == Integer.MIN_VALUE ? CUSTOM_PAGE_BASE : candidate - 1;
         return candidate;
     }
 
     public static String builtinId(int pageId) {
-        if (pageId > -100001 || pageId <= -500000) return null;
+        if (pageId > -100001 || pageId <= CUSTOM_PAGE_BASE) return null;
         int series = (-pageId) / 100000;
         return series >= 1 && series <= IDS.size() && (-pageId) % 100000 != 0 ? IDS.get(series - 1) : null;
     }
