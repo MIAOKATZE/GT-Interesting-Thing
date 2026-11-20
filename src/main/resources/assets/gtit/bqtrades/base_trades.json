@@ -552,41 +552,46 @@
       "bqQuestId": ""
     },
     {
-      "id": "MIAO23",
+      "id": "MIAO95",
       "tabId": 1,
       "orderId": 22,
       "currency": null,
       "fromItems": [
         {
-          "item": "dreamcraft:CircuitLV",
+          "item": null,
           "meta": 0,
           "amount": 8,
-          "nbtBase64": null
+          "nbtBase64": null,
+          "oreDict": "circuitPrimitive"
         }
       ],
       "toItems": [
         {
           "item": "gtit:neko_coin",
           "meta": 0,
-          "amount": 4,
+          "amount": 8,
           "nbtBase64": null
         }
       ],
       "cooldown": 14400,
       "maxTrades": -1,
-      "bqQuestId": ""
+      "bqQuestId": "",
+      "requiresMods": [
+        "gregtech"
+      ]
     },
     {
-      "id": "MIAO24",
+      "id": "MIAO23",
       "tabId": 1,
       "orderId": 23,
       "currency": null,
       "fromItems": [
         {
-          "item": "dreamcraft:CircuitMV",
+          "item": null,
           "meta": 0,
           "amount": 8,
-          "nbtBase64": null
+          "nbtBase64": null,
+          "oreDict": "circuitBasic"
         }
       ],
       "toItems": [
@@ -599,19 +604,23 @@
       ],
       "cooldown": 14400,
       "maxTrades": -1,
-      "bqQuestId": ""
+      "bqQuestId": "",
+      "requiresMods": [
+        "gregtech"
+      ]
     },
     {
-      "id": "MIAO25",
+      "id": "MIAO24",
       "tabId": 1,
       "orderId": 24,
       "currency": null,
       "fromItems": [
         {
-          "item": "dreamcraft:CircuitHV",
+          "item": null,
           "meta": 0,
           "amount": 8,
-          "nbtBase64": null
+          "nbtBase64": null,
+          "oreDict": "circuitGood"
         }
       ],
       "toItems": [
@@ -624,7 +633,97 @@
       ],
       "cooldown": 14400,
       "maxTrades": -1,
-      "bqQuestId": ""
+      "bqQuestId": "",
+      "requiresMods": [
+        "gregtech"
+      ]
+    },
+    {
+      "id": "MIAO25",
+      "tabId": 1,
+      "orderId": 25,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": null,
+          "meta": 0,
+          "amount": 8,
+          "nbtBase64": null,
+          "oreDict": "circuitAdvanced"
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 32,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 14400,
+      "maxTrades": -1,
+      "bqQuestId": "",
+      "requiresMods": [
+        "gregtech"
+      ]
+    },
+    {
+      "id": "MIAO96",
+      "tabId": 1,
+      "orderId": 26,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": null,
+          "meta": 0,
+          "amount": 8,
+          "nbtBase64": null,
+          "oreDict": "circuitData"
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 40,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 14400,
+      "maxTrades": -1,
+      "bqQuestId": "",
+      "requiresMods": [
+        "gregtech"
+      ]
+    },
+    {
+      "id": "MIAO97",
+      "tabId": 1,
+      "orderId": 27,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": null,
+          "meta": 0,
+          "amount": 8,
+          "nbtBase64": null,
+          "oreDict": "circuitElite"
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 48,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 14400,
+      "maxTrades": -1,
+      "bqQuestId": "",
+      "requiresMods": [
+        "gregtech"
+      ]
     },
     {
       "id": "MIAO26",
