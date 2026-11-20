@@ -38,12 +38,8 @@ import com.miaokatze.gtit.trade.NekoTradeJson;
 /** Server-side filesystem model. No player, network or client filesystem access lives here. */
 final class TradePresetStore {
 
-    static final List<String> BUILTIN_IDS = Arrays.asList(
-        "gtit-ae-basic",
-        "gtit-ae-advanced",
-        "gtit-base-decoration",
-        "gtit-base",
-        TradePresetLayout.NEKO_EXCHANGE_ID);
+    static final List<String> BUILTIN_IDS = Arrays
+        .asList("gtit-ae-basic", "gtit-ae-advanced", "gtit-base-decoration", "gtit-base");
     static final Gson GSON = new GsonBuilder().setPrettyPrinting()
         .serializeNulls()
         .disableHtmlEscaping()
@@ -630,7 +626,7 @@ final class TradePresetStore {
     }
 
     static void validId(String id) {
-        if (!BUILTIN_IDS.contains(id) && (id == null || !id.matches("[a-z0-9_-]{1,64}"))) {
+        if (id == null || !id.matches("[a-z0-9_-]{1,64}")) {
             throw new IllegalArgumentException("预设 id 仅允许 1–64 个小写字母、数字、下划线及连字符");
         }
     }
@@ -816,7 +812,7 @@ final class TradePresetStore {
                     trade.setDefaultEntry(false);
                     trade.setPresetBuiltin(false);
                 }
-                if (TradePresetLayout.wasLegacyManagedBand(owned.tabId)) {
+                if (owned.tabId > -500000 && TradePresetLayout.isManagedPage(owned.tabId)) {
                     int oldId = owned.tabId;
                     int newId = TradePresetLayout.customPageId(owned.presetId + ":" + oldId, occupied);
                     occupied.add(newId);
@@ -868,7 +864,6 @@ final class TradePresetStore {
         if (Files.exists(files.checked(TradePresetLayout.PAGES_PATH)) || customs.size() > 0)
             changes.put(TradePresetLayout.PAGES_PATH, bytes(managed));
         for (String id : BUILTIN_IDS) {
-            if (!TradePresetLayout.wasLegacyBuiltin(id)) continue;
             String relative = "MiaoTrade/" + id + ".json";
             Path path = files.checked(relative);
             if (!Files.exists(path)) continue;

@@ -49,9 +49,6 @@ public final class TradePageRefreshTest {
                 == 2,
             "持久化的默认预设稳定 ID 在重排后恢复到原分类");
         check(
-            TradePage.resolveSelectedIndex(categories(-1, -10007, -559029), NekoTradeCategory.ofTabId(-100007), 0) == 1,
-            "旧内置预设浏览位置恢复到新页");
-        check(
             TradePage.resolveSelectedIndex(categories(-1, 27), NekoTradeCategory.ofTabId(90), 0) == 0,
             "持久化分类已删除时安全恢复到该范围的收藏");
         int pageSize = TradePage.PAGE_SIZE;

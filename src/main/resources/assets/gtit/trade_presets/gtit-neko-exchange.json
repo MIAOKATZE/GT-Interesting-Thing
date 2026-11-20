@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "gtit.neko-exchange",
+  "id": "gtit-neko-exchange",
   "name": "猫猫币兑换（改进版）",
   "description": "电路到猫猫币的整档兑换：ULV–LuV 每级单件与整组两档，ZPM 直换闪烁猫猫币，另含两级猫猫币互兑。共 21 条、1 个标签页。",
   "icon": {

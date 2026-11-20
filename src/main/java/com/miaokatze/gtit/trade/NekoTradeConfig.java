@@ -459,11 +459,6 @@ public class NekoTradeConfig {
                 String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
                 OrderWatermarkData data = GSON.fromJson(json, OrderWatermarkData.class);
                 if (data != null && data.getWatermarks() != null) {
-                    Map<Integer, Integer> canonical = new LinkedHashMap<>();
-                    data.getWatermarks()
-                        .forEach(
-                            (tab, order) -> canonical.merge(TradePresetLayout.canonicalPageId(tab), order, Math::max));
-                    data.setWatermarks(canonical);
                     return data;
                 }
                 throw new IllegalStateException("Invalid existing order watermark");

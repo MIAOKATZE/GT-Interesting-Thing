@@ -228,13 +228,7 @@ public final class TradePresetRuntimeTest {
             "the next sync has no obsolete rows after clearing the registry");
         com.miaokatze.gtit.gui.vm.TradeWidgetEditModeTest.run();
         com.miaokatze.gtit.trade.v2.NekoHistoryManager.INSTANCE.unloadAll();
-        Path watermarks = Paths.get("config/gtit/trade/order_watermark.json");
-        Files.write(
-            watermarks,
-            "{\"watermarks\":{\"-100007\":73,\"-10007\":12,\"-559029\":29}}".getBytes(StandardCharsets.UTF_8));
-        check(NekoTradeConfig.allocateOrderId(-10007, 8) == 74, "old built-in page order watermark follows its new ID");
-        check(NekoTradeConfig.allocateOrderId(-559029, 0) == 30, "existing custom page retains its order watermark");
-        System.out.println("TradePresetRuntimeTest: 24 checks passed");
+        System.out.println("TradePresetRuntimeTest: 22 checks passed");
     }
 
     private static NekoTradeEntry entry(String id, int page, boolean defaults) {
