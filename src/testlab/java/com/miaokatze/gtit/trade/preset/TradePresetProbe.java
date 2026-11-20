@@ -370,13 +370,14 @@ public final class TradePresetProbe {
                         trade -> trade.getId()
                             .startsWith("MIAO400")));
         store.select(store.revision(), Arrays.asList("gtit-ae-basic"), ignored -> {});
+        int aePageId = TradePresetLayout.pageId("gtit-ae-basic", 7);
         List<NekoTradeEntry> defaults = DefaultTradeSources.trades(root);
         DefaultTradeSources.saveTrades(root, defaults);
         checks.put(
             "unchanged_defaults_do_not_materialize",
             !Files.exists(root.resolve("config/gtit/trade/default_overrides/gtit-base.json"))
                 && !Files.exists(root.resolve("config/gtit/trade/default_overrides/gtit-ae-basic.json"))
-                && !Files.exists(root.resolve(TradePresetLayout.tabPath(-100007))));
+                && !Files.exists(root.resolve(TradePresetLayout.tabPath(aePageId))));
         NekoTradeEntry changed = defaults.stream()
             .filter(
                 trade -> TradePresetLayout.builtinId(trade.getTabId())
@@ -405,7 +406,7 @@ public final class TradePresetProbe {
                         .equals(changedId)));
         List<NekoPageEntry> pages = DefaultTradeSources.pages(root);
         pages.stream()
-            .filter(page -> page.getId() == -100007)
+            .filter(page -> page.getId() == aePageId)
             .findFirst()
             .get()
             .setName("Edited default tab");
@@ -415,7 +416,7 @@ public final class TradePresetProbe {
             DefaultTradeSources.pages(root)
                 .stream()
                 .anyMatch(
-                    page -> page.getId() == -100007 && page.getName()
+                    page -> page.getId() == aePageId && page.getName()
                         .equals("Edited default tab")
                         && page.getSourcePresetId()
                             .equals("gtit-ae-basic")
@@ -427,11 +428,33 @@ public final class TradePresetProbe {
             "migration_restart_preserves_new_overrides",
             Arrays.equals(overrideBefore, Files.readAllBytes(override))
                 && Arrays.equals(importedBefore, Files.readAllBytes(imported)));
+        byte[] legacyOverride = new String(overrideBefore, StandardCharsets.UTF_8)
+            .replace(Integer.toString(aePageId), "-100007")
+            .getBytes(StandardCharsets.UTF_8);
+        Files.write(override, legacyOverride);
+        new TradePresetStore(root);
+        checks.put(
+            "v3_storage_reads_legacy_override_at_new_page_without_rewriting",
+            DefaultTradeSources.pages(root)
+                .stream()
+                .anyMatch(
+                    page -> page.getId() == aePageId && page.getName()
+                        .equals("Edited default tab"))
+                && DefaultTradeSources.trades(root)
+                    .stream()
+                    .noneMatch(
+                        trade -> trade.getTabId() == -100007 || trade.getId()
+                            .equals(changedId))
+                && Arrays.equals(legacyOverride, Files.readAllBytes(override)));
+        checks.put(
+            "old_custom_page_band_keeps_its_identity",
+            TradePresetLayout.canonicalPageId(-559029) == -559029 && TradePresetLayout.builtinId(-559029) == null
+                && TradePresetLayout.customPageId("pres-107800:1", java.util.Collections.emptySet()) == -559029);
         store.select(store.revision(), Arrays.asList("gtit-base-decoration"), ignored -> {});
         store.select(store.revision(), Arrays.asList("gtit-ae-basic"), ignored -> {});
         checks.put(
             "selection_changes_preserve_other_group_edits",
-            Arrays.equals(overrideBefore, Files.readAllBytes(override)));
+            Arrays.equals(legacyOverride, Files.readAllBytes(override)));
         store.select(store.revision(), Arrays.asList("imported-copy", "gtit-ae-basic"), ignored -> {});
         int customPage = store.installedTabs("imported-copy")
             .get(0);
@@ -442,7 +465,7 @@ public final class TradePresetProbe {
             .get();
         checks.put(
             "imported_preset_is_custom_with_synced_source",
-            customPage <= -600000 && !importedPage.isPresetBuiltin()
+            customPage <= -500000 && !importedPage.isPresetBuiltin()
                 && importedPage.getSourcePresetId()
                     .equals("imported-copy")
                 && !importedPage.getSourcePresetName()
@@ -471,7 +494,7 @@ public final class TradePresetProbe {
             .get()
             .setCooldown(555);
         beforeUpdate.stream()
-            .filter(trade -> trade.getTabId() == -100007)
+            .filter(trade -> trade.getTabId() == aePageId)
             .findFirst()
             .get()
             .setCooldown(556);
@@ -497,16 +520,16 @@ public final class TradePresetProbe {
             "ordinary_custom_trade_byte_content_preserved_after_reset",
             read(userPath).equals(TradePresetStore.GSON.toJson(migrated)));
         List<NekoPageEntry> removedPages = DefaultTradeSources.pages(root);
-        removedPages.removeIf(page -> page.getId() == -100007);
+        removedPages.removeIf(page -> page.getId() == aePageId);
         DefaultTradeSources.savePages(root, removedPages);
         checks.put(
             "removed_default_page_and_trades_remain_deleted_until_reset",
             DefaultTradeSources.pages(root)
                 .stream()
-                .noneMatch(page -> page.getId() == -100007)
+                .noneMatch(page -> page.getId() == aePageId)
                 && DefaultTradeSources.trades(root)
                     .stream()
-                    .noneMatch(trade -> trade.getTabId() == -100007));
+                    .noneMatch(trade -> trade.getTabId() == aePageId));
         store.resetDefaults();
         List<NekoTradeEntry> movedTrades = DefaultTradeSources.trades(root);
         NekoTradeEntry moved = movedTrades.stream()
@@ -586,6 +609,27 @@ public final class TradePresetProbe {
                     .getAsJsonObject()
                     .getAsJsonArray("pages")
                     .size() == 0);
+        String customExchangeId = "gtit-neko-exchange";
+        String builtinExchangeId = TradePresetLayout.NEKO_EXCHANGE_ID;
+        JsonObject customExchange = new JsonParser().parse(read(imported))
+            .getAsJsonObject();
+        customExchange.addProperty("id", customExchangeId);
+        Path customExchangePath = freshRoot.resolve("MiaoTrade/" + customExchangeId + ".json");
+        write(customExchangePath, customExchange.toString());
+        fresh.reload();
+        fresh.select(fresh.revision(), Arrays.asList(customExchangeId), ignored -> {});
+        List<Integer> customExchangePages = fresh.installedTabs(customExchangeId);
+        boolean builtinWasOff = fresh.installedTabs(builtinExchangeId)
+            .isEmpty();
+        fresh.select(fresh.revision(), Arrays.asList(customExchangeId, builtinExchangeId), ignored -> {});
+        checks.put(
+            "new_builtin_group_does_not_claim_existing_custom_name_or_page",
+            builtinWasOff && !customExchangePages.isEmpty()
+                && customExchangePages.equals(fresh.installedTabs(customExchangeId))
+                && fresh.installedTabs(builtinExchangeId)
+                    .equals(Arrays.asList(-40001))
+                && DefaultTradeSources.installed(builtinExchangeId, freshRoot).tabs.get(0).trades.size() == 21
+                && read(customExchangePath).equals(customExchange.toString()));
         checkOldOwnedLayout(root.resolve("old-owned-fixture"), checks, source);
     }
 
@@ -685,7 +729,7 @@ public final class TradePresetProbe {
             .fromJson(read(root.resolve(TradePresetLayout.tabPath(customPage))), NekoTradeConfig.TabFileData.class);
         checks.put(
             "legacy_custom_namespace_migrates_away_from_base_and_clears_wrong_default_flags",
-            customPage <= -600000 && installed.getTrades()
+            customPage <= -500000 && installed.getTrades()
                 .get(0)
                 .getId()
                 .equals("MIAO900123456789")

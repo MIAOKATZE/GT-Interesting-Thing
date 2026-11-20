@@ -192,9 +192,9 @@ AE presets use three cooldown tiers: basic 0, advanced 2 hours, and high tier 8 
 
 AE 预设采用基础 0、进阶 2 小时、高阶 8 小时三档冷却；同商品跨预设使用同一档位。批次需求与产出同比放大，线缆采用较大批量；工具及一次性条目保留各自规则。创造能量控制器仍为一次性交易。
 
-The bundled catalog also ships `gtit-neko-exchange` / 「猫猫币兑换（改进版）」: circuit tiers ULV–LuV in single-item and full-stack batches, ZPM circuits straight into Shimmering Neko Coins, plus conversions between the two coin tiers. It is opt-in like the AE groups; the base group keeps its own circuit exchanges, so apply one path or the other.
+The bundled catalog also ships `gtit.neko-exchange` / 「猫猫币兑换（改进版）」: circuit tiers ULV–LuV in single-item and full-stack batches, ZPM circuits straight into Shimmering Neko Coins, plus conversions between the two coin tiers. The new group is opt-in and can run alongside the existing circuit exchanges in the base group.
 
-内置目录另提供 `gtit-neko-exchange`／「猫猫币兑换（改进版）」：ULV–LuV 电路分单件与整组两档，ZPM 电路直换闪烁猫猫币，并含两级猫猫币互兑。与 AE 组一样为可选预设；基础默认贸易组仍保留自己的电路兑换，因此在两条路径中只应用一条。
+内置目录另提供 `gtit.neko-exchange`／「猫猫币兑换（改进版）」，ULV–LuV 电路分单件与整组两档，ZPM 电路直换闪烁猫猫币，并含两级猫猫币互兑。新组需要手动勾选，启用后会与基础默认组原有的电路兑换同时提供。
 
 图内所选组和数值来自用户存档；默认批量、价格与冷却以当前版本随包数据为准。 / The selected groups and values shown come from the user's save; consult the current bundled data for default batches, prices and cooldowns.
 

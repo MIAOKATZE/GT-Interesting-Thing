@@ -111,8 +111,12 @@ public final class DefaultTradeSources {
             for (TradePresetDefinition.Tab tab : edited.tabs) {
                 if (tab == null || tab.page == null
                     || tab.trades == null
-                    || !id.equals(TradePresetLayout.builtinId(tab.page.getId()))
-                    || !seen.add(tab.page.getId())) throw new IOException("默认贸易覆盖页签来源不匹配: " + id);
+                    || !id.equals(TradePresetLayout.builtinId(tab.page.getId()))) {
+                    throw new IOException("默认贸易覆盖页签来源不匹配: " + id);
+                }
+                int pageId = TradePresetLayout.canonicalPageId(tab.page.getId());
+                if (!seen.add(pageId)) throw new IOException("默认贸易覆盖页签重复: " + id + " / " + pageId);
+                tab.page.setId(pageId);
                 sourceMetadata(tab.page, result, true);
                 tab.page.ensureSource();
                 for (NekoTradeEntry entry : tab.trades) {

@@ -61,6 +61,7 @@ import com.miaokatze.gtit.mail.MailClientData;
 import com.miaokatze.gtit.trade.NekoPageEntry;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoPageSource;
+import com.miaokatze.gtit.trade.preset.TradePresetLayout;
 import com.miaokatze.gtit.trade.v2.NekoTradeCategory;
 import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
 import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
@@ -507,12 +508,23 @@ public final class TradePage {
         currentTabId = resolveSelectedIndex(tradeCategories, selected, currentTabId);
         selectedTabId = tradeCategories.get(currentTabId)
             .getTabId();
-        if (tradeCategories.contains(selected)) pendingTabId = null;
+        if (selected != null && TradePresetLayout.canonicalPageId(selectedTabId)
+            == TradePresetLayout.canonicalPageId(selected.getTabId())) pendingTabId = null;
     }
 
     static int resolveSelectedIndex(List<NekoTradeCategory> categories, NekoTradeCategory selected, int oldIndex) {
         int selectedIndex = categories.indexOf(selected);
-        return selectedIndex >= 0 ? selectedIndex : Math.max(0, Math.min(oldIndex, categories.size() - 1));
+        if (selectedIndex >= 0) return selectedIndex;
+        if (selected != null) {
+            int pageId = TradePresetLayout.canonicalPageId(selected.getTabId());
+            for (int index = 0; index < categories.size(); index++) {
+                if (TradePresetLayout.canonicalPageId(
+                    categories.get(index)
+                        .getTabId())
+                    == pageId) return index;
+            }
+        }
+        return Math.max(0, Math.min(oldIndex, categories.size() - 1));
     }
 
     static int resolveTabPage(int oldPage, int selectedIndex, int count, boolean selectedWasVisible) {

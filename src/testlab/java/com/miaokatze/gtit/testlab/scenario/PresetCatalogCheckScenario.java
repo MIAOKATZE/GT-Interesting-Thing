@@ -46,7 +46,7 @@ import gregtech.api.items.MetaGeneratedItem;
 final class PresetCatalogCheckScenario implements ProbeScenario {
 
     private static final String[] PRESETS = { "gtit-ae-basic", "gtit-ae-advanced", "gtit-base-decoration",
-        "gtit-neko-exchange" };
+        "gtit.neko-exchange" };
     private static final int[] TRADE_COUNTS = { 98, 194, 64, 21 };
     private static final int[] PAGE_COUNTS = { 7, 12, 2, 1 };
 
