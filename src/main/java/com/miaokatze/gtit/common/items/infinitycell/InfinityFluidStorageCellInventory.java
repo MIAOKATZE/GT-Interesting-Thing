@@ -84,7 +84,7 @@ public class InfinityFluidStorageCellInventory implements ITFluidCellInventory {
     }
 
     private void saveChanges() {
-        this.data.setBoolean(InfinityCellConstants.IS_EMPTY, this.cellFluids.isEmpty());
+        this.data.removeTag(InfinityCellConstants.IS_EMPTY);
         if (this.container != null) {
             this.container.saveChanges(this);
         }

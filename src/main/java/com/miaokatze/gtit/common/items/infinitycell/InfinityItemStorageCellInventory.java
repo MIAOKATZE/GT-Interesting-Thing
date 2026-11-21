@@ -344,7 +344,7 @@ public class InfinityItemStorageCellInventory implements ITCellInventory {
     }
 
     private void saveChanges() {
-        this.data.setBoolean(InfinityCellConstants.IS_EMPTY, this.cellItems.isEmpty());
+        this.data.removeTag(InfinityCellConstants.IS_EMPTY);
         if (this.container != null) {
             this.container.saveChanges(this);
         }

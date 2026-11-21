@@ -9,6 +9,7 @@ import java.util.regex.Pattern;
 import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.NBTTagList;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
@@ -184,14 +185,27 @@ public final class InfinityCellClientQueryTest {
 
     @SuppressWarnings("unchecked")
     private static void serverRoundTrip(ItemStack cell) {
+        int[] saves = { 0 };
         IMEInventoryHandler<IAEItemStack> handler = AEApi.instance()
             .registries()
             .cell()
-            .getCellInventory(cell, null, InfinityStackTypes.ITEM_STACK_TYPE);
+            .getCellInventory(cell, inventory -> saves[0]++, InfinityStackTypes.ITEM_STACK_TYPE);
         SimpleAssert.that(handler instanceof InfinityCellInventoryHandler, "server item inventory is preserved");
         IAEItemStack offered = AEItemStack.create(new ItemStack(Items.iron_ingot, 9));
+        StorageManager manager = StorageManager.getInstance();
+        DataStorage bucket = manager.getStorage(cell);
+        NBTTagCompound tag = cell.getTagCompound();
+        tag.setBoolean(InfinityCellConstants.IS_EMPTY, true);
+        manager.setDirty(false);
+        SimpleAssert.eq(null, handler.injectItems(offered, Actionable.SIMULATE, null), "simulation can accept items");
+        SimpleAssert.that(tag.getBoolean(InfinityCellConstants.IS_EMPTY), "simulation preserves legacy cell metadata");
+        SimpleAssert.eq(0, saves[0], "simulation does not notify the host");
+        SimpleAssert.that(!manager.isDirty(), "simulation does not mark world storage dirty");
         SimpleAssert
             .eq(null, handler.injectItems(offered, Actionable.MODULATE, null), "server stores all offered items");
+        SimpleAssert.that(!tag.hasKey(InfinityCellConstants.IS_EMPTY), "actual insertion clears the legacy hint");
+        SimpleAssert.eq(1, saves[0], "actual insertion notifies the host once");
+        SimpleAssert.that(manager.isDirty(), "actual insertion marks world storage dirty");
         IAEItemStack request = offered.copy();
         request.setStackSize(4);
         SimpleAssert.eq(
@@ -204,5 +218,38 @@ public final class InfinityCellClientQueryTest {
                 .getString(InfinityCellConstants.DISKUUID)
                 .isEmpty(),
             "only the server assigns and persists storage identity");
+        NBTTagList saved = (NBTTagList) bucket.writeToNBT();
+        DataStorage reloaded = DataStorage.readFromNBT(bucket.getRawUUID(), saved, StorageChannel.ITEMS);
+        SimpleAssert.eq(
+            5L,
+            reloaded.getItems()
+                .findPrecise(offered)
+                .getStackSize(),
+            "positive count survives reload");
+        manager.setDirty(false);
+        SimpleAssert.eq(
+            5L,
+            handler.extractItems(offered, Actionable.MODULATE, null)
+                .getStackSize(),
+            "server can extract the last items");
+        SimpleAssert.eq(3, saves[0], "each actual extraction notifies the host");
+        SimpleAssert.that(manager.isDirty(), "actual extraction marks world storage dirty");
+        SimpleAssert.eq(
+            1,
+            bucket.getItems()
+                .size(),
+            "extraction leaves depleted records for iteration to prune");
+        NBTTagCompound worldData = new NBTTagCompound();
+        manager.writeToNBT(worldData);
+        SimpleAssert.eq(
+            0,
+            bucket.getItems()
+                .size(),
+            "world save prunes the depleted record");
+        SimpleAssert.eq(
+            0,
+            worldData.getTagList(InfinityCellConstants.DISKLIST, 10)
+                .tagCount(),
+            "world save omits empty item buckets");
     }
 }
