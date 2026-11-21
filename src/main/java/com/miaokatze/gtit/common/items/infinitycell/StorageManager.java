@@ -3,9 +3,15 @@
 
 package com.miaokatze.gtit.common.items.infinitycell;
 
-import java.util.HashMap;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -13,32 +19,41 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
+import net.minecraft.world.World;
 import net.minecraft.world.WorldSavedData;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.world.WorldEvent;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import appeng.api.storage.StorageChannel;
 import appeng.api.storage.data.IAEStackType;
 import appeng.util.Platform;
+import cpw.mods.fml.common.eventhandler.EventPriority;
+import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 
-/**
- * 无限元件的外置存储：按 (UUID, 通道) 复合定位，一 UUID 可同时携带物品/流体/第三方通道各自的桶。
- */
+/** Live inventory grouped by disk and channel. Disk commits run on the server's world-save thread. */
 public class StorageManager extends WorldSavedData {
 
     private static final String DATA_NAME = "GTIT_InfinityCellStorage";
-    private static final String KEY_SEPARATOR = "#";
-    /** 读档时 typeId 尚未注册的桶，原样留到写档，避免在 mod 缺席期间抹掉第三方通道数据。 */
-    private static final String UNRESOLVED_PREFIX = "?";
-
-    // ConcurrentHashMap：writeToNBT 在服务器保存时遍历本 map，而 tooltip 等
-    // 客户端线程路径会并发读，避免 CME 直接打崩服务器。
-    private final Map<String, DataStorage> disks = new ConcurrentHashMap<>();
-    private final Map<String, NBTTagList> unresolved = new ConcurrentHashMap<>();
+    private static final Logger LOG = LogManager.getLogger("gtit");
     private static StorageManager instance;
 
+    private final Map<UUID, Disk> disks = new ConcurrentHashMap<>();
+    private final Set<UUID> dirtyDisks = new LinkedHashSet<>();
+    private final InfinityDiskFiles diskFiles;
+    private World world;
+
     public StorageManager(String name) {
-        super(name);
-        this.setDirty(true);
+        this(name, null);
         instance = this;
+    }
+
+    private StorageManager(String name, InfinityDiskFiles diskFiles) {
+        super(name);
+        this.diskFiles = diskFiles;
+        setDirty(diskFiles == null);
     }
 
     public static StorageManager getInstance() {
@@ -49,17 +64,87 @@ public class StorageManager extends WorldSavedData {
         return DATA_NAME;
     }
 
-    private static String key(UUID uuid, String typeId) {
-        return uuid + KEY_SEPARATOR + typeId;
+    public static void openWorld(World world) throws IOException {
+        final File legacy = world.getSaveHandler()
+            .getMapFileFromName(DATA_NAME);
+        if (legacy == null) throw new IOException("Missing save path for infinity cells");
+        final StorageManager manager = open(legacy.toPath());
+        manager.world = world;
+        MinecraftForge.EVENT_BUS.register(manager);
     }
 
-    /** 包私有：供同包测试断言「同一 UUID 的不同通道落在不同桶上」，纯 JVM 下无法实例化 IAEStackType。 */
+    static StorageManager open(Path legacyFile) throws IOException {
+        final Path directory = legacyFile.toAbsolutePath()
+            .getParent()
+            .resolve(DATA_NAME);
+        final InfinityDiskFiles files = new InfinityDiskFiles(directory);
+        final StorageManager manager = new StorageManager(DATA_NAME, files);
+        final Map<UUID, NBTTagCompound> committed = files.load();
+        if (committed != null) {
+            manager.loadDisks(committed);
+            files.removeAbandonedRevisions();
+            retireLegacyFile(legacyFile);
+        } else if (!Files.notExists(legacyFile)) {
+            final NBTTagCompound root = InfinityDiskFiles.read(legacyFile);
+            if (!root.hasKey("data", 10)) throw new IOException("Missing infinity cell payload in " + legacyFile);
+            final Map<UUID, NBTTagCompound> legacy = InfinityLegacyData.read(root.getCompoundTag("data"));
+            manager.loadDisks(legacy);
+            // Copy the serialized stacks, including opaque channels, without re-encoding them during import.
+            files.save(legacy);
+            files.removeAbandonedRevisions();
+            retireLegacyFile(legacyFile);
+        }
+        instance = manager;
+        return manager;
+    }
+
+    private static void retireLegacyFile(Path legacyFile) {
+        try {
+            if (Files.isRegularFile(legacyFile, LinkOption.NOFOLLOW_LINKS)) Files.deleteIfExists(legacyFile);
+        } catch (IOException | SecurityException e) {
+            LOG.warn(
+                "Committed infinity cell disks are active, but the old file could not be removed: {}",
+                legacyFile,
+                e);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onWorldSave(WorldEvent.Save event) {
+        if (event.world == this.world) flushWorld();
+    }
+
+    public static void closeWorld() {
+        final StorageManager manager = instance;
+        if (manager != null && manager.world != null) {
+            MinecraftForge.EVENT_BUS.unregister(manager);
+            manager.flushWorld();
+        }
+        instance = null;
+    }
+
+    private void flushWorld() {
+        try {
+            saveDisks();
+        } catch (IOException | RuntimeException e) {
+            LOG.error("Could not commit infinity cell disks; the previous snapshot remains active", e);
+        }
+    }
+
+    void saveDisks() throws IOException {
+        if (diskFiles == null || dirtyDisks.isEmpty()) return;
+        final Map<UUID, NBTTagCompound> changed = new LinkedHashMap<>();
+        for (final UUID uuid : dirtyDisks) {
+            final Disk disk = disks.get(uuid);
+            changed.put(uuid, disk == null ? new NBTTagCompound() : disk.writeChannels());
+        }
+        diskFiles.save(changed);
+        dirtyDisks.clear();
+        setDirty(false);
+    }
+
     static String keyOf(String uuid, String typeId) {
-        return uuid + KEY_SEPARATOR + typeId;
-    }
-
-    private static String key(UUID uuid, IAEStackType<?> type) {
-        return key(uuid, type.getId());
+        return uuid + "#" + typeId;
     }
 
     public DataStorage getStorage(String uuid, StorageChannel channel) {
@@ -67,27 +152,23 @@ public class StorageManager extends WorldSavedData {
     }
 
     public DataStorage getStorage(String uuid, IAEStackType<?> type) {
-        final String typeId = type.getId();
         UUID uid;
         try {
             uid = UUID.fromString(uuid);
-        } catch (Exception ignored) {
+        } catch (IllegalArgumentException | NullPointerException ignored) {
             do {
                 uid = UUID.randomUUID();
-            } while (disks.get(key(uid, typeId)) != null);
+            } while (disks.containsKey(uid));
         }
-        final String composite = key(uid, typeId);
-        DataStorage d = disks.get(composite);
-        if (d == null) {
-            d = new DataStorage(uid, type);
-            // 仅服务器线程注册：物品 tooltip 在客户端渲染线程经 getCellInventory
-            // 构造 inventory，若在此 put 会与保存期 writeToNBT 遍历竞争（历史 CME 崩溃），
-            // 且无 UUID 新元件每次悬停都会泄漏随机 UUID 条目。客户端返回临时实例即可。
-            if (Platform.isServer()) {
-                disks.put(composite, d);
-            }
+        final UUID diskId = uid;
+        final String typeId = type.getId();
+        if (Platform.isServer()) {
+            return disks.computeIfAbsent(diskId, ignored -> new Disk())
+                .getOrCreate(diskId, type);
         }
-        return d;
+        final Disk disk = disks.get(diskId);
+        final DataStorage existing = disk == null ? null : disk.channels.get(typeId);
+        return existing != null ? existing : new DataStorage(diskId, type);
     }
 
     public DataStorage getStorage(ItemStack item) {
@@ -134,114 +215,99 @@ public class StorageManager extends WorldSavedData {
 
     @Override
     public void readFromNBT(NBTTagCompound data) {
-        final Map<String, DataStorage> d = new HashMap<>();
-        final Map<String, NBTTagList> pending = new HashMap<>();
-
-        // 旧两表逐字兼容：物品条目内层键 diskdata，流体条目内层键**也是** fluid_disklist。
-        final NBTTagList itemDisks = data.getTagList(InfinityCellConstants.DISKLIST, 10);
-        if (itemDisks.tagCount() > 0) {
-            readLegacy(d, itemDisks, InfinityCellConstants.DISKDATA, InfinityStackTypes.ITEM_STACK_TYPE);
-        }
-        final NBTTagList fluidDisks = data.getTagList(InfinityCellConstants.FLUID_DISKLIST, 10);
-        if (fluidDisks.tagCount() > 0) {
-            readLegacy(d, fluidDisks, InfinityCellConstants.FLUID_DISKLIST, InfinityStackTypes.FLUID_STACK_TYPE);
-        }
-
-        final NBTTagList v2 = data.getTagList(InfinityCellConstants.TYPED_DISKLIST, 10);
-        for (int i = 0; i < v2.tagCount(); i++) {
-            final NBTTagCompound disk = v2.getCompoundTagAt(i);
-            final String uuid = disk.getString(InfinityCellConstants.DISKUUID);
-            final String typeId = disk.getString(InfinityCellConstants.DISK_TYPEID);
-            final NBTTagList list = disk.getTagList(InfinityCellConstants.DISKDATA, 10);
-            if (uuid.isEmpty() || typeId.isEmpty()) {
-                continue;
+        try {
+            final Set<UUID> previous = new LinkedHashSet<>(disks.keySet());
+            loadDisks(InfinityLegacyData.read(data));
+            if (diskFiles != null) {
+                dirtyDisks.addAll(previous);
+                dirtyDisks.addAll(disks.keySet());
+                setDirty(!dirtyDisks.isEmpty());
             }
-            final IAEStackType<?> type = resolveType(typeId);
-            if (type == null) {
-                pending.put(UNRESOLVED_PREFIX + uuid + KEY_SEPARATOR + typeId, list);
-                continue;
-            }
-            final UUID uid = UUID.fromString(uuid);
-            d.put(key(uid, type), DataStorage.readFromNBT(uid, list, type));
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Invalid legacy infinity cell data", e);
         }
-
-        disks.clear();
-        disks.putAll(d);
-        unresolved.clear();
-        unresolved.putAll(pending);
     }
 
-    /** 通道解析不了（对应 mod 被移除、其类无法加载）时按未注册处理，把桶原样留着而不是抹掉玩家数据。 */
+    private void loadDisks(Map<UUID, NBTTagCompound> data) throws IOException {
+        final Map<UUID, Disk> loaded = new LinkedHashMap<>();
+        for (final Map.Entry<UUID, NBTTagCompound> record : data.entrySet()) {
+            final UUID uuid = record.getKey();
+            final NBTTagCompound contents = record.getValue();
+            final Disk disk = new Disk();
+            for (final String typeId : contents.func_150296_c()) {
+                if (typeId.isEmpty()) throw new IOException("Empty infinity cell channel in " + uuid);
+                final NBTTagList list = InfinityLegacyData.list(contents, typeId);
+                final IAEStackType<?> type = resolveType(typeId);
+                if (type == null) {
+                    disk.unresolved.put(typeId, list);
+                } else {
+                    disk.channels.put(typeId, DataStorage.readFromNBT(uuid, list, type));
+                }
+            }
+            loaded.put(uuid, disk);
+        }
+        disks.clear();
+        disks.putAll(loaded);
+    }
+
+    /** Keep temporarily unavailable channel payloads intact. */
     private static IAEStackType<?> resolveType(String typeId) {
         try {
+            if (InfinityLegacyData.ITEM.equals(typeId)) return InfinityStackTypes.ITEM_STACK_TYPE;
+            if (InfinityLegacyData.FLUID.equals(typeId)) return InfinityStackTypes.FLUID_STACK_TYPE;
             return InfinityStackTypes.byId(typeId);
-        } catch (Throwable t) {
+        } catch (LinkageError | RuntimeException ignored) {
             return null;
-        }
-    }
-
-    private void readLegacy(Map<String, DataStorage> out, NBTTagList diskList, String innerKey, IAEStackType<?> type) {
-        for (int i = 0; i < diskList.tagCount(); i++) {
-            final NBTTagCompound disk = diskList.getCompoundTagAt(i);
-            final UUID uid = UUID.fromString(disk.getString(InfinityCellConstants.DISKUUID));
-            out.put(key(uid, type), DataStorage.readFromNBT(uid, disk.getTagList(innerKey, 10), type));
         }
     }
 
     @Override
     public void writeToNBT(NBTTagCompound data) {
-        final NBTTagList diskList = new NBTTagList();
-        final NBTTagList fluidDiskList = new NBTTagList();
-        final NBTTagList typedDiskList = new NBTTagList();
-        final Map<String, DataStorage> snapshot = new LinkedHashMap<>(disks);
-
-        for (Map.Entry<String, DataStorage> entry : snapshot.entrySet()) {
-            final DataStorage storage = entry.getValue();
-            if (storage == null || storage.isEmpty()) continue;
-            final NBTTagCompound disk = new NBTTagCompound();
-            disk.setString(InfinityCellConstants.DISKUUID, storage.getUUID());
-            if (storage.isItemChannel()) {
-                disk.setTag(InfinityCellConstants.DISKDATA, storage.writeToNBT());
-                diskList.appendTag(disk);
-            } else if (storage.isFluidChannel()) {
-                // 历史形状：流体条目内层键与外层同名，改动会让旧存档读空。
-                disk.setTag(InfinityCellConstants.FLUID_DISKLIST, storage.writeToNBT());
-                fluidDiskList.appendTag(disk);
-            } else {
-                disk.setString(InfinityCellConstants.DISK_TYPEID, storage.getTypeId());
-                disk.setTag(InfinityCellConstants.DISKDATA, storage.writeToNBT());
-                typedDiskList.appendTag(disk);
-            }
-        }
-        for (Map.Entry<String, NBTTagList> entry : new LinkedHashMap<>(unresolved).entrySet()) {
-            final String composite = entry.getKey()
-                .substring(UNRESOLVED_PREFIX.length());
-            final int split = composite.indexOf(KEY_SEPARATOR);
-            if (split <= 0) continue;
-            final NBTTagCompound disk = new NBTTagCompound();
-            disk.setString(InfinityCellConstants.DISKUUID, composite.substring(0, split));
-            disk.setString(InfinityCellConstants.DISK_TYPEID, composite.substring(split + 1));
-            disk.setTag(InfinityCellConstants.DISKDATA, entry.getValue());
-            typedDiskList.appendTag(disk);
-        }
-
-        // 物品/流体继续写旧键，玩家回滚到旧 jar 仍能读回这两通道。
-        data.setTag(InfinityCellConstants.DISKLIST, diskList);
-        data.setTag(InfinityCellConstants.FLUID_DISKLIST, fluidDiskList);
-        data.setTag(InfinityCellConstants.TYPED_DISKLIST, typedDiskList);
+        final Map<UUID, NBTTagCompound> snapshot = new LinkedHashMap<>();
+        disks.forEach((uuid, disk) -> snapshot.put(uuid, disk.writeChannels()));
+        InfinityLegacyData.write(snapshot, data);
     }
 
     public void postChanges(DataStorage storage) {
-        this.setDirty(true);
+        if (storage != null && diskFiles != null) dirtyDisks.add(storage.getRawUUID());
+        setDirty(true);
     }
 
-    /** 诊断/测试用：当前登记的通道桶数量。 */
     public int bucketCount() {
-        return disks.size();
+        return disks.values()
+            .stream()
+            .mapToInt(disk -> disk.channels.size())
+            .sum();
     }
 
-    /** 测试用：尚未解析出通道的第三方桶数量。 */
     int unresolvedCount() {
-        return unresolved.size();
+        return disks.values()
+            .stream()
+            .mapToInt(disk -> disk.unresolved.size())
+            .sum();
+    }
+
+    private static final class Disk {
+
+        final Map<String, DataStorage> channels = new ConcurrentHashMap<>();
+        final Map<String, NBTTagList> unresolved = new LinkedHashMap<>();
+
+        DataStorage getOrCreate(UUID uuid, IAEStackType<?> type) {
+            return channels.computeIfAbsent(type.getId(), id -> {
+                final DataStorage storage = DataStorage.readFromNBT(uuid, unresolved.get(id), type);
+                unresolved.remove(id);
+                return storage;
+            });
+        }
+
+        NBTTagCompound writeChannels() {
+            final NBTTagCompound data = new NBTTagCompound();
+            channels.forEach((type, storage) -> {
+                final NBTTagList contents = storage.writeContents();
+                if (contents.tagCount() > 0) data.setTag(type, contents);
+            });
+            unresolved.forEach(data::setTag);
+            return data;
+        }
     }
 }

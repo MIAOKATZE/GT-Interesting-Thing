@@ -721,17 +721,12 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("猫猫币钱包/交易初始化失败", t);
         }
 
-        // 初始化 Infinity Cell StorageManager (WorldSavedData)
+        // Attach to the overworld save lifecycle and import any old WorldSavedData once.
         try {
             World world = MinecraftServer.getServer()
                 .getEntityWorld();
             if (world != null) {
-                StorageManager manager = (StorageManager) world.mapStorage
-                    .loadData(StorageManager.class, "GTIT_InfinityCellStorage");
-                if (manager == null) {
-                    manager = new StorageManager("GTIT_InfinityCellStorage");
-                    world.mapStorage.setData("GTIT_InfinityCellStorage", manager);
-                }
+                StorageManager.openWorld(world);
                 GTInterestingThing.LOG.info("Infinity Cell StorageManager 初始化完成。");
             }
         } catch (Throwable t) {
@@ -860,6 +855,7 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void serverStopped(FMLServerStoppedEvent event) {
+        StorageManager.closeWorld();
         try {
             com.miaokatze.gtit.trade.v2.NekoFavouritesTracker.INSTANCE.unloadAll();
         } catch (Throwable t) {

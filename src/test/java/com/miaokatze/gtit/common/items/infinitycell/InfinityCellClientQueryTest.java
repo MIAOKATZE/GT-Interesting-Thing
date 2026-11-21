@@ -239,6 +239,13 @@ public final class InfinityCellClientQueryTest {
             bucket.getItems()
                 .size(),
             "extraction leaves depleted records for iteration to prune");
+        IAEItemStack huge = offered.copy();
+        huge.setStackSize(Long.MAX_VALUE);
+        SimpleAssert.eq(
+            8L,
+            handler.injectItems(huge, Actionable.SIMULATE, null)
+                .getStackSize(),
+            "zero record receives the same new-type capacity as an absent record");
         NBTTagCompound worldData = new NBTTagCompound();
         manager.writeToNBT(worldData);
         SimpleAssert.eq(
@@ -251,5 +258,10 @@ public final class InfinityCellClientQueryTest {
             worldData.getTagList(InfinityCellConstants.DISKLIST, 10)
                 .tagCount(),
             "world save omits empty item buckets");
+        SimpleAssert.eq(
+            8L,
+            handler.injectItems(huge, Actionable.SIMULATE, null)
+                .getStackSize(),
+            "capacity is independent of whether the zero record was pruned");
     }
 }

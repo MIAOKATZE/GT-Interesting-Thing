@@ -327,10 +327,11 @@ public class InfinityItemStorageCellInventory implements ITCellInventory {
         }
         final IAEItemStack stored = this.getCellItems()
             .findPrecise(input);
-        if (stored == null && !this.canHoldNewItem(this.cellItem)) {
+        final boolean newType = !InfinityCellTransfer.hasStock(stored);
+        if (newType && !this.canHoldNewItem(this.cellItem)) {
             return input;
         }
-        final long capacity = stored == null ? Math.max(0L, this.getRemainingItemCount() - this.getBytesPerType() * 8L)
+        final long capacity = newType ? Math.max(0L, this.getRemainingItemCount() - this.getBytesPerType() * 8L)
             : this.getRemainingItemCount();
         return InfinityCellTransfer.inject(this.getCellItems(), input, mode, capacity, this::saveChanges);
     }
@@ -345,17 +346,17 @@ public class InfinityItemStorageCellInventory implements ITCellInventory {
 
     private void saveChanges() {
         this.data.removeTag(InfinityCellConstants.IS_EMPTY);
+        StorageManager.getInstance()
+            .postChanges(this.storage);
         if (this.container != null) {
             this.container.saveChanges(this);
         }
-        StorageManager.getInstance()
-            .postChanges(this.storage);
     }
 
     @Override
     public IItemList<IAEItemStack> getAvailableItems(IItemList<IAEItemStack> out) {
         for (final IAEItemStack i : this.getCellItems()) {
-            out.add(i);
+            if (InfinityCellTransfer.hasStock(i)) out.add(i);
         }
         return out;
     }

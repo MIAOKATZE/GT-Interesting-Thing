@@ -68,8 +68,10 @@ public class InfinityFluidStorageCellInventory implements ITFluidCellInventory {
         if (this.cellType.isBlackListed(this.cellItem, input)) {
             return input;
         }
-        if (this.getCellFluids()
-            .findPrecise(input) == null && !this.canHoldNewFluid()) {
+        if (!InfinityCellTransfer.hasStock(
+            this.getCellFluids()
+                .findPrecise(input))
+            && !this.canHoldNewFluid()) {
             return input;
         }
         return InfinityCellTransfer.inject(this.getCellFluids(), input, mode, Long.MAX_VALUE, this::saveChanges);
@@ -85,17 +87,17 @@ public class InfinityFluidStorageCellInventory implements ITFluidCellInventory {
 
     private void saveChanges() {
         this.data.removeTag(InfinityCellConstants.IS_EMPTY);
+        StorageManager.getInstance()
+            .postChanges(this.storage);
         if (this.container != null) {
             this.container.saveChanges(this);
         }
-        StorageManager.getInstance()
-            .postChanges(this.storage);
     }
 
     @Override
     public IItemList<IAEFluidStack> getAvailableItems(IItemList<IAEFluidStack> out) {
         for (final IAEFluidStack i : this.getCellFluids()) {
-            out.add(i);
+            if (InfinityCellTransfer.hasStock(i)) out.add(i);
         }
         return out;
     }

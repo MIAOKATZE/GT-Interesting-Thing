@@ -109,15 +109,19 @@ public class DataStorage {
     }
 
     public boolean isEmpty() {
-        if (isItemChannel()) {
-            return this.getItems()
-                .isEmpty();
+        final IItemList<?> contents = initializedContents();
+        if (contents != null) {
+            for (final IAEStack<?> stack : contents) {
+                if (InfinityCellTransfer.hasStock(stack)) return false;
+            }
         }
-        if (isFluidChannel()) {
-            return this.getFluids()
-                .isEmpty();
-        }
-        return this.typed == null || this.typed.isEmpty();
+        return true;
+    }
+
+    private IItemList<?> initializedContents() {
+        if (isItemChannel()) return this.items;
+        if (isFluidChannel()) return this.fluids;
+        return this.typed;
     }
 
     public String getUUID() {
@@ -170,22 +174,17 @@ public class DataStorage {
     }
 
     public NBTBase writeToNBT() {
-        if (isItemChannel()) {
-            return writeList(this.getItems());
-        }
-        if (isFluidChannel()) {
-            return writeList(this.getFluids());
-        }
-        return writeList(this.typed);
+        return writeContents();
     }
 
-    private NBTTagList writeList(final Iterable<? extends IAEStack<?>> myList) {
+    NBTTagList writeContents() {
         final NBTTagList out = new NBTTagList();
-        if (myList == null) {
+        final IItemList<?> contents = initializedContents();
+        if (contents == null) {
             return out;
         }
-        for (final IAEStack<?> ais : myList) {
-            if (ais != null && ais.getStackSize() > 0) {
+        for (final IAEStack<?> ais : contents) {
+            if (InfinityCellTransfer.hasStock(ais)) {
                 final NBTTagCompound compound = new NBTTagCompound();
                 ais.writeToNBT(compound);
                 out.appendTag(compound);
