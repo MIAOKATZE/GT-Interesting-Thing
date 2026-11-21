@@ -12,6 +12,10 @@ final class InfinityCellTransfer {
 
     private InfinityCellTransfer() {}
 
+    static boolean hasStock(IAEStack<?> stack) {
+        return stack != null && stack.getStackSize() > 0;
+    }
+
     static <T extends IAEStack<T>> T inject(IItemList<T> contents, T input, Actionable mode, long capacity,
         Runnable save) {
         if (input == null || input.getStackSize() <= 0) {
@@ -47,7 +51,7 @@ final class InfinityCellTransfer {
             return null;
         }
         final T stored = contents.findPrecise(request);
-        if (stored == null || stored.getStackSize() <= 0) {
+        if (!hasStock(stored)) {
             return null;
         }
         final long removed = Math.min(request.getStackSize(), stored.getStackSize());

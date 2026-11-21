@@ -206,6 +206,21 @@ tasks.register<JavaExec>("runInfinityCellClientQueryTest") {
 
 tasks.named("check") { dependsOn("runInfinityCellClientQueryTest") }
 
+tasks.register<JavaExec>("runInfinityDiskPersistenceTest") {
+    group = "verification"
+    description = "Checks automatic legacy migration, incremental commits and interrupted saves."
+    mainClass = "com.miaokatze.gtit.common.items.infinitycell.InfinityDiskPersistenceTest"
+    classpath = storeTestRuntimeClasspath + sourceSets.getByName("main").compileClasspath + neiTestRuntimeClasspath
+    javaLauncher.set(javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(8))
+    })
+    val scratchDir = layout.buildDirectory.dir("infinity-disk-persistence-test")
+    workingDir(scratchDir)
+    doFirst { scratchDir.get().asFile.mkdirs() }
+}
+
+tasks.named("check") { dependsOn("runInfinityDiskPersistenceTest") }
+
 tasks.register<JavaExec>("runAePresetEnergyCellTest") {
     group = "verification"
     description = "Checks bundled AE input NBT policy using native charged and drained energy cells."

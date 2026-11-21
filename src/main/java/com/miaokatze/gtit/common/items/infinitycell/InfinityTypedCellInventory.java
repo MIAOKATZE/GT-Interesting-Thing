@@ -115,7 +115,7 @@ public class InfinityTypedCellInventory<T extends IAEStack<T>> implements IMEInv
     @Override
     public IItemList<T> getAvailableItems(IItemList<T> out) {
         for (final T stack : getContents()) {
-            out.add(stack);
+            if (InfinityCellTransfer.hasStock(stack)) out.add(stack);
         }
         return out;
     }

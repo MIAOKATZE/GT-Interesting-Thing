@@ -116,10 +116,10 @@ public final class TestLabFrameworkTest {
             report.finish();
             SimpleAssert.eq("FAIL", report.status, "Cleanup failure remains visible");
         });
-        tests.put("all 18 native cases retain lanes defaults and real actor requirements", () -> {
+        tests.put("all 20 native cases retain lanes defaults and real actor requirements", () -> {
             TestLabRuntime.registerScenarios();
             java.util.List<com.miaokatze.miaokatzecore.api.testlab.LabCase> catalog = new TestLabModule().cases();
-            SimpleAssert.eq(18, catalog.size(), "Complete catalog");
+            SimpleAssert.eq(20, catalog.size(), "Complete catalog");
             SimpleAssert.eq(
                 8L,
                 catalog.stream()
@@ -137,6 +137,15 @@ public final class TestLabFrameworkTest {
                 SimpleAssert.that(
                     catalog.stream()
                         .anyMatch(c -> id.equals(c.id()) && c.requiresRealActor()),
+                    id);
+            }
+            for (String id : new String[] { "native-infinity-ioport", "native-infinity-ioport-fluid-last" }) {
+                SimpleAssert.that(
+                    catalog.stream()
+                        .anyMatch(
+                            c -> id.equals(c.id()) && "server".equals(c.lane())
+                                && !c.defaultSuite()
+                                && !c.requiresRealActor()),
                     id);
             }
             SimpleAssert.that(!new TestLabModule().ownsWorld(null), "Never claim unrelated/null world");

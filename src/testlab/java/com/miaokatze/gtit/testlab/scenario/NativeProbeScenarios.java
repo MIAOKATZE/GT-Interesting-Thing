@@ -25,5 +25,7 @@ public final class NativeProbeScenarios {
         TestLabRuntime.register(new NativeStressScenario());
         TestLabRuntime.register(new NativePersistenceScenario(true));
         TestLabRuntime.register(new NativePersistenceScenario(false));
+        TestLabRuntime.register(new IOPortDrainScenario(false));
+        TestLabRuntime.register(new IOPortDrainScenario(true));
     }
 }
