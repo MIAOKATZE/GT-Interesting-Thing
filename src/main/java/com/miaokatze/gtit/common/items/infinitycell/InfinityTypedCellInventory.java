@@ -131,7 +131,7 @@ public class InfinityTypedCellInventory<T extends IAEStack<T>> implements IMEInv
     }
 
     private void saveChanges() {
-        this.data.setBoolean(InfinityCellConstants.IS_EMPTY, getContents().isEmpty());
+        this.data.removeTag(InfinityCellConstants.IS_EMPTY);
         if (this.container != null) {
             try {
                 this.container.saveChanges(this);

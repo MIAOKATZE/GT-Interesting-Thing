@@ -45,8 +45,7 @@ import appeng.util.item.AEItemStack;
  * <li><b>写入唯一通路（R7）</b>：
  * {@code AEApi.instance().registries().cell().getCellInventory(stack, host, type)}，
  * 其中 {@code host} 传<b>驱动器/ME 箱 tile 本体</b>（它就是 {@code ISaveProvider}）而不是 {@code null}。
- * 传 null 时 {@code CellInventory:376-378} 不回调宿主，{@code saveChanges} 链断裂 ⇒
- * {@code setDirty}/{@code is_empty}/分区门禁/Issue#16 嵌套守卫全被跳过 = 静默丢件面。
+ * 宿主参数使实际搬运后能回调驱动器或 ME 箱并标记其区块。分区门禁和 Issue #16 嵌套守卫由库存入口执行。
  * {@code Platform.poweredInsert} <b>禁用</b>（按 AE 能量限流，与"瞬时一次性全量"矛盾）。</li>
  * <li><b>识别口径（R6，★R87-c 修订）</b>："已识别 + 宿主在位"的门禁统一收在 {@link #foundOf}
  * （probe 解析到 tile 且它是 {@code IChestOrDrive}）；<b>handler 解析不再要求
