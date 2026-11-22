@@ -239,7 +239,8 @@ public final class PocketCursorDropTest {
         empty.container.onModularContainerClosed();
         ItemStack remainder = PocketInventory.readFrom(empty.carrier.getTagCompound())
             .storageStack(0);
-        check(remainder.getItem() == Items.iron_ingot && remainder.stackSize == 960,
+        check(
+            remainder.getItem() == Items.iron_ingot && remainder.stackSize == 960,
             "empty-cursor Shift saves the exact remainder on close");
     }
 
@@ -297,7 +298,6 @@ public final class PocketCursorDropTest {
                 .tankTruthAt(0) == 1000,
             "client prediction never persists authoritative inventory");
         oversizedShiftClick();
-        System.out
-            .println("PocketCursorDropTest: PASS (cursor drops and oversized storage Shift-click)");
+        System.out.println("PocketCursorDropTest: PASS (cursor drops and oversized storage Shift-click)");
     }
 }

@@ -121,8 +121,8 @@ public class NekoPocketContainer extends ModularContainer {
             syncOversizedStoragePlacement(storage, player);
             return null;
         }
-        if (rejectsOversizedClick(stored, mode, held)
-            && (mode == 1 || !panel.syncManager().isClient())) {
+        if (rejectsOversizedClick(stored, mode, held) && (mode == 1 || !panel.syncManager()
+            .isClient())) {
             syncOversizedStoragePlacement(storage, player);
             return null;
         }
