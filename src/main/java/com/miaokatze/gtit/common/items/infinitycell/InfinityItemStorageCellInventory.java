@@ -33,7 +33,7 @@ import appeng.api.storage.data.IAEStackType;
 import appeng.api.storage.data.IItemList;
 import appeng.util.Platform;
 
-public class InfinityItemStorageCellInventory implements ITCellInventory {
+public class InfinityItemStorageCellInventory implements ITCellInventory, InfinityCellStock {
 
     /** 统一 logger（与同包 InfinityCellHandler 共用 "gtit" 名，日志过滤口径不变） */
     private static final Logger LOG = LogManager.getLogger("gtit");
@@ -351,6 +351,16 @@ public class InfinityItemStorageCellInventory implements ITCellInventory {
         if (this.container != null) {
             this.container.saveChanges(this);
         }
+    }
+
+    @Override
+    public IAEItemStack getAvailableItem(IAEItemStack request, int iteration) {
+        return this.storage.findAvailable(request);
+    }
+
+    @Override
+    public boolean hasStoredStacks() {
+        return !this.storage.isEmpty();
     }
 
     @Override

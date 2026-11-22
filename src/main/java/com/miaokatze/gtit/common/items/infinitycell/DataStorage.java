@@ -123,6 +123,13 @@ public class DataStorage {
         return true;
     }
 
+    <T extends IAEStack<T>> T findAvailable(T request) {
+        final IItemList<T> contents = (IItemList<T>) initializedContents();
+        if (contents == null) return null;
+        final T stored = contents.findPrecise(request);
+        return InfinityCellTransfer.hasStock(stored) && stored.isSameType(request) ? stored.copy() : null;
+    }
+
     private IItemList<?> initializedContents() {
         if (isItemChannel()) return this.items;
         if (isFluidChannel()) return this.fluids;

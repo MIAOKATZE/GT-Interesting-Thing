@@ -26,7 +26,7 @@ import appeng.util.Platform;
  * 通道中立的无限元件存储：同一枚元件被 AE2 逐通道询问时，每个通道各自拿到一份独立实例，
  * 内容按 (uuid, 通道) 分桶存放。物品通道仍由 InfinityItemStorageCellInventory 承担（保留分区/升级卡行为）。
  */
-public class InfinityTypedCellInventory<T extends IAEStack<T>> implements IMEInventory<T> {
+public class InfinityTypedCellInventory<T extends IAEStack<T>> implements IMEInventory<T>, InfinityCellStock {
 
     private static final Logger LOG = LogManager.getLogger("gtit");
 
@@ -110,6 +110,19 @@ public class InfinityTypedCellInventory<T extends IAEStack<T>> implements IMEInv
             return null;
         }
         return InfinityCellTransfer.extract(getContents(), request, mode, this::saveChanges);
+    }
+
+    @Override
+    public T getAvailableItem(T request, int iteration) {
+        if (this.storage.isFluidChannel() || "essentia".equals(this.stackType.getId())) {
+            return this.storage.findAvailable(request);
+        }
+        return IMEInventory.super.getAvailableItem(request, iteration);
+    }
+
+    @Override
+    public boolean hasStoredStacks() {
+        return !this.storage.isEmpty();
     }
 
     @Override

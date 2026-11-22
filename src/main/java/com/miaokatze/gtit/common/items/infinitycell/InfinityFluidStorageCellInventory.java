@@ -21,7 +21,7 @@ import appeng.api.storage.data.IAEFluidStack;
 import appeng.api.storage.data.IItemList;
 import appeng.util.Platform;
 
-public class InfinityFluidStorageCellInventory implements ITFluidCellInventory {
+public class InfinityFluidStorageCellInventory implements ITFluidCellInventory, InfinityCellStock {
 
     protected static final String FLUID_TYPE_TAG = "ft";
     protected static final String FLUID_COUNT_TAG = "fc";
@@ -92,6 +92,16 @@ public class InfinityFluidStorageCellInventory implements ITFluidCellInventory {
         if (this.container != null) {
             this.container.saveChanges(this);
         }
+    }
+
+    @Override
+    public IAEFluidStack getAvailableItem(IAEFluidStack request, int iteration) {
+        return this.storage.findAvailable(request);
+    }
+
+    @Override
+    public boolean hasStoredStacks() {
+        return !this.storage.isEmpty();
     }
 
     @Override

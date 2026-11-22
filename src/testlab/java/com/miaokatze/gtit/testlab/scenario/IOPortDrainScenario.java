@@ -30,10 +30,12 @@ import appeng.api.config.FullnessMode;
 import appeng.api.config.OperationMode;
 import appeng.api.config.Settings;
 import appeng.api.definitions.ITileDefinition;
+import appeng.api.storage.IMEInventoryHandler;
 import appeng.api.storage.data.IAEStack;
 import appeng.api.storage.data.IAEStackType;
 import appeng.tile.storage.TileDrive;
 import appeng.tile.storage.TileIOPort;
+import appeng.util.IterationCounter;
 import cpw.mods.fml.common.registry.GameRegistry;
 
 /** Runs the actual AE grid and port scheduler against the UUID from the legacy save fixture. */
@@ -127,7 +129,31 @@ final class IOPortDrainScenario implements ProbeScenario {
         final ItemStack source = context.mark(GTITItemList.NekoInfinityStorageUnit.get(1));
         source.getTagCompound()
             .setString(InfinityCellConstants.DISKUUID, SOURCE);
+        for (int i = 0; i < types.length; i++) {
+            if (expected[i] > 0) checkSingleStackQuery(context, source, types[i], expected[i]);
+        }
         return new Drain(context, port, drive, source, types, expected, manifest, fluidLast);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T extends IAEStack<T>> void checkSingleStackQuery(ProbeContext context, ItemStack source,
+        IAEStackType<T> type, long expected) {
+        final T request = StorageManager.getInstance()
+            .getStorage(SOURCE, type)
+            .<T>getListFor()
+            .getFirstItem();
+        final IMEInventoryHandler<T> handler = AEApi.instance()
+            .registries()
+            .cell()
+            .getCellInventory(source, null, type);
+        final T answer = request == null || handler == null ? null
+            : handler.getAvailableItem(request, IterationCounter.fetchNewId());
+        final long amount = answer == null ? 0 : answer.getStackSize();
+        if (answer != null) answer.setStackSize(0);
+        context.check(
+            "single-stack-query-" + type.getId(),
+            answer != null && answer != request && amount == expected && request.getStackSize() == expected,
+            "available=" + amount + ", expected=" + expected);
     }
 
     private static void place(ProbeContext context, int x, ITileDefinition definition) {

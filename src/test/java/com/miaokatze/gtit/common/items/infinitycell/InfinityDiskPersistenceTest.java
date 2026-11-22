@@ -28,10 +28,13 @@ import net.minecraftforge.fluids.FluidStack;
 import com.miaokatze.gtit.testutil.NativeAeTestBootstrap;
 import com.miaokatze.gtit.testutil.SimpleAssert;
 
+import appeng.api.config.AccessRestriction;
 import appeng.api.config.Actionable;
 import appeng.api.storage.StorageChannel;
 import appeng.api.storage.data.IAEFluidStack;
 import appeng.api.storage.data.IAEItemStack;
+import appeng.api.storage.data.IItemList;
+import appeng.me.storage.MEInventoryHandler;
 import appeng.util.item.AEFluidStack;
 import appeng.util.item.AEItemStack;
 
@@ -230,6 +233,7 @@ public final class InfinityDiskPersistenceTest {
                 .findPrecise(ironWithIdentity(1, 1))
                 .getStackSize(),
             "NBT-distinct entry is untouched");
+        verifySingleStackQuery(ironWithIdentity(1, 1), size);
         System.out.printf(
             "Infinity disk delta: entries=%d encoded=1 captureMedianUs=%.3f captureP95Us=%.3f commitWallMs=%.3f compressedBytes=%d%n",
             size,
@@ -237,6 +241,38 @@ public final class InfinityDiskPersistenceTest {
             times[95] / 1000.0,
             elapsed / 1000000.0,
             bytes);
+    }
+
+    private static void verifySingleStackQuery(IAEItemStack first, int size) throws Exception {
+        final MEInventoryHandler<IAEItemStack> handler = new InfinityCellInventoryHandler(
+            new InfinityItemStorageCellInventory(itemCarrier(A), null, null) {
+
+                @Override
+                public IItemList<IAEItemStack> getAvailableItems(IItemList<IAEItemStack> out) {
+                    throw new AssertionError("A single-stack query must not enumerate the disk");
+                }
+            });
+        final IAEItemStack result = handler.getAvailableItem(first, 1);
+        SimpleAssert.eq(1L, result.getStackSize(), "cold handler reads the exact stock");
+        result.setStackSize(7);
+        SimpleAssert.eq(
+            1L,
+            handler.getAvailableItem(first, 2)
+                .getStackSize(),
+            "query returns an isolated copy");
+        SimpleAssert.eq(null, handler.getAvailableItem(ironWithIdentity(size, 1), 3), "absent NBT variant");
+        handler.extractItems(first, Actionable.MODULATE, null);
+        SimpleAssert.eq(null, handler.getAvailableItem(first, 4), "depleted stock is invisible");
+        handler.injectItems(first, Actionable.MODULATE, null);
+        handler.setBaseAccess(AccessRestriction.WRITE);
+        SimpleAssert.eq(null, handler.getAvailableItem(first, 5), "AE2 wrapper still enforces read access");
+        handler.setBaseAccess(AccessRestriction.READ_WRITE);
+        SimpleAssert.eq(
+            1L,
+            handler.getAvailableItem(first, 6)
+                .getStackSize(),
+            "restored read access sees reinsertion");
+        System.out.printf("Infinity precise query: entries=%d enumerated=0%n", size);
     }
 
     private static void verifyExistingSaveCopy(Path root, Path source) throws Exception {
@@ -353,11 +389,15 @@ public final class InfinityDiskPersistenceTest {
     }
 
     private static InfinityItemStorageCellInventory itemInventory(UUID uuid) throws Exception {
+        return new InfinityItemStorageCellInventory(itemCarrier(uuid), null, null);
+    }
+
+    private static ItemStack itemCarrier(UUID uuid) {
         final ItemStack cell = new ItemStack(new ItemInfinityStorageCell());
         final NBTTagCompound tag = new NBTTagCompound();
         tag.setString("diskuuid", uuid.toString());
         cell.setTagCompound(tag);
-        return new InfinityItemStorageCellInventory(cell, null, null);
+        return cell;
     }
 
     private static IAEItemStack iron(int amount) {

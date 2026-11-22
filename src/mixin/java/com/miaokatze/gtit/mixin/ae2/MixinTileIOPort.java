@@ -19,7 +19,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import com.miaokatze.gtit.common.items.infinitycell.InfinityCellStock;
+
 import appeng.api.AEApi;
+import appeng.api.config.AccessRestriction;
 import appeng.api.config.FullnessMode;
 import appeng.api.config.OperationMode;
 import appeng.api.storage.IMEInventory;
@@ -27,6 +30,8 @@ import appeng.api.storage.data.AEStackTypeRegistry;
 import appeng.api.storage.data.IAEStack;
 import appeng.api.storage.data.IAEStackType;
 import appeng.api.storage.data.IItemList;
+import appeng.me.storage.MEInventoryHandler;
+import appeng.me.storage.MEPassThrough;
 import appeng.tile.storage.TileIOPort;
 
 /**
@@ -164,25 +169,34 @@ public class MixinTileIOPort {
             return;
         }
         try {
+            if (!sourceEmptyAfterTransfer) {
+                ci.setReturnValue(false);
+                return;
+            }
             for (final IMEInventory<?> channel : channels) {
-                if (channel == inventory) {
-                    // 本轮这个通道直接用原生刚算出的结论，避免重复扫一遍大列表
-                    if (!sourceEmptyAfterTransfer) {
-                        ci.setReturnValue(false);
-                        return;
-                    }
-                } else {
-                    final IItemList<? extends IAEStack> contents = this.getAvailableStacks((IMEInventory) channel);
-                    if (contents != null && !contents.isEmpty()) {
-                        ci.setReturnValue(false);
-                        return;
-                    }
+                if (channel != inventory && this.gtit$hasAvailableStacks(channel)) {
+                    ci.setReturnValue(false);
+                    return;
                 }
             }
             // 全部通道都空：不接管，交给原生判定
         } catch (Throwable t) {
             this.gtit$warn(t);
         }
+    }
+
+    @Unique
+    private boolean gtit$hasAvailableStacks(IMEInventory<?> channel) {
+        // A filtered or restricted handler must keep AE2's visibility semantics.
+        if (channel instanceof MEInventoryHandler<?>handler && handler.getAccess()
+            .hasPermission(AccessRestriction.READ)
+            && !handler.isExtractFilterActive()
+            && handler.getInternal() instanceof MEPassThrough<?>passthrough
+            && passthrough.getInternal() instanceof InfinityCellStock stock) {
+            return stock.hasStoredStacks();
+        }
+        final IItemList<? extends IAEStack> contents = this.getAvailableStacks((IMEInventory) channel);
+        return contents != null && !contents.isEmpty();
     }
 
     /** 取该元件命中的全部通道 handler，遍历顺序与调用形式都与原生 :492-493 一致。 */
