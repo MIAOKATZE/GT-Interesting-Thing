@@ -10,7 +10,7 @@
   <img alt="Minecraft 1.7.10" src="https://img.shields.io/badge/Minecraft-1.7.10-blue.svg">
   <img alt="Forge 10.13.4.1614" src="https://img.shields.io/badge/Forge-10.13.4.1614-blue.svg">
   <a href="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack"><img alt="GTNH 2.9.0 final" src="https://img.shields.io/badge/GTNH-2.9.0-orange.svg"></a>
-  <img alt="GTIT 2.1.28" src="https://img.shields.io/badge/GTIT-2.1.28-green.svg">
+  <img alt="GTIT latest release" src="https://img.shields.io/github/v/release/MIAOKATZE/GT-Interesting-Thing?label=GTIT&amp;color=green">
 </p>
 
 | 前置 / Requirement | 版本 / Version |
