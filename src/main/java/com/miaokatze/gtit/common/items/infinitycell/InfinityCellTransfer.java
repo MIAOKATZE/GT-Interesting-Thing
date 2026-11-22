@@ -3,6 +3,8 @@
 
 package com.miaokatze.gtit.common.items.infinitycell;
 
+import java.util.function.Consumer;
+
 import appeng.api.config.Actionable;
 import appeng.api.storage.data.IAEStack;
 import appeng.api.storage.data.IItemList;
@@ -17,7 +19,7 @@ final class InfinityCellTransfer {
     }
 
     static <T extends IAEStack<T>> T inject(IItemList<T> contents, T input, Actionable mode, long capacity,
-        Runnable save) {
+        Consumer<T> save) {
         if (input == null || input.getStackSize() <= 0) {
             return input;
         }
@@ -38,15 +40,16 @@ final class InfinityCellTransfer {
                 final T added = input.copy();
                 added.setStackSize(accepted);
                 contents.add(added);
+                save.accept(contents.findPrecise(added));
             } else {
                 stored.setStackSize(current + accepted);
+                save.accept(stored);
             }
-            save.run();
         }
         return remainder;
     }
 
-    static <T extends IAEStack<T>> T extract(IItemList<T> contents, T request, Actionable mode, Runnable save) {
+    static <T extends IAEStack<T>> T extract(IItemList<T> contents, T request, Actionable mode, Consumer<T> save) {
         if (request == null || request.getStackSize() <= 0) {
             return null;
         }
@@ -59,7 +62,7 @@ final class InfinityCellTransfer {
         result.setStackSize(removed);
         if (mode == Actionable.MODULATE) {
             stored.setStackSize(stored.getStackSize() - removed);
-            save.run();
+            save.accept(stored);
         }
         return result;
     }

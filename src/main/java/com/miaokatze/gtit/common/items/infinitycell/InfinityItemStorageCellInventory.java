@@ -344,10 +344,10 @@ public class InfinityItemStorageCellInventory implements ITCellInventory {
         return InfinityCellTransfer.extract(getCellItems(), request, mode, this::saveChanges);
     }
 
-    private void saveChanges() {
+    private void saveChanges(IAEItemStack changed) {
         this.data.removeTag(InfinityCellConstants.IS_EMPTY);
         StorageManager.getInstance()
-            .postChanges(this.storage);
+            .postChanges(this.storage, changed);
         if (this.container != null) {
             this.container.saveChanges(this);
         }

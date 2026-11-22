@@ -4,9 +4,17 @@
 package com.miaokatze.gtit.testlab.scenario;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
 import java.util.Arrays;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.CompressedStreamTools;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.NBTTagList;
 import net.minecraft.server.MinecraftServer;
 
 import com.miaokatze.gtit.common.api.enums.GTITItemList;
@@ -34,6 +42,7 @@ final class IOPortDrainScenario implements ProbeScenario {
     private static final String SOURCE = "a23f1234-0000-0000-0000-000000000001";
     private static final long[] INITIAL = { 64, 1600, 64 };
     private static final int HOLD_TICKS = 120;
+    private static final String BACKUP_NAME = "gtit-infinity-commit";
     private final boolean fluidLast;
 
     IOPortDrainScenario(boolean fluidLast) {
@@ -70,10 +79,15 @@ final class IOPortDrainScenario implements ProbeScenario {
         if (!migrated) return () -> true;
         final IAEStackType<?>[] types = { InfinityStackTypes.ITEM_STACK_TYPE, InfinityStackTypes.FLUID_STACK_TYPE,
             essentia };
+        final boolean fromBackup = "true".equals(System.getenv("GTIT_TESTLAB_INFINITY_RESTORED_BACKUP"));
+        final long[] expected = fromBackup ? new long[] { 0, INITIAL[1], INITIAL[2] } : INITIAL;
         final long[] loaded = counts(SOURCE, types);
-        final boolean loadedOldStock = Arrays.equals(INITIAL, loaded);
-        context.check("legacy-source-stock", loadedOldStock, "items/fluid/essentia=" + Arrays.toString(loaded));
-        if (!loadedOldStock) return () -> true;
+        final boolean loadedStock = Arrays.equals(expected, loaded);
+        context.check(
+            fromBackup ? "restored-backup-source-stock" : "legacy-source-stock",
+            loadedStock,
+            "items/fluid/essentia=" + Arrays.toString(loaded));
+        if (!loadedStock) return () -> true;
 
         final var definitions = AEApi.instance()
             .definitions();
@@ -113,7 +127,7 @@ final class IOPortDrainScenario implements ProbeScenario {
         final ItemStack source = context.mark(GTITItemList.NekoInfinityStorageUnit.get(1));
         source.getTagCompound()
             .setString(InfinityCellConstants.DISKUUID, SOURCE);
-        return new Drain(context, port, drive, source, types, fluidLast);
+        return new Drain(context, port, drive, source, types, expected, manifest, fluidLast);
     }
 
     private static void place(ProbeContext context, int x, ITileDefinition definition) {
@@ -161,6 +175,45 @@ final class IOPortDrainScenario implements ProbeScenario {
                     .getString(InfinityCellConstants.DISKUUID));
     }
 
+    private static String diskFile(NBTTagCompound index) {
+        return SOURCE + "."
+            + index.getCompoundTag("disks")
+                .getString(SOURCE)
+            + ".dat";
+    }
+
+    private static long[] savedCounts(NBTTagCompound disk, IAEStackType<?>[] types) {
+        final long[] amounts = new long[types.length];
+        final NBTTagCompound channels = disk.getCompoundTag("channels");
+        for (int i = 0; i < types.length; i++) {
+            final NBTTagList entries = channels.getTagList(types[i].getId(), 10);
+            for (int j = 0; j < entries.tagCount(); j++) {
+                final IAEStack<?> stack = types[i].loadStackFromNBT(entries.getCompoundTagAt(j));
+                if (stack != null && stack.getStackSize() > 0) amounts[i] += stack.getStackSize();
+            }
+        }
+        return amounts;
+    }
+
+    private static NBTTagCompound readTag(File file) throws IOException {
+        try (InputStream input = Files.newInputStream(file.toPath())) {
+            return CompressedStreamTools.readCompressed(input);
+        }
+    }
+
+    private static NBTTagCompound readTag(ZipFile zip, String file) throws IOException {
+        final String suffix = "data/" + StorageManager.storageName() + "/" + file;
+        final ZipEntry entry = zip.stream()
+            .filter(
+                candidate -> candidate.getName()
+                    .endsWith(suffix))
+            .findFirst()
+            .orElseThrow(() -> new IOException("Missing infinity cell backup entry " + suffix));
+        try (InputStream input = zip.getInputStream(entry)) {
+            return CompressedStreamTools.readCompressed(input);
+        }
+    }
+
     private static final class Drain implements ProbeTask {
 
         private final ProbeContext context;
@@ -168,17 +221,22 @@ final class IOPortDrainScenario implements ProbeScenario {
         private final TileDrive drive;
         private final ItemStack source;
         private final IAEStackType<?>[] types;
+        private final long[] expected;
+        private final File manifest;
         private final boolean fluidLast;
         private int phase;
         private long holdFrom = -1;
+        private File archive;
 
         Drain(ProbeContext context, TileIOPort port, TileDrive drive, ItemStack source, IAEStackType<?>[] types,
-            boolean fluidLast) {
+            long[] expected, File manifest, boolean fluidLast) {
             this.context = context;
             this.port = port;
             this.drive = drive;
             this.source = source;
             this.types = types;
+            this.expected = expected;
+            this.manifest = manifest;
             this.fluidLast = fluidLast;
         }
 
@@ -224,13 +282,29 @@ final class IOPortDrainScenario implements ProbeScenario {
                     return true;
                 }
                 if (stock[0] == 0 && held(time, "item-empty-retains-fluid-and-essentia", snapshot)) {
-                    final ItemStack receiver = fluidLast
-                        ? GameRegistry.findItemStack("thaumicenergistics", "storage.essentia", 1)
-                        : GTITItemList.InfinityFluidCell.get(1);
-                    if (receiver == null) throw new IllegalStateException("Native essentia cell is unavailable");
-                    drive.setInventorySlotContents(1, receiver);
-                    phase = 2;
+                    final String backupDirectory = System.getenv("GTIT_TESTLAB_INFINITY_BACKUP_DIRECTORY");
+                    if (backupDirectory == null) {
+                        connectSecondReceiver();
+                    } else {
+                        archive = new File(backupDirectory, BACKUP_NAME + ".zip");
+                        if (archive.exists()) throw new IOException("The test archive already exists");
+                        final boolean accepted = command("backup start " + BACKUP_NAME);
+                        context.check("backup-command-accepted", accepted, archive.getName());
+                        if (!accepted) return true;
+                        phase = 4;
+                    }
                 }
+            } else if (phase == 4) {
+                if (!archive.isFile()) return false;
+                try (ZipFile zip = new ZipFile(archive)) {
+                    final NBTTagCompound backedUp = readTag(zip, diskFile(readTag(zip, "manifest.dat")));
+                    final long[] saved = savedCounts(backedUp, types);
+                    context.check(
+                        "backup-includes-committed-three-channel-snapshot",
+                        Arrays.equals(new long[] { 0, INITIAL[1], INITIAL[2] }, saved),
+                        "items/fluid/essentia=" + Arrays.toString(saved));
+                }
+                connectSecondReceiver();
             } else if (phase == 2) {
                 final int last = fluidLast ? 1 : 2;
                 final int draining = fluidLast ? 2 : 1;
@@ -241,6 +315,14 @@ final class IOPortDrainScenario implements ProbeScenario {
                 final String check = fluidLast ? "item-and-essentia-empty-retains-fluid"
                     : "item-and-fluid-empty-retains-essentia";
                 if (stock[draining] == 0 && held(time, check, snapshot)) {
+                    final boolean flushed = command("save-all flush");
+                    final long[] saved = savedCounts(
+                        readTag(new File(manifest.getParentFile(), diskFile(readTag(manifest)))),
+                        types);
+                    context.check(
+                        "explicit-flush-commits-remainder",
+                        flushed && Arrays.equals(stock, saved),
+                        "items/fluid/essentia=" + Arrays.toString(saved));
                     final ItemStack receiver = fluidLast ? GTITItemList.InfinityFluidCell.get(1)
                         : GTITItemList.NekoInfinityStorageUnit.get(1);
                     drive.setInventorySlotContents(2, receiver);
@@ -251,11 +333,26 @@ final class IOPortDrainScenario implements ProbeScenario {
                 final long[] received = received();
                 context.check(
                     "native-destinations-received-all-stock",
-                    Arrays.equals(INITIAL, received),
+                    Arrays.equals(expected, received),
                     "items/fluid/essentia=" + Arrays.toString(received));
                 return true;
             }
             return false;
+        }
+
+        private void connectSecondReceiver() {
+            final ItemStack receiver = fluidLast
+                ? GameRegistry.findItemStack("thaumicenergistics", "storage.essentia", 1)
+                : GTITItemList.InfinityFluidCell.get(1);
+            if (receiver == null) throw new IllegalStateException("Native essentia cell is unavailable");
+            drive.setInventorySlotContents(1, receiver);
+            phase = 2;
+        }
+
+        private boolean command(String command) {
+            final MinecraftServer server = MinecraftServer.getServer();
+            return server.getCommandManager()
+                .executeCommand(server, command) > 0;
         }
 
         private boolean held(long tick, String check, String snapshot) {

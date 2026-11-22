@@ -57,11 +57,11 @@ public final class InfinityCellTransferTest {
             });
 
         Stack inject(Stack input, Actionable mode, long capacity) {
-            return InfinityCellTransfer.inject(list, input, mode, capacity, () -> saves++);
+            return InfinityCellTransfer.inject(list, input, mode, capacity, changed -> saves++);
         }
 
         Stack extract(long amount, Actionable mode) {
-            return InfinityCellTransfer.extract(list, stack(amount), mode, () -> saves++);
+            return InfinityCellTransfer.extract(list, stack(amount), mode, changed -> saves++);
         }
     }
 

@@ -5,7 +5,14 @@
   "refmap": "mixins.gtit.refmap.json",
   "target": "@env(DEFAULT)",
   "compatibilityLevel": "JAVA_8",
-  "mixins": ["MixinItemInWorldManager", "MixinBaseMetaTileEntityMuffle", "MixinEntityFishHook", "MixinTeamManagerMergePreflight"],
+  "mixins": [
+    "MixinItemInWorldManager",
+    "MixinBaseMetaTileEntityMuffle",
+    "MixinEntityFishHook",
+    "MixinTeamManagerMergePreflight",
+    "MixinCommandSaveAllWaitForInfinityCells",
+    "MixinMinecraftServerWaitForInfinityCells"
+  ],
   "client": [
     "MixinPlayerControllerMP",
     "MixinEntityRenderer",

@@ -130,7 +130,7 @@ public class InfinityTypedCellInventory<T extends IAEStack<T>> implements IMEInv
         return this.stackType;
     }
 
-    private void saveChanges() {
+    private void saveChanges(T changed) {
         this.data.removeTag(InfinityCellConstants.IS_EMPTY);
         if (this.container != null) {
             try {
@@ -141,7 +141,7 @@ public class InfinityTypedCellInventory<T extends IAEStack<T>> implements IMEInv
         }
         final StorageManager manager = StorageManager.getInstance();
         if (manager != null) {
-            manager.postChanges(this.storage);
+            manager.postChanges(this.storage, changed);
         }
     }
 }

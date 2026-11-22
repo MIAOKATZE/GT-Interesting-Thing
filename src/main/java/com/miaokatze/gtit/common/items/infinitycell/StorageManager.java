@@ -5,15 +5,21 @@ package com.miaokatze.gtit.common.items.infinitycell;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
@@ -27,13 +33,16 @@ import net.minecraftforge.event.world.WorldEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.miaokatze.gtit.asm.GtitBackupLateMixinLoader;
+
 import appeng.api.storage.StorageChannel;
+import appeng.api.storage.data.IAEStack;
 import appeng.api.storage.data.IAEStackType;
 import appeng.util.Platform;
 import cpw.mods.fml.common.eventhandler.EventPriority;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 
-/** Live inventory grouped by disk and channel. Disk commits run on the server's world-save thread. */
+/** Live inventory grouped by disk and channel. The server owns snapshots and the writer owns disk commits. */
 public class StorageManager extends WorldSavedData {
 
     private static final String DATA_NAME = "GTIT_InfinityCellStorage";
@@ -41,9 +50,72 @@ public class StorageManager extends WorldSavedData {
     private static StorageManager instance;
 
     private final Map<UUID, Disk> disks = new ConcurrentHashMap<>();
-    private final Set<UUID> dirtyDisks = new LinkedHashSet<>();
+    private final Map<UUID, DiskChanges> dirtyDisks = new LinkedHashMap<>();
     private final InfinityDiskFiles diskFiles;
+    private final InfinityDiskSnapshots snapshots;
     private World world;
+    private ExecutorService writer;
+    private PendingSave pendingSave;
+
+    private static final class PendingSave {
+
+        final Map<UUID, DiskChanges> disks;
+        final Future<Void> result;
+
+        PendingSave(Map<UUID, DiskChanges> disks, Future<Void> result) {
+            this.disks = disks;
+            this.result = result;
+        }
+    }
+
+    private static final class DiskChanges {
+
+        boolean replace;
+        final Map<DataStorage, Map<Object, IAEStack<?>>> channels = new LinkedHashMap<>();
+
+        void replace() {
+            replace = true;
+            channels.clear();
+        }
+
+        void mark(DataStorage storage, IAEStack<?> stack) {
+            if (!replace) channels.computeIfAbsent(storage, ignored -> new LinkedHashMap<>())
+                .put(storage.snapshotKey(stack), stack);
+        }
+
+        void retryEarlier(DiskChanges earlier) {
+            if (earlier.replace) replace();
+            if (replace) return;
+            earlier.channels.forEach((storage, entries) -> {
+                final Map<Object, IAEStack<?>> latest = channels
+                    .computeIfAbsent(storage, ignored -> new LinkedHashMap<>());
+                entries.forEach(latest::putIfAbsent);
+            });
+        }
+
+        InfinityDiskSnapshots.Update capture() {
+            final Map<String, Map<Object, NBTTagCompound>> update = new LinkedHashMap<>();
+            channels.forEach((storage, entries) -> {
+                final Map<Object, NBTTagCompound> changes = new LinkedHashMap<>();
+                entries.forEach((key, stack) -> changes.put(key, DataStorage.snapshot(stack)));
+                update.put(storage.getTypeId(), changes);
+            });
+            return new InfinityDiskSnapshots.Update(false, update);
+        }
+
+        void forgetCommittedDeletions(DiskChanges newer) {
+            if (newer != null && newer.replace) return;
+            channels.forEach((storage, entries) -> {
+                final Map<Object, IAEStack<?>> latest = newer == null ? Collections.emptyMap()
+                    : newer.channels.getOrDefault(storage, Collections.emptyMap());
+                entries.forEach((key, stack) -> {
+                    if (!InfinityCellTransfer.hasStock(stack) && !latest.containsKey(key)) {
+                        storage.forgetSnapshotKey(stack, key);
+                    }
+                });
+            });
+        }
+    }
 
     public StorageManager(String name) {
         this(name, null);
@@ -53,6 +125,7 @@ public class StorageManager extends WorldSavedData {
     private StorageManager(String name, InfinityDiskFiles diskFiles) {
         super(name);
         this.diskFiles = diskFiles;
+        this.snapshots = diskFiles == null ? null : new InfinityDiskSnapshots(diskFiles);
         setDirty(diskFiles == null);
     }
 
@@ -70,6 +143,17 @@ public class StorageManager extends WorldSavedData {
         if (legacy == null) throw new IOException("Missing save path for infinity cells");
         final StorageManager manager = open(legacy.toPath());
         manager.world = world;
+        if (GtitBackupLateMixinLoader.canSaveInBackground()) {
+            manager.startBackgroundWrites(Executors.newSingleThreadExecutor(task -> {
+                final Thread thread = new Thread(task, "GTIT Infinity Cell IO");
+                thread.setDaemon(true);
+                return thread;
+            }));
+            LOG.info("Using background infinity cell saves");
+        } else {
+            LOG.info(
+                "Using synchronous infinity cell saves because the installed ServerUtilities backup is unverified");
+        }
         MinecraftForge.EVENT_BUS.register(manager);
     }
 
@@ -81,14 +165,14 @@ public class StorageManager extends WorldSavedData {
         final StorageManager manager = new StorageManager(DATA_NAME, files);
         final Map<UUID, NBTTagCompound> committed = files.load();
         if (committed != null) {
-            manager.loadDisks(committed);
+            manager.loadDisks(committed, true);
             files.removeAbandonedRevisions();
             retireLegacyFile(legacyFile);
         } else if (!Files.notExists(legacyFile)) {
             final NBTTagCompound root = InfinityDiskFiles.read(legacyFile);
             if (!root.hasKey("data", 10)) throw new IOException("Missing infinity cell payload in " + legacyFile);
             final Map<UUID, NBTTagCompound> legacy = InfinityLegacyData.read(root.getCompoundTag("data"));
-            manager.loadDisks(legacy);
+            manager.loadDisks(legacy, true);
             // Copy the serialized stacks, including opaque channels, without re-encoding them during import.
             files.save(legacy);
             files.removeAbandonedRevisions();
@@ -111,36 +195,140 @@ public class StorageManager extends WorldSavedData {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onWorldSave(WorldEvent.Save event) {
-        if (event.world == this.world) flushWorld();
+        if (event.world != this.world) return;
+        try {
+            requestSave();
+        } catch (IOException | RuntimeException e) {
+            LOG.error("Could not save infinity cell disks; pending changes will be retried", e);
+        }
+    }
+
+    public static void flushPendingWorldSave() throws IOException {
+        final StorageManager manager = instance;
+        if (manager != null && manager.world != null) manager.saveDisks();
+    }
+
+    /** Called after the final world save and before the server finishes shutting down. */
+    public static void finishWorldSaveOnStop() {
+        final StorageManager manager = instance;
+        if (manager != null && manager.world != null) manager.finishBeforeClose();
     }
 
     public static void closeWorld() {
         final StorageManager manager = instance;
-        if (manager != null && manager.world != null) {
-            MinecraftForge.EVENT_BUS.unregister(manager);
-            manager.flushWorld();
+        try {
+            if (manager != null && manager.world != null) MinecraftForge.EVENT_BUS.unregister(manager);
+            if (manager != null && (manager.world != null || manager.writer != null)) manager.finishBeforeClose();
+        } finally {
+            if (manager != null && manager.writer != null) manager.writer.shutdown();
+            instance = null;
         }
-        instance = null;
     }
 
-    private void flushWorld() {
+    private void finishBeforeClose() {
+        boolean interrupted = Thread.interrupted();
         try {
+            while (true) {
+                try {
+                    saveDisks();
+                    return;
+                } catch (InterruptedIOException e) {
+                    interrupted = true;
+                    Thread.interrupted();
+                } catch (IOException | RuntimeException e) {
+                    LOG.error("Could not commit infinity cell disks before closing this world", e);
+                    return;
+                }
+            }
+        } finally {
+            if (interrupted) Thread.currentThread()
+                .interrupt();
+        }
+    }
+
+    void startBackgroundWrites(ExecutorService executor) {
+        writer = executor;
+    }
+
+    void requestSave() throws IOException {
+        if (writer == null) {
             saveDisks();
-        } catch (IOException | RuntimeException e) {
-            LOG.error("Could not commit infinity cell disks; the previous snapshot remains active", e);
+        } else if (pendingSave == null || pendingSave.result.isDone()) {
+            completePendingSave();
+            queueDirtyDisks();
         }
     }
 
     void saveDisks() throws IOException {
-        if (diskFiles == null || dirtyDisks.isEmpty()) return;
-        final Map<UUID, NBTTagCompound> changed = new LinkedHashMap<>();
-        for (final UUID uuid : dirtyDisks) {
-            final Disk disk = disks.get(uuid);
-            changed.put(uuid, disk == null ? new NBTTagCompound() : disk.writeChannels());
+        if (diskFiles == null) return;
+        if (writer != null) {
+            completePendingSave();
+            queueDirtyDisks();
+            completePendingSave();
+        } else if (!dirtyDisks.isEmpty()) {
+            snapshots.save(captureDirtyDisks());
+            final Map<UUID, DiskChanges> submitted = new LinkedHashMap<>(dirtyDisks);
+            dirtyDisks.clear();
+            finishCommit(submitted);
         }
-        diskFiles.save(changed);
+    }
+
+    Map<UUID, InfinityDiskSnapshots.Update> captureDirtyDisks() {
+        final Map<UUID, InfinityDiskSnapshots.Update> changed = new LinkedHashMap<>();
+        dirtyDisks.forEach((uuid, update) -> {
+            final Disk disk = disks.get(uuid);
+            if (disk == null) {
+                changed.put(uuid, new InfinityDiskSnapshots.Update(true, Collections.emptyMap()));
+                return;
+            }
+            if (disk.resolvedChannel) {
+                update.replace();
+                disk.resolvedChannel = false;
+            }
+            changed.put(uuid, update.replace ? disk.captureAll() : update.capture());
+        });
+        return changed;
+    }
+
+    private void queueDirtyDisks() {
+        if (dirtyDisks.isEmpty()) return;
+        final Map<UUID, InfinityDiskSnapshots.Update> changed = captureDirtyDisks();
+        final Map<UUID, DiskChanges> submitted = new LinkedHashMap<>(dirtyDisks);
+        final Future<Void> result = writer.submit(() -> {
+            snapshots.save(changed);
+            return null;
+        });
+        pendingSave = new PendingSave(submitted, result);
         dirtyDisks.clear();
-        setDirty(false);
+    }
+
+    private void completePendingSave() throws IOException {
+        final PendingSave save = pendingSave;
+        if (save == null) return;
+        try {
+            save.result.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread()
+                .interrupt();
+            final InterruptedIOException failure = new InterruptedIOException(
+                "Interrupted while waiting for infinity cell disks");
+            failure.initCause(e);
+            throw failure;
+        } catch (ExecutionException e) {
+            save.disks.forEach((uuid, earlier) -> {
+                final DiskChanges newer = dirtyDisks.putIfAbsent(uuid, earlier);
+                if (newer != null) newer.retryEarlier(earlier);
+            });
+            pendingSave = null;
+            throw new IOException("Infinity cell disk commit failed", e.getCause());
+        }
+        pendingSave = null;
+        finishCommit(save.disks);
+    }
+
+    private void finishCommit(Map<UUID, DiskChanges> submitted) {
+        submitted.forEach((uuid, changes) -> changes.forgetCommittedDeletions(dirtyDisks.get(uuid)));
+        setDirty(!dirtyDisks.isEmpty());
     }
 
     static String keyOf(String uuid, String typeId) {
@@ -217,10 +405,12 @@ public class StorageManager extends WorldSavedData {
     public void readFromNBT(NBTTagCompound data) {
         try {
             final Set<UUID> previous = new LinkedHashSet<>(disks.keySet());
-            loadDisks(InfinityLegacyData.read(data));
+            loadDisks(InfinityLegacyData.read(data), false);
             if (diskFiles != null) {
-                dirtyDisks.addAll(previous);
-                dirtyDisks.addAll(disks.keySet());
+                previous.addAll(disks.keySet());
+                previous.forEach(
+                    uuid -> dirtyDisks.computeIfAbsent(uuid, ignored -> new DiskChanges())
+                        .replace());
                 setDirty(!dirtyDisks.isEmpty());
             }
         } catch (IOException e) {
@@ -228,23 +418,30 @@ public class StorageManager extends WorldSavedData {
         }
     }
 
-    private void loadDisks(Map<UUID, NBTTagCompound> data) throws IOException {
+    private void loadDisks(Map<UUID, NBTTagCompound> data, boolean seedSnapshots) throws IOException {
         final Map<UUID, Disk> loaded = new LinkedHashMap<>();
         for (final Map.Entry<UUID, NBTTagCompound> record : data.entrySet()) {
             final UUID uuid = record.getKey();
             final NBTTagCompound contents = record.getValue();
             final Disk disk = new Disk();
+            final Map<String, Map<Object, NBTTagCompound>> baseline = new LinkedHashMap<>();
             for (final String typeId : contents.func_150296_c()) {
                 if (typeId.isEmpty()) throw new IOException("Empty infinity cell channel in " + uuid);
                 final NBTTagList list = InfinityLegacyData.list(contents, typeId);
                 final IAEStackType<?> type = resolveType(typeId);
                 if (type == null) {
                     disk.unresolved.put(typeId, list);
+                    if (seedSnapshots) baseline.put(typeId, Disk.copyOpaque(list));
+                } else if (seedSnapshots) {
+                    final Map<Object, NBTTagCompound> entries = new LinkedHashMap<>();
+                    disk.channels.put(typeId, DataStorage.readFromNBT(uuid, list, type, entries));
+                    if (!entries.isEmpty()) baseline.put(typeId, entries);
                 } else {
                     disk.channels.put(typeId, DataStorage.readFromNBT(uuid, list, type));
                 }
             }
             loaded.put(uuid, disk);
+            if (seedSnapshots) snapshots.seed(uuid, baseline);
         }
         disks.clear();
         disks.putAll(loaded);
@@ -269,7 +466,25 @@ public class StorageManager extends WorldSavedData {
     }
 
     public void postChanges(DataStorage storage) {
-        if (storage != null && diskFiles != null) dirtyDisks.add(storage.getRawUUID());
+        if (storage != null && diskFiles != null) {
+            dirtyDisks.computeIfAbsent(storage.getRawUUID(), ignored -> new DiskChanges())
+                .replace();
+        }
+        setDirty(true);
+    }
+
+    void postChanges(DataStorage storage, IAEStack<?> stack) {
+        if (storage != null && diskFiles != null) {
+            final UUID uuid = storage.getRawUUID();
+            final Disk disk = disks.get(uuid);
+            if (stack == null || disk == null || disk.channels.get(storage.getTypeId()) != storage) {
+                // A caller with a stale or untracked handler can only request a refresh of the current disk.
+                postChanges(storage);
+                return;
+            }
+            dirtyDisks.computeIfAbsent(uuid, ignored -> new DiskChanges())
+                .mark(storage, stack);
+        }
         setDirty(true);
     }
 
@@ -291,13 +506,39 @@ public class StorageManager extends WorldSavedData {
 
         final Map<String, DataStorage> channels = new ConcurrentHashMap<>();
         final Map<String, NBTTagList> unresolved = new LinkedHashMap<>();
+        boolean resolvedChannel;
 
         DataStorage getOrCreate(UUID uuid, IAEStackType<?> type) {
             return channels.computeIfAbsent(type.getId(), id -> {
-                final DataStorage storage = DataStorage.readFromNBT(uuid, unresolved.get(id), type);
-                unresolved.remove(id);
+                final NBTTagList raw = unresolved.get(id);
+                final DataStorage storage = DataStorage.readFromNBT(uuid, raw, type);
+                if (raw != null) {
+                    unresolved.remove(id);
+                    resolvedChannel = true;
+                }
                 return storage;
             });
+        }
+
+        InfinityDiskSnapshots.Update captureAll() {
+            final Map<String, Map<Object, NBTTagCompound>> data = new LinkedHashMap<>();
+            channels.forEach((type, storage) -> {
+                final Map<Object, NBTTagCompound> entries = storage.snapshotAll();
+                if (!entries.isEmpty()) data.put(type, entries);
+            });
+            unresolved.forEach((type, raw) -> data.put(type, copyOpaque(raw)));
+            return new InfinityDiskSnapshots.Update(true, data);
+        }
+
+        private static Map<Object, NBTTagCompound> copyOpaque(NBTTagList raw) {
+            final Map<Object, NBTTagCompound> entries = new LinkedHashMap<>();
+            for (int i = 0; i < raw.tagCount(); i++) {
+                entries.put(
+                    new Object(),
+                    (NBTTagCompound) raw.getCompoundTagAt(i)
+                        .copy());
+            }
+            return entries;
         }
 
         NBTTagCompound writeChannels() {

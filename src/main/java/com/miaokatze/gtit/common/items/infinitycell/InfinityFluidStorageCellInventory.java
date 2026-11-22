@@ -85,10 +85,10 @@ public class InfinityFluidStorageCellInventory implements ITFluidCellInventory {
         return InfinityCellTransfer.extract(getCellFluids(), request, mode, this::saveChanges);
     }
 
-    private void saveChanges() {
+    private void saveChanges(IAEFluidStack changed) {
         this.data.removeTag(InfinityCellConstants.IS_EMPTY);
         StorageManager.getInstance()
-            .postChanges(this.storage);
+            .postChanges(this.storage, changed);
         if (this.container != null) {
             this.container.saveChanges(this);
         }
