@@ -10,13 +10,13 @@
   <img alt="Minecraft 1.7.10" src="https://img.shields.io/badge/Minecraft-1.7.10-blue.svg">
   <img alt="Forge 10.13.4.1614" src="https://img.shields.io/badge/Forge-10.13.4.1614-blue.svg">
   <a href="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack"><img alt="GTNH 2.9.0 final" src="https://img.shields.io/badge/GTNH-2.9.0-orange.svg"></a>
-  <img alt="GTIT 2.1.19" src="https://img.shields.io/badge/GTIT-2.1.19-green.svg">
+  <img alt="GTIT 2.1.28" src="https://img.shields.io/badge/GTIT-2.1.28-green.svg">
 </p>
 
 | 前置 / Requirement | 版本 / Version |
 | --- | --- |
 | GTNH | 2.9.0 |
-| [MIAOKATZE Core](https://github.com/MIAOKATZE/MIAOKATZE-Core) | 0.2.25+ |
+| [MIAOKATZE Core](https://github.com/MIAOKATZE/MIAOKATZE-Core) | 0.2.29+ |
 
 请在客户端和服务端手动安装随本体发布的 Core 普通 JAR。
 
@@ -42,7 +42,7 @@ Hover the vending controller, dimension pocket or Mage upgrade and press the con
 
 | GTNH | GTIT 版本范围 / Version range | 下载 / Download |
 | --- | --- | --- |
-| 2.9.0 正式版 / final | 2.1.0 ~ + | [v2.1.2](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v2.1.2) |
+| 2.9.0 正式版 / final | 2.1.0 ~ + | [最新发布版 / Latest release](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/latest) |
 | 2.9.0 RC-1 / RC-2 | 2.0.0 ~ 2.0.23 | [v2.0.23](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v2.0.23) |
 | 2.9.0 beta-1 / beta-2 / beta-3 | 1.9.3 | [v1.9.3](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v1.9.3) |
 | 2.8.4 | 0.1.1 | [v0.1.1](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v0.1.1) |
@@ -691,9 +691,9 @@ A literal `\n` in mail bodies is converted to a line break. / 邮件正文中字
 
 - Jabel (modern Java syntax, Java 8 bytecode) / Minecraft 1.7.10 / Forge 10.13.4.1614
 - ModularUI / ModularUI2 / StructureLib
-- Dependencies: MIAOKATZE Core 0.2.25+, GT5-Unofficial (5.09.54.265), GTNHLib, VisualProspecting, Baubles-Expanded, IC2; VendingMachine 0.4.103 (local release jar; original casings and ME uplinks convert to GTIT's dedicated Neko parts), BetterQuesting 3.8.92 (compileOnly)
+- Dependencies: MIAOKATZE Core 0.2.29+, GT5-Unofficial (5.09.54.265), GTNHLib, VisualProspecting, Baubles-Expanded, IC2; VendingMachine 0.4.103 (local release jar; original casings and ME uplinks convert to GTIT's dedicated Neko parts), BetterQuesting 3.8.92 (compileOnly)
 - Jabel（现代 Java 语法，编译为 Java 8 字节码）/ Minecraft 1.7.10 / Forge 10.13.4.1614
-- 依赖：MIAOKATZE Core 0.2.25+、GT5-Unofficial（5.09.54.265）、GTNHLib、VisualProspecting、Baubles-Expanded、IC2；VendingMachine 0.4.103（本地发布 jar；原机械方块与 ME 仓可转换为 GTIT 猫猫专用部件）、BetterQuesting 3.8.92（compileOnly）
+- 依赖：MIAOKATZE Core 0.2.29+、GT5-Unofficial（5.09.54.265）、GTNHLib、VisualProspecting、Baubles-Expanded、IC2；VendingMachine 0.4.103（本地发布 jar；原机械方块与 ME 仓可转换为 GTIT 猫猫专用部件）、BetterQuesting 3.8.92（compileOnly）
 
 ***
 
