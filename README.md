@@ -16,7 +16,7 @@
 | 前置 / Requirement | 版本 / Version |
 | --- | --- |
 | GTNH | 2.9.0 |
-| [MIAOKATZE Core](https://github.com/MIAOKATZE/MIAOKATZE-Core) | 0.2.29+ |
+| [MIAOKATZE Core](https://github.com/MIAOKATZE/MIAOKATZE-Core) | [见对应版本的 Release / See the corresponding release](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases) |
 
 请在客户端和服务端手动安装随本体发布的 Core 普通 JAR。
 
@@ -691,9 +691,9 @@ A literal `\n` in mail bodies is converted to a line break. / 邮件正文中字
 
 - Jabel (modern Java syntax, Java 8 bytecode) / Minecraft 1.7.10 / Forge 10.13.4.1614
 - ModularUI / ModularUI2 / StructureLib
-- Dependencies: MIAOKATZE Core 0.2.29+, GT5-Unofficial (5.09.54.265), GTNHLib, VisualProspecting, Baubles-Expanded, IC2; VendingMachine 0.4.103 (local release jar; original casings and ME uplinks convert to GTIT's dedicated Neko parts), BetterQuesting 3.8.92 (compileOnly)
+- Dependencies: MIAOKATZE Core, GT5-Unofficial (5.09.54.265), GTNHLib, VisualProspecting, Baubles-Expanded, IC2; VendingMachine 0.4.103 (local release jar; original casings and ME uplinks convert to GTIT's dedicated Neko parts), BetterQuesting 3.8.92 (compileOnly)
 - Jabel（现代 Java 语法，编译为 Java 8 字节码）/ Minecraft 1.7.10 / Forge 10.13.4.1614
-- 依赖：MIAOKATZE Core 0.2.29+、GT5-Unofficial（5.09.54.265）、GTNHLib、VisualProspecting、Baubles-Expanded、IC2；VendingMachine 0.4.103（本地发布 jar；原机械方块与 ME 仓可转换为 GTIT 猫猫专用部件）、BetterQuesting 3.8.92（compileOnly）
+- 依赖：MIAOKATZE Core、GT5-Unofficial（5.09.54.265）、GTNHLib、VisualProspecting、Baubles-Expanded、IC2；VendingMachine 0.4.103（本地发布 jar；原机械方块与 ME 仓可转换为 GTIT 猫猫专用部件）、BetterQuesting 3.8.92（compileOnly）
 
 ***
 
