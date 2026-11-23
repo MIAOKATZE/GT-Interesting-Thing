@@ -111,7 +111,7 @@ public final class PocketHeadlessCarrierTest {
                 state.ticksUntilDue() == ticks - 1 && state.remainingBatches() == batches,
                 "moving carrier resumes the existing timer; no free restart or extra batch");
             inventory.drainOwnTank(0, 400);
-            session.persistIdle();
+            session.persistFinal();
             check(
                 PocketInventory.readFrom(moved.getTagCompound())
                     .tankTruthAt(0) == 600,

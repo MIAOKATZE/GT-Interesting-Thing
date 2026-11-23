@@ -23,7 +23,7 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * 且每次读格都现场反序列化。这里用内存数组
  * （{@link ItemStackHandler} 的 {@code ItemStack[]} 形态），仓内同口径先例
  * {@code reincarnation/gui/ReincarnationContainer.java:128-139} 的 {@code SessionInventory}。</li>
- * <li><b>NBT 只在打开时读一次</b>（{@link #readFrom(NBTTagCompound)}），<b>写只发生在关屏</b>
+ * <li><b>NBT 只在打开时读一次</b>（{@link #readFrom(NBTTagCompound)}），<b>服务端 tick 结束合并写回，移交与保存前提前提交</b>
  * （{@code NekoPocketContainer.onModularContainerClosed} → {@link #writeTo(NBTTagCompound)}）。</li>
  * <li><b>脏标记才序列化</b>（{@link #isDirty()}）：禁止每 tick {@code setTagCompound}，
  * 否则 vanilla {@code Container.detectAndSendChanges} 会拿整份 NBT 做相等比较并在变化时重发整枚口袋
@@ -214,6 +214,7 @@ public final class PocketInventory {
      * 抹回去（币已扣 ⇒ 净吞玩家件）。完整论证见 {@link PocketElementStore} 类注释。
      */
     private PocketElementStore elements;
+    private NBTTagCompound carrierRoot;
     private PocketCellBindings bindings;
     private PocketFilterConfig filters;
 
@@ -349,18 +350,21 @@ public final class PocketInventory {
      */
     public static PocketInventory readFrom(NBTTagCompound root) {
         final PocketInventory inventory = new PocketInventory();
+        inventory.carrierRoot = root;
         if (root == null) {
             return inventory;
         }
+        PocketElementStore.validateRoot(root);
         // ★R95 S5：升级位探针先于一切内容读取播种——tank 头容量、源质每格上限、存储格堆叠上限
         // 三处都按它现读；捕获的 root 是<b>活实例</b>（install 原地写位图 ⇒ 会话期内固化即生效）。
         // ★R96 S1：谓词从 hasUpgrade 换成 isActive（位图 ∧ ¬off-mask）⇒ 关掉开关的同一 tick 起，
         // 这两把尺子就按"未升级"那一档收（tank 天花板回 16M/20M、单格回 64）。源质尺<b>不</b>跟这条腿走，
         // 见下面 essence 读档钳制那一行的 P-4 说明。
-        inventory.capacityProbe = () -> PocketUpgradeSwitches.isActive(root, PocketUpgradeType.CAPACITY);
-        inventory.stackProbe = () -> PocketUpgradeSwitches.isActive(root, PocketUpgradeType.STACK);
-        inventory.stackCountProbe = () -> PocketUpgrades.stackUpgradeCount(root);
-        inventory.capacityCountProbe = () -> PocketUpgrades.capacityUpgradeCount(root);
+        inventory.capacityProbe = () -> PocketUpgradeSwitches
+            .isActive(inventory.carrierRoot, PocketUpgradeType.CAPACITY);
+        inventory.stackProbe = () -> PocketUpgradeSwitches.isActive(inventory.carrierRoot, PocketUpgradeType.STACK);
+        inventory.stackCountProbe = () -> PocketUpgrades.stackUpgradeCount(inventory.carrierRoot);
+        inventory.capacityCountProbe = () -> PocketUpgrades.capacityUpgradeCount(inventory.carrierRoot);
         inventory.syncEssenceCapProbe();
         // ★R92-④：读档不再需要专门的闭闸——"放置即配置"的准入信号是 isItemValid 登记的<b>意图</b>，
         // 而 loadGroup 走 setStackInSlot、★不经过 isItemValid ⇒ 新建的 inventory 意图恒空，读档必然不定档
@@ -385,7 +389,16 @@ public final class PocketInventory {
         }
         inventory.loadTanks(root);
         // ★R87-f：声明表必须先于源质表读出——保格谓词以它为输入，「有格位无库存」的空洞折叠只对无声明者生效
+        requireTagType(root, PocketConstants.FILTERS, LIB_TAG_COMPOUND);
+        NBTTagCompound filterRoot = root.getCompoundTag(PocketConstants.FILTERS);
+        int filterEntries = readList(filterRoot, PocketConstants.FILTER_ITEMS, LIB_TAG_COMPOUND).tagCount()
+            + readList(filterRoot, PocketConstants.FILTER_FLUIDS, LIB_TAG_COMPOUND).tagCount()
+            + readList(filterRoot, PocketConstants.FILTER_ESSENTIA, LIB_TAG_COMPOUND).tagCount();
+        readList(filterRoot, PocketConstants.FILTER_FLAGS, LIB_TAG_COMPOUND);
         inventory.filters = PocketFilterConfig.readFrom(root);
+        if (inventory.filters.filters()
+            .size() != filterEntries)
+            throw new IllegalStateException("Unresolved pocket filters; original NBT retained");
         // ★R95 S5：源质表读档带动态每格上限（STACK 位在 ⇒ 读档钳制按 4096；单源见 PocketEssenceStore#setCapPerTag）
         // ★★R96 P-4（不对称，故意与上面两条探针<b>不</b>同步）：读档钳制只吃 <b>installed</b>（位图），
         // <b>不</b>吃 installed ∧ enabled。原因是这条钳制会落盘：玩家关掉 STACK ⇒ 重开面板 ⇒
@@ -397,8 +410,11 @@ public final class PocketInventory {
         inventory.essence = PocketEssenceStore.readFrom(
             root,
             tag -> PocketEssenceIntake.isDeclaredEssenceTag(inventory.filters, tag),
-            () -> PocketConstants.essenceCapPerTag(PocketUpgrades.hasUpgrade(root, PocketUpgradeType.STACK)));
+            () -> PocketConstants
+                .essenceCapPerTag(PocketUpgrades.hasUpgrade(inventory.carrierRoot, PocketUpgradeType.STACK)));
         inventory.bindings = PocketCellBindings.readFrom(root);
+        if (readList(root, PocketConstants.BOUND_CELLS, LIB_TAG_COMPOUND).tagCount() != inventory.bindings.entries()
+            .size()) throw new IllegalStateException("Unresolved pocket bindings; original NBT retained");
         // ★R96 S9a：元素容量<b>接</b>在同一个活根上（不是快照 ⇒ 与 essence 那条读档钳制不是一回事）。
         // 三条被动（mage/ 下的充法杖 / 猫猫币 / 源质转换）由 Item.onUpdate 驱动、面板开着也在写这张表，
         // 若这里做成"读出六条存进字段"，关屏的整表回写就会把期间刚入账的容量抹回旧值 —— 而猫猫币那一份
@@ -410,6 +426,22 @@ public final class PocketInventory {
         // 读档过程本身不算"内容变了"（handler 反序列化会回调脏标记）
         inventory.dirty = false;
         return inventory;
+    }
+
+    private static long nextUnreadableWarning;
+
+    /** Passive drivers leave unreadable carriers untouched and try again on a later action. */
+    public static PocketInventory tryReadFrom(NBTTagCompound root) {
+        try {
+            return readFrom(root);
+        } catch (RuntimeException | LinkageError failure) {
+            long now = System.nanoTime();
+            if (nextUnreadableWarning == 0 || now - nextUnreadableWarning >= 0) {
+                nextUnreadableWarning = now + java.util.concurrent.TimeUnit.SECONDS.toNanos(10);
+                GTInterestingThing.LOG.error("[pocket] Unreadable inventory retained; operation rejected", failure);
+            }
+            return null;
+        }
     }
 
     /**
@@ -438,9 +470,69 @@ public final class PocketInventory {
         elements.writeTo(root);
         bindings.writeTo(root);
         filters.writeTo(root);
-        // ★R90 S1：写档即持久化边界 —— 内存与 NBT 重新一致，增量日志清零（否则终态回滚会把
-        // 已落盘的那部分变更也逆施掉，凭空造回点数）
+    }
+
+    /** A detached encoding is acknowledged only after the complete carrier root has been installed. */
+    void committedTo(NBTTagCompound root) {
+        attachCarrierRoot(root);
         clearEssenceDeltas();
+        markClean();
+    }
+
+    void attachCarrierRoot(NBTTagCompound root) {
+        carrierRoot = root;
+        elements.rebind(root);
+    }
+
+    /** Publish one-shot operations through the same detached encoding used by runtime sessions. */
+    public void persistTo(ItemStack carrier) {
+        if (carrier == null) throw new IllegalArgumentException("Missing pocket carrier");
+        NBTTagCompound root = prepareRoot(carrier.getTagCompound());
+        writeTo(root);
+        carrier.setTagCompound(root);
+        committedTo(root);
+    }
+
+    /** Inventory components are replaced in full, so copying their old payload only duplicates work. */
+    static NBTTagCompound prepareRoot(NBTTagCompound original) {
+        NBTTagCompound prepared = new NBTTagCompound();
+        if (original == null) return prepared;
+        for (Object raw : original.func_150296_c()) {
+            String key = (String) raw;
+            if (!INVENTORY_KEYS.contains(key)) prepared.setTag(
+                key,
+                original.getTag(key)
+                    .copy());
+        }
+        return prepared;
+    }
+
+    private static final java.util.Set<String> INVENTORY_KEYS = new java.util.HashSet<>(
+        java.util.Arrays.asList(
+            PocketConstants.ITEM_CONTENTS,
+            PocketConstants.FLUID_INTERACTION_SLOTS,
+            PocketConstants.DISTILL_INPUT_SLOTS,
+            PocketConstants.BIND_SLOT,
+            PocketConstants.UPGRADE_SLOT_GROUP,
+            PocketConstants.FLUID_BAR,
+            PocketConstants.ESSENCE,
+            PocketConstants.ESSENCE_CELL_ORDER,
+            PocketConstants.ELEMENTS,
+            PocketConstants.BOUND_CELLS,
+            PocketConstants.FILTERS));
+
+    static void requireTagType(NBTTagCompound root, String key, int type) {
+        if (root.hasKey(key) && !root.hasKey(key, type))
+            throw new IllegalStateException("Invalid pocket tag " + key + "; original NBT retained");
+    }
+
+    static NBTTagList readList(NBTTagCompound root, String key, int elementType) {
+        requireTagType(root, key, 9);
+        NBTTagList list = root.getTagList(key, elementType);
+        // getTagList silently returns an empty list when the stored element type differs.
+        if (root.hasKey(key) && ((NBTTagList) root.getTag(key)).tagCount() != list.tagCount())
+            throw new IllegalStateException("Invalid pocket list " + key + "; original NBT retained");
+        return list;
     }
 
     /**
@@ -452,61 +544,38 @@ public final class PocketInventory {
      * 而 Container 那边 150 个 {@code ModularSlot} 仍会去点 128…149 号（★R80 后同理：旧档 135…149 号会点到只有 135 格的 handler） ⇒
      * {@code validateSlotIndex} 抛越界，玩家侧表现为"点后面几格没反应 / 面板炸"。
      * 本方法因此：① 忽略 {@code Size}（格数永远由构造期决定 ⇒ <b>只增不减</b>）；
-     * ② 越出当前格数的条目<b>丢弃并一次性 WARN</b>（旧实现是静默跳过 = 丢件无痕）。
+     * ② 越界、重复或无法解析的条目拒绝加载，保留原始 NBT，避免下一次写回丢失条目。
      */
     private static void loadGroup(NBTTagCompound root, String key, ItemStackHandler handler, String label) {
         if (!root.hasKey(key)) {
             return;
         }
+        requireTagType(root, key, LIB_TAG_COMPOUND);
         final NBTTagCompound group = root.getCompoundTag(key);
-        if (group == null) {
-            return;
-        }
-        final NBTTagList items = group.getTagList(LIB_ITEMS, LIB_TAG_COMPOUND);
-        int dropped = 0;
+        final NBTTagList items = readList(group, LIB_ITEMS, LIB_TAG_COMPOUND);
+        final boolean[] occupied = new boolean[handler.getSlots()];
         for (int i = 0; i < items.tagCount(); i++) {
             final NBTTagCompound entry = items.getCompoundTagAt(i);
+            if (!entry.hasKey(LIB_SLOT, LIB_TAG_INT))
+                throw new IllegalStateException("Missing pocket slot in " + key + "; original NBT retained");
             final int slot = entry.getInteger(LIB_SLOT);
-            if (slot < 0 || slot >= handler.getSlots()) {
-                dropped++;
-                continue;
-            }
+            if (slot < 0 || slot >= handler.getSlots() || occupied[slot])
+                throw new IllegalStateException("Invalid or duplicate pocket slot in " + key + ": " + slot);
+            if (!entry.hasKey(LIB_COUNT, 1) && !entry.hasKey(LIB_COUNT, LIB_TAG_INT))
+                throw new IllegalStateException("Invalid pocket item count type in " + key + ": " + slot);
             final ItemStack stack = ItemStack.loadItemStackFromNBT(entry);
             if (stack == null) {
-                continue;
+                throw new IllegalStateException("Unresolved pocket item in " + key + ": " + slot);
             }
             if (entry.hasKey(LIB_COUNT, LIB_TAG_INT)) {
                 stack.stackSize = entry.getInteger(LIB_COUNT);
             }
+            if (stack.stackSize <= 0)
+                throw new IllegalStateException("Invalid pocket item count in " + key + ": " + slot);
+            occupied[slot] = true;
             handler.setStackInSlot(slot, stack);
         }
-        if (dropped > 0) {
-            warnOutOfRangeOnce(label, key, handler.getSlots(), dropped);
-        }
     }
-
-    /**
-     * "越界槽号被丢弃"的一次性 WARN（R75：不许静默丢件）。
-     * <p>
-     * ★R80① 将闩从"整进程一次"改为"<b>每个槽组键一次</b>"：收缩场景（150 → 135）下同一枚口袋
-     * 一次读档就可能让 {@code contents}、{@code interactionSlots} 两个区各自丢条目，
-     * 整进程只报一次就等于第二个区<b>静默丢件</b>（用户那句"不许静默丢件"不许）。
-     * 仍然不会成为日志洪水：键集合是固定的五个区（R95 起含升级插件格）+ 流体 tank，面板反复开关也只各报一次。
-     */
-    private static void warnOutOfRangeOnce(String label, String key, int slots, int dropped) {
-        if (!outOfRangeWarnedKeys.add(key)) {
-            return;
-        }
-        GTInterestingThing.LOG.warn(
-            "[pocket] 存档里 {}（键 {}）有 {} 条槽号越出当前形状（现有 {} 格），已丢弃这些条目" + "（面板形状变更后的旧/外来档；本条按区只报一次）",
-            label,
-            key,
-            dropped,
-            slots);
-    }
-
-    /** 越界槽号 WARN 的"每个区一次"闩（★R80①；用 LinkedHashSet 保首次出现的顺序，日志可读）。 */
-    private static final java.util.Set<String> outOfRangeWarnedKeys = new java.util.LinkedHashSet<>();
 
     /**
      * 读 {@link PocketConstants#FLUID_BAR}：两代形状都在这里分流（见该键的 javadoc）。
@@ -523,25 +592,31 @@ public final class PocketInventory {
             return;
         }
         if (root.hasKey(PocketConstants.FLUID_BAR, LIB_TAG_LIST)) {
-            final NBTTagList list = root.getTagList(PocketConstants.FLUID_BAR, LIB_TAG_COMPOUND);
-            int dropped = 0;
+            final NBTTagList list = readList(root, PocketConstants.FLUID_BAR, LIB_TAG_COMPOUND);
+            final boolean[] occupied = new boolean[FLUID_TANK_COUNT];
             for (int i = 0; i < list.tagCount(); i++) {
                 final NBTTagCompound entry = list.getCompoundTagAt(i);
                 int tank = 0;
                 if (entry.hasKey(PocketConstants.FLUID_BAR_TANK, LIB_TAG_INT)) {
                     tank = entry.getInteger(PocketConstants.FLUID_BAR_TANK);
                 } else {
-                    dropped++;
+                    if (entry.hasKey(PocketConstants.FLUID_BAR_TANK))
+                        throw new IllegalStateException("Invalid pocket tank number");
                 }
-                if (tank < 0 || tank >= FLUID_TANK_COUNT) {
-                    dropped++;
-                    continue;
-                }
+                if (tank < 0 || tank >= FLUID_TANK_COUNT || occupied[tank])
+                    throw new IllegalStateException("Invalid or duplicate pocket tank: " + tank);
                 final FluidStack fluid = FluidStack.loadFluidStackFromNBT(entry);
+                if (fluid == null || fluid.amount <= 0)
+                    throw new IllegalStateException("Unresolved or invalid pocket fluid: " + tank);
                 if (fluid != null && fluid.amount > 0) {
+                    occupied[tank] = true;
                     tankFluid[tank] = fluid;
                     // ★R95 S5 双轨：真值优先 AmountL；头值同步钳到不变式（老档 Amount 即真值）
                     final long head = fluid.amount;
+                    requireTagType(entry, PocketConstants.FLUID_BAR_AMOUNT_L, 4);
+                    if (entry.hasKey(PocketConstants.FLUID_BAR_AMOUNT_L)
+                        && entry.getLong(PocketConstants.FLUID_BAR_AMOUNT_L) < head)
+                        throw new IllegalStateException("Conflicting pocket fluid amounts: " + tank);
                     final long truth = entry.hasKey(PocketConstants.FLUID_BAR_AMOUNT_L)
                         ? Math.max(head, entry.getLong(PocketConstants.FLUID_BAR_AMOUNT_L))
                         : head;
@@ -549,19 +624,19 @@ public final class PocketInventory {
                     fluid.amount = headAmountOf(truth);
                 }
             }
-            if (dropped > 0) {
-                GTInterestingThing.LOG
-                    .warn("[pocket] 流体档里有 {} 条缺 tank 号或越出 {} 个 tank 的范围（已按 0 号 tank 或丢弃处理）", dropped, FLUID_TANK_COUNT);
-            }
             return;
         }
         if (root.hasKey(PocketConstants.FLUID_BAR, LIB_TAG_COMPOUND)) {
             final FluidStack legacy = FluidStack.loadFluidStackFromNBT(root.getCompoundTag(PocketConstants.FLUID_BAR));
+            if (legacy == null || legacy.amount <= 0)
+                throw new IllegalStateException("Unresolved legacy pocket fluid; original NBT retained");
             if (legacy != null && legacy.amount > 0) {
                 tankFluid[0] = legacy;
                 tankTruth[0] = legacy.amount;
             }
+            return;
         }
+        throw new IllegalStateException("Invalid pocket fluid storage; original NBT retained");
     }
 
     /** {@link #saveTanks} 里"真值超头 ⇒ 旧版降级读会丢超头部分"的一次性 WARN 闩（形状级问题，按进程一次）。 */

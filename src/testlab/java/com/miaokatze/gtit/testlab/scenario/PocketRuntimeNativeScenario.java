@@ -94,18 +94,19 @@ final class PocketRuntimeNativeScenario implements ProbeScenario {
             player.inventory.mainInventory[2] = relocated.copy();
             session.persistFinal();
             context.check(
-                "ambiguous-authority-compensates-once",
+                "ambiguous-authority-retains-pending",
                 inventory.essence()
-                    .get("aer") == 84 && inventory.essenceDeltas()
-                        .isEmpty()
+                    .get("aer") == 76
+                    && inventory.essenceDeltas()
+                        .get("aer") == -8
                     && inventory.isDirty(),
-                "Duplicate tokens never select a writer; compensation retains non-essence dirty state");
+                "Duplicate tokens retain the accepted inventory and pending delta without publishing");
             session.persistFinal();
             context.check(
-                "compensation-idempotent",
+                "failed-save-preserves-quantity",
                 inventory.essence()
-                    .get("aer") == 84,
-                "Repeated persistence failure cannot repeat compensation");
+                    .get("aer") == 76,
+                "Repeated persistence failure cannot alter the accepted quantity");
             player.inventory.mainInventory[2] = null;
             NBTTagCompound savedAuthority = (NBTTagCompound) relocated.getTagCompound()
                 .copy();
@@ -120,6 +121,59 @@ final class PocketRuntimeNativeScenario implements ProbeScenario {
             // Restore only this owned fixture's token so cleanup can flush and release its retained dirty model.
             relocated.setTagCompound(savedAuthority);
             session.persistFinal();
+            session.setStorageStackAt(0, new ItemStack(net.minecraft.init.Items.gold_ingot, 3));
+            NBTTagCompound playerData = new NBTTagCompound();
+            player.writeToNBT(playerData);
+            context.check(
+                "player-serialization-flushes-live-model",
+                !inventory.isDirty() && PocketInventory.readFrom(relocated.getTagCompound())
+                    .storageStack(0).stackSize == 3,
+                "Actual transformed EntityPlayer serialization commits the live model first");
+            session.setStorageStackAt(0, null);
+            session.drainEssence("aer", 76);
+            session.drainOwnTankL(0, 600);
+            player.writeToNBT(new NBTTagCompound());
+            PocketInventory emptied = PocketInventory.readFrom(relocated.getTagCompound());
+            context.check(
+                "all-channels-empty-after-player-save",
+                !inventory.isDirty() && emptied.storageStack(0) == null
+                    && emptied.tankTruthAt(0) == 0
+                    && emptied.essence()
+                        .get("aer") == 0
+                    && !relocated.getTagCompound()
+                        .hasKey(com.miaokatze.gtit.common.items.pocket.PocketConstants.ESSENCE_CELL_ORDER),
+                "Removing the last item, fluid and essence removes the previously committed contents");
+            NBTTagCompound corrupt = (NBTTagCompound) relocated.getTagCompound()
+                .copy();
+            corrupt.setString(com.miaokatze.gtit.common.items.pocket.PocketConstants.ITEM_CONTENTS, "invalid");
+            NBTTagCompound originalCorrupt = (NBTTagCompound) corrupt.copy();
+            context.check(
+                "unreadable-carrier-preserved",
+                PocketInventory.tryReadFrom(corrupt) == null && corrupt.equals(originalCorrupt),
+                "Rejected loading preserves the original raw NBT");
+            context.onCleanup(() -> {
+                for (Object raw : context.world()
+                    .getEntitiesWithinAABB(
+                        net.minecraft.entity.item.EntityItem.class,
+                        player.boundingBox.expand(4, 4, 4))) {
+                    net.minecraft.entity.item.EntityItem drop = (net.minecraft.entity.item.EntityItem) raw;
+                    ItemStack stack = drop.getEntityItem();
+                    if (stack != null && stack.hasTagCompound()
+                        && context.runId()
+                            .equals(
+                                stack.getTagCompound()
+                                    .getCompoundTag(ProbeContext.TEST_ITEM_TAG)
+                                    .getString("runId")))
+                        drop.setDead();
+                }
+            });
+            session.setStorageStackAt(0, new ItemStack(net.minecraft.init.Items.gold_ingot, 5));
+            player.inventory.dropAllItems();
+            context.check(
+                "inventory-drop-flushes-live-model",
+                !inventory.isDirty() && PocketInventory.readFrom(relocated.getTagCompound())
+                    .storageStack(0).stackSize == 5,
+                "Actual transformed InventoryPlayer drop commits accepted contents before the carrier leaves");
             return true;
         };
     }

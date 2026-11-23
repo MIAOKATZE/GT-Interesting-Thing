@@ -3,11 +3,27 @@
 
 package com.miaokatze.gtit.common.items.pocket;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.CompressedStreamTools;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.server.MinecraftServer;
+
+import com.miaokatze.gtit.main.GTInterestingThing;
+import com.miaokatze.gtit.util.AtomicNbtFile;
 
 /**
  * 口袋活会话的<b>唯一</b>注册表（服务端内存，按玩家 {@code UUID} 一条）。
@@ -26,9 +42,11 @@ import java.util.UUID;
  * </ol>
  * 单线程访问（服务器主线程），与 {@link PocketChannelManager} 同口径，不加锁。
  */
+
 public final class PocketSessions {
 
     private static final Map<UUID, PocketSession> LIVE = new LinkedHashMap<>();
+    private static final Map<UUID, Long> DEFERRED = new LinkedHashMap<>();
 
     private PocketSessions() {}
 
@@ -43,6 +61,7 @@ public final class PocketSessions {
             requireFlushed(previous);
         }
         LIVE.put(session.playerId(), session);
+        DEFERRED.remove(session.playerId());
     }
 
     /** Call before capturing a new carrier token, so an unresolved old writer cannot be silently revoked. */
@@ -53,15 +72,177 @@ public final class PocketSessions {
         requireFlushed(previous);
     }
 
+    /** A reopened panel can use a verified reconnect carrier to finish the old write first. */
+    public static void flushBeforeOpening(EntityPlayerMP player) {
+        retryAfterLogin(player);
+        flushBeforeReplacement(
+            player.getGameProfile() == null ? null
+                : player.getGameProfile()
+                    .getId());
+    }
+
     private static void requireFlushed(PocketSession session) {
-        if (session instanceof PocketRuntimeSession runtime && runtime.inventory()
-            .isDirty())
+        if (hasUnsavedState(session))
             throw new IllegalStateException("Previous pocket session has unpersisted state; replacement denied");
+    }
+
+    private static boolean hasUnsavedState(PocketSession session) {
+        return session instanceof PocketRuntimeSession runtime && runtime.inventory()
+            .isDirty();
+    }
+
+    private static void reportDeferred(UUID player, RuntimeException exception) {
+        if (DEFERRED.put(player, System.nanoTime() + TimeUnit.SECONDS.toNanos(1)) != null) return;
+        final String message = "[pocket] Player " + player + " has an unsaved pocket session; retained for retry";
+        if (exception == null) GTInterestingThing.LOG.warn(message);
+        else GTInterestingThing.LOG.error(message, exception);
+    }
+
+    private static boolean tryFlush(UUID player, PocketSession session) {
+        try {
+            session.persistFinal();
+            if (!hasUnsavedState(session)) {
+                DEFERRED.remove(player);
+                return true;
+            }
+            reportDeferred(player, null);
+        } catch (RuntimeException failure) {
+            reportDeferred(player, failure);
+        }
+        return false;
+    }
+
+    static void onLogout(UUID uuid, EntityPlayerMP player) {
+        final PocketSession session = LIVE.get(uuid);
+        if (session != null && session.player() == player && flushForDeparture(uuid, session)) {
+            LIVE.remove(uuid, session);
+        }
+    }
+
+    private static boolean flushForDeparture(UUID uuid, PocketSession session) {
+        if (tryFlush(uuid, session)) return true;
+        if (session instanceof PocketRuntimeSession runtime && runtime.player() instanceof EntityPlayerMP player) {
+            try {
+                runtime.suspendAfterLogout(player);
+            } catch (RuntimeException failure) {
+                GTInterestingThing.LOG.error("[pocket] Could not capture the reconnect baseline for " + uuid, failure);
+            }
+        }
+        return false;
+    }
+
+    static void retryAfterLogin(EntityPlayerMP player) {
+        if (player.getGameProfile() == null) return;
+        final UUID uuid = player.getGameProfile()
+            .getId();
+        if (!(LIVE.get(uuid) instanceof PocketRuntimeSession runtime)) return;
+        try {
+            if (!runtime.isDisconnected()) {
+                if (!(runtime.player() instanceof EntityPlayerMP previousPlayer) || previousPlayer == player) return;
+                // An interrupted disconnect can leave an old owner even if its logout callback never ran.
+                if (hasUnsavedState(runtime)) runtime.suspendAfterLogout(previousPlayer);
+            }
+            if (hasUnsavedState(runtime)) runtime.retryAfterLogin(player);
+            if (!hasUnsavedState(runtime)) {
+                LIVE.remove(uuid, runtime);
+                DEFERRED.remove(uuid);
+            } else {
+                reportDeferred(uuid, null);
+            }
+        } catch (RuntimeException failure) {
+            reportDeferred(uuid, failure);
+        }
     }
 
     /** 只读取（tick 宿主每 tick 一次，绝不建条目）。 */
     public static PocketSession peek(UUID player) {
         return player == null ? null : LIVE.get(player);
+    }
+
+    /** A failed authority lookup cannot authorize a second writer for the same carrier token. */
+    public static boolean mayWriteIndependently(UUID player, ItemStack carrier) {
+        PocketSession session = peek(player);
+        return !(session instanceof PocketRuntimeSession runtime) || !runtime.ownsCarrier(carrier);
+    }
+
+    public static boolean mayTickCarrier(UUID player, ItemStack carrier) {
+        PocketSession session = peek(player);
+        return !(session instanceof PocketRuntimeSession runtime) || !runtime.isDisconnected()
+            || !runtime.ownsCarrier(carrier);
+    }
+
+    /** Called before vanilla serializes inventory, and before a carrier leaves its current host. */
+    public static boolean flushPlayer(EntityPlayerMP player) {
+        if (player == null || player.getGameProfile() == null) return true;
+        UUID uuid = player.getGameProfile()
+            .getId();
+        PocketSession session = peek(uuid);
+        return session == null || (session.player() == player && tryFlush(uuid, session));
+    }
+
+    public static boolean prepareCarrierMove(EntityPlayer player, ItemStack stack) {
+        if (!(player instanceof EntityPlayerMP serverPlayer) || serverPlayer.getGameProfile() == null) return true;
+        PocketSession session = peek(
+            serverPlayer.getGameProfile()
+                .getId());
+        return !(session instanceof PocketRuntimeSession runtime) || !runtime.ownsCarrier(stack)
+            || flushPlayer(serverPlayer);
+    }
+
+    public static boolean prepareContainerMove(EntityPlayer player, ItemStack clicked, int button, int mode) {
+        if (player == null || player.inventory == null) return true;
+        return prepareCarrierMove(player, clicked) && prepareCarrierMove(player, player.inventory.getItemStack())
+            && (mode != 2 || button < 0
+                || button >= 9
+                || prepareCarrierMove(player, player.inventory.mainInventory[button]));
+    }
+
+    public static void beforePlayerSave(EntityPlayerMP player) {
+        if (!flushPlayer(player) && player.getGameProfile() != null) retainRecovery(
+            player.getGameProfile()
+                .getId(),
+            peek(
+                player.getGameProfile()
+                    .getId()));
+    }
+
+    private static boolean retainRecovery(UUID uuid, PocketSession session) {
+        if (!(session instanceof PocketRuntimeSession runtime)) return false;
+        MinecraftServer server = runtime.recoveryServer();
+        if (server == null || server.worldServerForDimension(0) == null) return false;
+        try {
+            Path directory = server.worldServerForDimension(0)
+                .getSaveHandler()
+                .getWorldDirectory()
+                .toPath()
+                .resolve("data/gtit-pocket-recovery");
+            Files.createDirectories(directory);
+            NBTTagCompound record = runtime.recoverySnapshot();
+            record.setString("player", uuid.toString());
+            String token = record.getCompoundTag("carrierBaseline")
+                .getCompoundTag("tag")
+                .getString("gtitPocketSession");
+            UUID.fromString(token);
+            File target = directory.resolve(uuid + "-" + token + ".dat")
+                .toFile();
+            AtomicNbtFile.writeCompressedAndSync(record, target, path -> {
+                try (InputStream input = Files.newInputStream(path)) {
+                    CompressedStreamTools.readCompressed(input);
+                }
+            });
+            GTInterestingThing.LOG.error("[pocket] Uncommitted inventory retained for operator recovery at {}", target);
+            return true;
+        } catch (IOException | RuntimeException failure) {
+            GTInterestingThing.LOG.error("[pocket] Could not retain pocket recovery for " + uuid, failure);
+            return false;
+        }
+    }
+
+    static void flushTick() {
+        for (Map.Entry<UUID, PocketSession> entry : new ArrayList<>(LIVE.entrySet())) {
+            Long retryAt = DEFERRED.get(entry.getKey());
+            if (retryAt == null || System.nanoTime() - retryAt >= 0) tryFlush(entry.getKey(), entry.getValue());
+        }
     }
 
     /** 摘除某玩家的会话；<b>先落盘</b>再摘（离线即丢内容的形态是事故，不是回收）。 */
@@ -74,6 +255,7 @@ public final class PocketSessions {
             removed.persistFinal();
             requireFlushed(removed);
             LIVE.remove(player);
+            DEFERRED.remove(player);
         }
     }
 
@@ -84,6 +266,20 @@ public final class PocketSessions {
             requireFlushed(session);
         }
         LIVE.clear();
+        DEFERRED.clear();
+    }
+
+    static void flushBeforeStop() {
+        // A pending player must not prevent other sessions from being saved.
+        LIVE.entrySet()
+            .removeIf(
+                entry -> flushForDeparture(entry.getKey(), entry.getValue())
+                    || retainRecovery(entry.getKey(), entry.getValue()));
+        DEFERRED.keySet()
+            .retainAll(LIVE.keySet());
+        if (!LIVE.isEmpty()) {
+            GTInterestingThing.LOG.error("[pocket] Unresolved pocket sessions at stop: {}", LIVE.keySet());
+        }
     }
 
     /**
@@ -99,9 +295,9 @@ public final class PocketSessions {
             // 已被更新的会话替换：不碰，避免把新会话当成旧的摘掉
             return;
         }
-        session.persistFinal();
-        requireFlushed(session);
-        LIVE.remove(player);
+        final Long retryAt = DEFERRED.get(player);
+        if (retryAt != null && System.nanoTime() - retryAt < 0) return;
+        if (tryFlush(player, session)) LIVE.remove(player, session);
     }
 
     /**
@@ -123,12 +319,13 @@ public final class PocketSessions {
                 it.remove();
                 continue;
             }
-            if (session.isOpen() || session.isHeldByOwner()) {
+            try {
+                if (session.isOpen() || session.isHeldByOwner()) continue;
+            } catch (RuntimeException failure) {
+                reportDeferred(entry.getKey(), failure);
                 continue;
             }
-            session.persistFinal();
-            if (session instanceof PocketRuntimeSession runtime && runtime.inventory()
-                .isDirty()) continue;
+            if (!tryFlush(entry.getKey(), session)) continue;
             it.remove();
             reaped++;
         }

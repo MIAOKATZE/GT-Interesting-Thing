@@ -9,6 +9,7 @@ import net.minecraft.item.ItemStack;
 
 import com.cleanroommc.modularui.screen.ModularContainer;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
+import com.miaokatze.gtit.common.items.pocket.PocketSessions;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
@@ -102,6 +103,10 @@ public class NekoPocketContainer extends ModularContainer {
      */
     @Override
     public ItemStack slotClick(int slotId, int mouseButton, int mode, EntityPlayer player) {
+        ItemStack clicked = slotId >= 0 && slotId < inventorySlots.size()
+            ? ((net.minecraft.inventory.Slot) inventorySlots.get(slotId)).getStack()
+            : null;
+        if (!PocketSessions.prepareContainerMove(player, clicked, mouseButton, mode)) return null;
         if (mode == 0 && slotId >= 0
             && slotId < inventorySlots.size()
             && inventorySlots.get(slotId) instanceof ModularSlot upgrade

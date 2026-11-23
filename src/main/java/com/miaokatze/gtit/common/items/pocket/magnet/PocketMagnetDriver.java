@@ -255,6 +255,7 @@ public final class PocketMagnetDriver {
         final NBTTagCompound root = stack.getTagCompound();
         final PocketSession session = PocketSessions.peek(owner);
         final boolean viaSession = session != null && session.carrierStack() == stack;
+        if (!viaSession && !PocketSessions.mayWriteIndependently(owner, stack)) return;
         if (root == null && !viaSession) {
             // 无处可写也不硬写（R53c 禁在读路径建档）：条目直接放手，实体回到"可被原版捡"
             releaseAll(owner);
@@ -279,7 +280,11 @@ public final class PocketMagnetDriver {
             }
             if (!viaSession && oneshot == null) {
                 // 每扫至多一次读改写（同一批认领同一拍到期），禁每实体一次
-                oneshot = PocketInventory.readFrom(root);
+                oneshot = PocketInventory.tryReadFrom(root);
+                if (oneshot == null) {
+                    releaseAll(owner);
+                    return;
+                }
             }
             final int want = content.stackSize;
             final int moved = viaSession ? session.depositItem(content) : oneshot.depositIntoStorage(content);
@@ -307,7 +312,7 @@ public final class PocketMagnetDriver {
         world.playSoundAtEntity(player, PULL_SOUND, PULL_SOUND_VOLUME, pullPitch(world));
         if (!viaSession) {
             // 无会话分支的一次性落盘：只有真的收进去了才写（readFrom → writeTo 与开关一次面板同构）
-            oneshot.writeTo(root);
+            oneshot.persistTo(stack);
         }
     }
 

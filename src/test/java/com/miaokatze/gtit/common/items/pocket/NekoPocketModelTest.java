@@ -116,6 +116,19 @@ public class NekoPocketModelTest {
     private static final long BASE_MS = 1_700_000_000_000L;
 
     public static void main(String[] args) {
+        try {
+            java.lang.reflect.Field integers = net.minecraft.util.RegistryNamespaced.class
+                .getDeclaredField("underlyingIntegerMap");
+            integers.setAccessible(true);
+            ((net.minecraft.util.ObjectIntIdentityMap) integers.get(Item.itemRegistry))
+                .func_148746_a(FakePlainItem.INSTANCE, 1);
+            java.lang.reflect.Field objects = net.minecraft.util.RegistrySimple.class
+                .getDeclaredField("registryObjects");
+            objects.setAccessible(true);
+            ((java.util.Map) objects.get(Item.itemRegistry)).put("gtit:model_plain", FakePlainItem.INSTANCE);
+        } catch (ReflectiveOperationException failure) {
+            throw new AssertionError("Native item registry fixture", failure);
+        }
         final Map<String, Runnable> cases = new LinkedHashMap<>();
         cases.put("绑定表NBT往返与顺序保持", NekoPocketModelTest::bindingRoundTripKeepsOrder);
         cases.put("绑定表去重与空值与上限", NekoPocketModelTest::bindingDedupeAndCap);
@@ -373,8 +386,8 @@ public class NekoPocketModelTest {
             NekoPocketModelTest::essenceDeltaClearsAtPersistenceBoundary);
         cases.put("drain_marks_dirty", NekoPocketModelTest::drainMarksDirty);
         cases.put(
-            "rollback_restores_baseline_and_is_idempotent",
-            NekoPocketModelTest::rollbackRestoresBaselineAndIsIdempotent);
+            "authority_loss_retains_accepted_inventory",
+            NekoPocketModelTest::authorityLossRetainsAcceptedInventory);
         // ---- ★R90 E2（SC4 路由矩阵）：源质上传只认源质原生通道（Runner 级桩件 + 种子口）
         cases.put(
             "native_present_undeclared_routes_to_native",
@@ -2346,29 +2359,18 @@ public class NekoPocketModelTest {
         final NBTTagCompound dirtyEss = new NBTTagCompound();
         dirtyEss.setTag(PocketConstants.ASPECTS, dirtyList);
         dirty.setTag(PocketConstants.ESSENCE, dirtyEss);
-        final PocketEssenceStore clamped = PocketEssenceStore.readFrom(dirty);
-        SimpleAssert.eq(PocketConstants.ESSENCE_CAP_PER_TAG, clamped.get("lux"), "读档时超过上限的条目按单格上限截断（★不是丢弃整条，也不是照收越界值）");
-        SimpleAssert.eq(0, clamped.get("mortuus"), "0 值条目读档即丢");
+        boolean rejected = false;
+        try {
+            PocketEssenceStore.readFrom(dirty);
+        } catch (IllegalStateException expected) {
+            rejected = true;
+        }
+        SimpleAssert.that(rejected, "Malformed essence storage is rejected with raw data retained");
         SimpleAssert.eq(
-            1,
-            clamped.tags()
-                .size(),
-            "无 key 的条目不得建格");
-
-        // 二次落档必须等价：证明形状里没有隐式索引/排序，且读档钳制是幂等的
-        final NBTTagCompound again = new NBTTagCompound();
-        clamped.writeTo(again);
-        final PocketEssenceStore twice = PocketEssenceStore.readFrom(again);
-        SimpleAssert
-            .eq(PocketConstants.ESSENCE_CAP_PER_TAG, twice.get("lux"), "钳制后再往返仍等于单格上限（★幂等：第二次读档不得继续往下削，也不得把越界值放回来）");
-        SimpleAssert.eq(
-            1,
-            twice.tags()
-                .size(),
-            "无 key / 0 值条目不会被复活");
-        final NBTTagCompound third = new NBTTagCompound();
-        twice.writeTo(third);
-        SimpleAssert.eq(again.toString(), third.toString(), "二次与三次落档必须逐字符一致");
+            PocketConstants.ESSENCE_CAP_PER_TAG + 6,
+            (int) dirtyList.getCompoundTagAt(0)
+                .getShort(PocketConstants.ASPECT_AMOUNT),
+            "Loading must not truncate the original essence amount");
     }
 
     /** {@code ess → "Aspects"} 列表（TC AspectList 的读写落点）。 */
@@ -4914,30 +4916,20 @@ public class NekoPocketModelTest {
         // ② 越界槽号：外来/未来档 ⇒ 丢弃而不是让点槽越界炸
         final NBTTagList items = group.getTagList("Items", 10);
         final NBTTagCompound far = new NBTTagCompound();
-        far.setInteger("Slot", 200);
+        far.setInteger("Slot", PocketInventory.STORAGE_SLOTS);
         far.setInteger("id", 1);
         far.setInteger("Count", 1);
         items.appendTag(far);
         final NBTTagCompound dirtyRoot = new NBTTagCompound();
         dirtyRoot.setTag(PocketConstants.ITEM_CONTENTS, group);
-        final PocketInventory dropped = PocketInventory.readFrom(dirtyRoot);
-        SimpleAssert.eq(
-            207,
-            dropped.storage()
-                .getSlots(),
-            "越界条目不得把 handler 形状带坏");
-        SimpleAssert.eq(null, dropped.storageStack(134), "越界条目不会挪到末格上");
-        int still = 0;
-        for (int index = 0; index < 135; index++) {
-            if (dropped.storageStack(index) != null) {
-                still++;
-            }
+        boolean rejected = false;
+        try {
+            PocketInventory.readFrom(dirtyRoot);
+        } catch (IllegalStateException expected) {
+            rejected = true;
         }
-        if (itemNbtUsable()) {
-            SimpleAssert.eq(128, still, "越界那一条被丢弃，其余 128 条仍在");
-        } else {
-            SimpleAssert.eq(0, still, "（物品 NBT 不可用 ⇒ 这里只能是 0；不假装验过）");
-        }
+        SimpleAssert.that(rejected, "Out-of-range entries reject loading instead of being discarded");
+        SimpleAssert.eq(129, items.tagCount(), "Original entries survive rejection");
 
         // ③ 空档不写壳
         final NBTTagCompound empty = new NBTTagCompound();
@@ -5682,10 +5674,10 @@ public class NekoPocketModelTest {
         if (itemNbtUsable == null) {
             boolean usable;
             try {
-                final ItemStack probe = new ItemStack(Items.iron_ingot, 3);
+                final ItemStack probe = stackOf(1, 3);
                 final NBTTagCompound tag = probe.writeToNBT(new NBTTagCompound());
                 final ItemStack back = ItemStack.loadItemStackFromNBT(tag);
-                usable = back != null && back.getItem() == Items.iron_ingot && back.stackSize == 3;
+                usable = back != null && back.getItem() == FakePlainItem.INSTANCE && back.stackSize == 3;
             } catch (Throwable t) {
                 usable = false;
             }
@@ -7796,6 +7788,12 @@ public class NekoPocketModelTest {
             "落盘前日志非空（对照）");
         final NBTTagCompound root = new NBTTagCompound();
         inv.writeTo(root);
+        SimpleAssert.eq(
+            Integer.valueOf(64),
+            inv.essenceDeltas()
+                .get("aer"),
+            "Detached encoding retains the uncommitted journal");
+        inv.committedTo(root);
         SimpleAssert.that(
             inv.essenceDeltas()
                 .isEmpty(),
@@ -7820,6 +7818,7 @@ public class NekoPocketModelTest {
             "新会话的变更照常入日志");
         final NBTTagCompound again = new NBTTagCompound();
         reopened.writeTo(again);
+        reopened.committedTo(again);
         SimpleAssert.that(
             reopened.essenceDeltas()
                 .isEmpty(),
@@ -7882,7 +7881,7 @@ public class NekoPocketModelTest {
      * 私有方法且 Panel 不可构造 ⇒ 行为半边钉「日志可逐 tag 逆施」的契约（Panel 回滚消费的正是它），
      * 接线与幂等守卫由源码半边机检，面板级驱动属实机项。
      */
-    private static void rollbackRestoresBaselineAndIsIdempotent() {
+    private static void authorityLossRetainsAcceptedInventory() {
         PocketRuntimeSession session = modelRuntime();
         session.essence()
             .add("aer", 100);
@@ -7897,20 +7896,20 @@ public class NekoPocketModelTest {
         session.persistFinal();
         session.persistFinal();
         SimpleAssert.eq(
-            100,
+            60,
             session.essence()
                 .get("aer"),
-            "actual persistence failure restores negative delta once");
+            "failed persistence retains the accepted withdrawal");
         SimpleAssert.eq(
-            24,
+            40,
             session.essence()
                 .get("ignis"),
-            "actual persistence failure reclaims positive delta once");
+            "failed persistence retains the accepted deposit");
         SimpleAssert.that(
             session.inventory()
                 .essenceDeltas()
-                .isEmpty(),
-            "compensation is consumed");
+                .size() == 2,
+            "uncommitted deltas remain available");
         SimpleAssert.that(
             session.inventory()
                 .isDirty(),
@@ -12614,7 +12613,7 @@ public class NekoPocketModelTest {
             return;
         }
         final int exempt = countMainJavaCodeLinesMatching(
-            "PocketConstants\\.essenceCapPerTag\\(PocketUpgrades\\.hasUpgrade\\(root, PocketUpgradeType\\.STACK\\)\\)");
+            "PocketUpgrades\\.hasUpgrade\\(inventory\\.carrierRoot, PocketUpgradeType\\.STACK\\)");
         if (exempt < 0) {
             System.out.println("[NOTE] 读不到 src/main/java ⇒ P-4 豁免腿计数【未验】");
             return;
@@ -12882,18 +12881,23 @@ public class NekoPocketModelTest {
                 .essence()
                 .get("aer"),
             "★落盘再读回仍 1000 ⇒ 没有「关一次削一次」的蒸发路径");
-        // ---- ④ 没装过 STACK 的档（老档）逐字不变：钳到 256 ----
         final NBTTagCompound legacy = new NBTTagCompound();
         final PocketEssenceStore base = new PocketEssenceStore();
         base.setCapPerTag(() -> PocketConstants.essenceCapPerTag(true));
         base.add("aer", 1000);
         base.writeTo(legacy);
+        boolean rejected = false;
+        try {
+            PocketInventory.readFrom(legacy);
+        } catch (IllegalStateException expected) {
+            rejected = true;
+        }
+        SimpleAssert.that(rejected, "Over-capacity legacy data is retained for recovery");
         SimpleAssert.eq(
-            256,
-            PocketInventory.readFrom(legacy)
-                .essence()
-                .get("aer"),
-            "★没装过 STACK 的档照旧钳到 256（P-4 只豁免「装了的那一位」，不是把所有读档钳制关掉）");
+            1000,
+            (int) aspectsOf(legacy).getCompoundTagAt(0)
+                .getShort(PocketConstants.ASPECT_AMOUNT),
+            "Missing upgrades never truncate the saved resource");
     }
     // ================================================================== ★R96 S6（TP-S6）磁力行为层五条验收
     //
@@ -13285,8 +13289,8 @@ public class NekoPocketModelTest {
             "★那一处排在空 AABB 早退之后 ⇒ 无实体路径仍然一次 NBT 都不读（S6 的成本结论没被推翻，只是收窄到有东西的那一拍）");
         SimpleAssert.eq(0, countRegionCode(mag, tick, tickEnd, "writeTo("), "★位移拍一次 NBT 都不写");
         SimpleAssert.eq(0, countRegionCode(mag, emptyBack, tickEnd, "new "), "★空 AABB 早退之后到方法尾零个 new（无实体路径零分配）");
-        SimpleAssert.eq(1, countCodeLinesIn(mag, "oneshot.writeTo(root)"), "落盘点全文件恰一处（序列化上界 = 扫描率，R53c）");
-        SimpleAssert.eq(1, countCodeLinesIn(mag, "PocketInventory.readFrom(root)"), "读档点全文件恰一处（禁每实体一次）");
+        SimpleAssert.eq(1, countCodeLinesIn(mag, "oneshot.persistTo(stack)"), "落盘点全文件恰一处（序列化上界 = 扫描率，R53c）");
+        SimpleAssert.eq(1, countCodeLinesIn(mag, "PocketInventory.tryReadFrom(root)"), "读档点全文件恰一处（禁每实体一次）");
         SimpleAssert.eq(0, countCodeLinesIn(claimsSrc, "synchronized"), "★认领表不加锁（服务器主线程单线程访问，与 PocketSessions 同口径）");
     }
 
@@ -13998,7 +14002,7 @@ public class NekoPocketModelTest {
         // 唯一被顶掉的是那颗非法 id（★不改式子、不改判定、★不放宽任何断言）；
         // 真栈 → 合法 id 那一跳本身属【实机项】，不在这里假装证过。
         final int meta = 3;
-        final int legalId = 265;
+        final int legalId = Item.getIdFromItem(FakePlainItem.INSTANCE);
         final ItemStack carried = new ItemStack(FakePlainItem.INSTANCE, 37, meta);
         final int stackId = Item.getIdFromItem(carried.getItem());
         System.out.println(
@@ -17945,7 +17949,7 @@ public class NekoPocketModelTest {
                 player.inventory.mainInventory[10].stackSize,
                 "★无会话分支两枚都出自背包档：装配这一对换成的是 ofStorage(空表) + ofPlayer；"
                     + "★把挂载腿那句 ofSession/ofStorage 选择反过来会先红在第①段（有会话时拿到 ofStorage(null)）");
-            final PocketElementStore oneShotElem = PocketElementStore.attach(oneShotRoot);
+            final PocketElementStore oneShotElem = PocketElementStore.attach(oneShotCarrier.getTagCompound());
             for (String tag : PocketConstants.PRIMAL_TAGS) {
                 SimpleAssert.eq(2, oneShotElem.get(tag), "无会话分支照样各 +1（★同一份 chargeAndArm 本体）");
             }

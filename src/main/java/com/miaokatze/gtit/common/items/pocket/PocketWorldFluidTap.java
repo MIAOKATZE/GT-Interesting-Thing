@@ -9,7 +9,6 @@ import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ChatComponentTranslation;
 import net.minecraftforge.common.util.ForgeDirection;
 import net.minecraftforge.fluids.FluidStack;
@@ -86,9 +85,11 @@ public final class PocketWorldFluidTap {
         final PocketSession session = uuid == null ? null : PocketSessions.peek(uuid);
         // 按对象身份认栈：会话承载的是另一枚口袋（玩家开着 A 的面板、手持 B 右击）时绝不动 A 的内存真相
         final boolean viaSession = session != null && session.carrierStack() == stack;
+        if (!viaSession && !PocketSessions.mayWriteIndependently(uuid, stack)) return false;
         PocketInventory oneshot = null;
         if (!viaSession) {
-            oneshot = PocketInventory.readFrom(stack.getTagCompound());
+            oneshot = PocketInventory.tryReadFrom(stack.getTagCompound());
+            if (oneshot == null) return false;
         }
         final int tankTotal = PocketConstants.FLUID_TANK_TOTAL;
         final int[] amounts = new int[tankTotal];
@@ -131,12 +132,7 @@ public final class PocketWorldFluidTap {
         }
         // 无会话分支的一次性落盘：只有真的灌进去了才写（readFrom→writeTo 与开关一次面板同构）
         if (!viaSession && received > 0 && oneshot.isDirty()) {
-            NBTTagCompound root = stack.getTagCompound();
-            if (root == null) {
-                root = new NBTTagCompound();
-                stack.setTagCompound(root);
-            }
-            oneshot.writeTo(root);
+            oneshot.persistTo(stack);
         }
         final int remaining = PocketFluidExtraction.remainingAfter(gateSim, received);
         logL10(

@@ -8,10 +8,12 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fluids.FluidStack;
 
@@ -28,8 +30,11 @@ public final class PocketRuntimeSession implements PocketSession {
     private final PocketInventory inventory;
     private final boolean client;
     private ItemStack carrier;
-    private boolean ambiguous;
     private boolean open = true;
+    private boolean disconnected;
+    private MinecraftServer disconnectedServer;
+    private NBTTagCompound disconnectBaseline;
+    private ItemStack reconnectCarrier;
     private boolean nestedWarned;
     private NBTBase pendingOutgoing;
     private PocketTransferReservation outgoing;
@@ -48,14 +53,15 @@ public final class PocketRuntimeSession implements PocketSession {
         this.carrier = carrier;
         this.client = client;
         this.open = open;
-        this.identity = PocketCarrierIdentity.capture(carrier, !client);
         this.inventory = inventory == null ? PocketChannelSessions.parseCarrierInventory(carrier) : inventory;
+        this.identity = PocketCarrierIdentity.capture(carrier, !client);
         NBTTagCompound initial = carrier == null ? null : carrier.getTagCompound();
         if (initial != null && initial.hasKey(PocketTransferReservation.NBT_KEY)) {
             pendingOutgoing = initial.getTag(PocketTransferReservation.NBT_KEY)
                 .copy();
             if (pendingOutgoing instanceof NBTTagCompound saved)
                 outgoing = PocketTransferReservation.knownRefund(saved);
+            if (outgoing != null) pendingOutgoing = outgoing.record;
         }
         this.inventory.setUpgradeProbes(
             () -> PocketUpgradeSwitches.isActive(carrierStack(), PocketUpgradeType.CAPACITY),
@@ -81,9 +87,13 @@ public final class PocketRuntimeSession implements PocketSession {
         return carrier;
     }
 
+    boolean ownsCarrier(ItemStack stack) {
+        return identity.matches(stack);
+    }
+
     @Override
     public EntityPlayer player() {
-        return owner.get();
+        return disconnected ? null : owner.get();
     }
 
     @Override
@@ -102,14 +112,16 @@ public final class PocketRuntimeSession implements PocketSession {
     @Override
     public ItemStack carrierStack() {
         if (client) return originalSlot.get();
+        if (reconnectCarrier != null) return reconnectCarrier;
         EntityPlayer player = player();
-        ambiguous = false;
         if (player == null || player.inventory == null) return null;
         IInventory baubles = PocketWornTapHandler.safeBaubles(player);
         PocketCarrierIdentity.Resolution found = identity
             .locate(originalSlot.get(), player.inventory.getItemStack(), player.inventory.mainInventory, baubles);
-        ambiguous = found.ambiguous;
-        if (found.carrier != null) carrier = found.carrier;
+        if (found.carrier != null) {
+            carrier = found.carrier;
+            inventory.attachCarrierRoot(carrier.getTagCompound());
+        }
         return found.carrier;
     }
 
@@ -145,7 +157,7 @@ public final class PocketRuntimeSession implements PocketSession {
 
     @Override
     public void persistIdle() {
-        if (!open) persistFinal();
+        // The server tick owns ordinary flushing, allowing all drivers to share one write.
     }
 
     public void close() {
@@ -166,19 +178,56 @@ public final class PocketRuntimeSession implements PocketSession {
 
     @Override
     public void persistFinal() {
-        if (client) return;
+        if (client || disconnected) return;
         settleKnownRefund();
         if (!inventory.isDirty()) return;
         ItemStack stack = carrierStack();
-        if (stack == null && !ambiguous && identity.matches(carrier)) stack = carrier;
-        if (stack == null) {
-            rollbackEssenceToPersistedBaseline();
-            return;
+        if (stack == null) return;
+        persistToCarrier(stack);
+    }
+
+    void suspendAfterLogout(EntityPlayerMP player) {
+        // Subsequent flushes must never succeed by writing to the departed player's old ItemStack object.
+        disconnected = true;
+        open = false;
+        disconnectedServer = player.mcServer;
+        if (identity.matches(carrier) && carrier.getTagCompound() != null) {
+            disconnectBaseline = (NBTTagCompound) carrier.getTagCompound()
+                .copy();
         }
+    }
+
+    boolean isDisconnected() {
+        return disconnected;
+    }
+
+    void retryAfterLogin(EntityPlayerMP player) {
+        if (!disconnected || disconnectedServer != player.mcServer
+            || disconnectBaseline == null
+            || player.inventory == null) return;
+        final ItemStack candidate = identity.locate(
+            null,
+            player.inventory.getItemStack(),
+            player.inventory.mainInventory,
+            PocketWornTapHandler.safeBaubles(player)).carrier;
+        if (candidate == null || !disconnectBaseline.equals(candidate.getTagCompound())) return;
+        reconnectCarrier = candidate;
+        inventory.attachCarrierRoot(candidate.getTagCompound());
+        try {
+            settleKnownRefund();
+            persistToCarrier(candidate);
+            if (!inventory.isDirty()) ItemNekoDimensionPocket.setOpenFlag(candidate, false);
+        } finally {
+            reconnectCarrier = null;
+        }
+    }
+
+    private void persistToCarrier(ItemStack stack) {
         for (int index = 0; index < inventory.storage()
             .getSlots(); index++) {
-            if (inventory.storage()
-                .getStackInSlot(index) == stack) {
+            if (identity.matches(
+                inventory.storage()
+                    .getStackInSlot(index))) {
                 if (!nestedWarned) {
                     nestedWarned = true;
                     GTInterestingThing.LOG
@@ -188,23 +237,35 @@ public final class PocketRuntimeSession implements PocketSession {
             }
         }
         // Prepare detached NBT first: a serialization failure must leave the accepted carrier baseline intact.
-        NBTTagCompound root = stack.getTagCompound() == null ? new NBTTagCompound()
-            : (NBTTagCompound) stack.getTagCompound()
-                .copy();
+        NBTTagCompound root = PocketInventory.prepareRoot(stack.getTagCompound());
         inventory.writeTo(root);
         if (pendingOutgoing == null) root.removeTag(PocketTransferReservation.NBT_KEY);
         else root.setTag(PocketTransferReservation.NBT_KEY, pendingOutgoing.copy());
         if (lastTransferResolution != null)
             root.setTag("gtitPocketOutgoingTransferLastResolution", lastTransferResolution.copy());
-        NBTTagCompound live = stack.getTagCompound();
-        if (live == null) stack.setTagCompound(root);
-        else {
-            if (pendingOutgoing == null) live.removeTag(PocketTransferReservation.NBT_KEY);
-            // ElementStore intentionally remains attached to the existing root used by passive drivers.
-            for (Object key : root.func_150296_c()) live.setTag((String) key, root.getTag((String) key));
-        }
+        stack.setTagCompound(root);
         carrier = stack;
-        inventory.markClean();
+        inventory.committedTo(root);
+    }
+
+    MinecraftServer recoveryServer() {
+        if (disconnected) return disconnectedServer;
+        EntityPlayer player = owner.get();
+        return player instanceof EntityPlayerMP serverPlayer ? serverPlayer.mcServer : null;
+    }
+
+    NBTTagCompound recoverySnapshot() {
+        NBTTagCompound record = new NBTTagCompound();
+        record.setInteger("format", 1);
+        record.setLong("capturedAt", System.currentTimeMillis());
+        if (carrier != null) record.setTag("carrierBaseline", carrier.writeToNBT(new NBTTagCompound()));
+        NBTTagCompound contents = new NBTTagCompound();
+        inventory.writeTo(contents);
+        if (pendingOutgoing != null) contents.setTag(PocketTransferReservation.NBT_KEY, pendingOutgoing.copy());
+        if (lastTransferResolution != null)
+            contents.setTag("gtitPocketOutgoingTransferLastResolution", lastTransferResolution.copy());
+        record.setTag("pendingContents", contents);
+        return record;
     }
 
     public boolean hasPendingOutgoingTransfer() {
@@ -382,21 +443,6 @@ public final class PocketRuntimeSession implements PocketSession {
             markDirty();
             throw failure;
         }
-    }
-
-    private void rollbackEssenceToPersistedBaseline() {
-        Map<String, Integer> deltas = inventory.essenceDeltas();
-        if (deltas.isEmpty()) return;
-        for (Map.Entry<String, Integer> entry : deltas.entrySet()) {
-            int delta = entry.getValue();
-            if (delta < 0) inventory.essence()
-                .add(entry.getKey(), -delta);
-            else if (delta > 0) inventory.essence()
-                .extract(entry.getKey(), delta);
-        }
-        inventory.clearEssenceDeltas();
-        GTInterestingThing.LOG
-            .warn("[pocket] Carrier authority lost; reverted unpersisted essence deltas, retaining dirty state");
     }
 
     @Override

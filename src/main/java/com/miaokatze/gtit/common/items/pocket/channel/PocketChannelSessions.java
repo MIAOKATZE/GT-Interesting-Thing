@@ -62,7 +62,8 @@ public final class PocketChannelSessions {
             .isEmpty()) {
             return null;
         }
-        final PocketInventory inventory = parseCarrierInventory(carrier);
+        final PocketInventory inventory = PocketInventory.tryReadFrom(root);
+        if (inventory == null) return null;
         if (inventory.bindings()
             .isEmpty()) {
             // 全档解析后表仍空（档与门读数不一致的病态形状）⇒ 按前置③拒绝，零登记零写入

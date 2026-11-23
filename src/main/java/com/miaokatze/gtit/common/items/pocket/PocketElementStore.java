@@ -80,7 +80,11 @@ public final class PocketElementStore {
     public static final String TOOLTIP_ELEMENT_KEY = "gtit.pocket.tooltip.element";
 
     /** 载体栈的 NBT 根（活引用；{@code null} = 无档 ⇒ 一切写都是 no-op，读一律 0）。 */
-    private final NBTTagCompound root;
+    private NBTTagCompound root;
+
+    void rebind(NBTTagCompound root) {
+        this.root = root;
+    }
 
     private PocketElementStore(NBTTagCompound root) {
         this.root = root;
@@ -128,11 +132,17 @@ public final class PocketElementStore {
         if (elem == null || !elem.hasKey(tag)) {
             return 0;
         }
-        return clamp(elem.getInteger(tag));
+        int amount = elem.getInteger(tag);
+        return elem.hasKey(tag, 3) && amount >= 0 && amount <= capPerTag() ? amount : 0;
     }
 
     /** 该 tag 还能收多少点（<b>整笔预检的唯一余量读数</b>，与 {@link #canAcceptAll(Map)} 同一口径）。 */
     public int roomFor(String tag) {
+        if (root != null && root.hasKey(PocketConstants.ELEMENTS) && !root.hasKey(PocketConstants.ELEMENTS, 10))
+            return 0;
+        NBTTagCompound elem = raw(false);
+        if (elem != null && elem.hasKey(tag)
+            && (!elem.hasKey(tag, 3) || elem.getInteger(tag) < 0 || elem.getInteger(tag) > capPerTag())) return 0;
         if (!isTrackedTag(tag)) {
             return 0;
         }
@@ -222,7 +232,7 @@ public final class PocketElementStore {
      * @return 实际进了多少点（0 = 一格未进）
      */
     public int add(String tag, int amount) {
-        if (!isTrackedTag(tag) || amount <= 0) {
+        if (!isTrackedTag(tag) || amount <= 0 || roomFor(tag) <= 0) {
             return 0;
         }
         final NBTTagCompound elem = raw(true);
@@ -250,7 +260,7 @@ public final class PocketElementStore {
         if (elem == null || !isTrackedTag(tag) || amount <= 0 || !elem.hasKey(tag)) {
             return 0;
         }
-        final int current = clamp(elem.getInteger(tag));
+        final int current = get(tag);
         if (current <= 0) {
             return 0;
         }
@@ -356,10 +366,12 @@ public final class PocketElementStore {
         if (target == null) {
             return;
         }
+        validateRoot(root);
         final Map<String, Integer> values = snapshot();
         final Map<String, Integer> ticks = tickSnapshot();
         final boolean hasModes = hasModeKey();
-        if (values.isEmpty() && ticks.isEmpty() && !hasModes) {
+        NBTTagCompound existing = raw(false);
+        if (values.isEmpty() && ticks.isEmpty() && !hasModes && (existing == null || existing.hasNoTags())) {
             if (target != root) {
                 target.removeTag(PocketConstants.ELEMENTS);
             }
@@ -369,7 +381,12 @@ public final class PocketElementStore {
             // 同一份档：值与节拍都已经现写到位，重抄一遍只会多摸一次 NBT，不做。
             return;
         }
-        final NBTTagCompound elem = new NBTTagCompound();
+        final NBTTagCompound elem = existing == null ? new NBTTagCompound() : (NBTTagCompound) existing.copy();
+        for (String tag : PocketConstants.PRIMAL_TAGS) elem.removeTag(tag);
+        elem.removeTag(PocketConstants.ELEMENT_TICK_WAND);
+        elem.removeTag(PocketConstants.ELEMENT_TICK_COIN);
+        elem.removeTag(PocketConstants.ELEMENT_TICK_TRANSMUTE);
+        elem.removeTag(PocketConstants.ELEMENT_MODES);
         for (Map.Entry<String, Integer> entry : values.entrySet()) {
             elem.setInteger(
                 entry.getKey(),
@@ -546,13 +563,19 @@ public final class PocketElementStore {
         if (held instanceof NBTTagCompound) {
             return (NBTTagCompound) held;
         }
-        // 外来/手改档把 elem 写成了别的类型：整族按空处理并在写路径上换回正确形状（不让脏键永久卡死）。
-        if (!create) {
-            return null;
+        // Unreadable data remains available for recovery instead of being replaced by an empty table.
+        return null;
+    }
+
+    static void validateRoot(NBTTagCompound root) {
+        if (root == null) return;
+        PocketInventory.requireTagType(root, PocketConstants.ELEMENTS, 10);
+        NBTTagCompound elem = root.getCompoundTag(PocketConstants.ELEMENTS);
+        for (String tag : PocketConstants.PRIMAL_TAGS) {
+            PocketInventory.requireTagType(elem, tag, 3);
+            if (elem.getInteger(tag) < 0 || elem.getInteger(tag) > capPerTag())
+                throw new IllegalStateException("Invalid pocket element amount: " + tag);
         }
-        final NBTTagCompound fresh = new NBTTagCompound();
-        root.setTag(PocketConstants.ELEMENTS, fresh);
-        return fresh;
     }
 
     /** 档里是否真的存在 {@link PocketConstants#ELEMENT_MODES} 键（★"缺省"与"缺键"必须分得开，见 writeTo）。 */

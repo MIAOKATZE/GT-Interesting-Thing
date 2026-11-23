@@ -6,6 +6,7 @@ package com.miaokatze.gtit.common.items.pocket;
 import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
 
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
 import com.miaokatze.gtit.common.items.pocket.magnet.PocketMagnetClaims;
@@ -20,7 +21,7 @@ import cpw.mods.fml.common.gameevent.TickEvent;
  * <p>
  * 两条钩子各管一件事，都在服务器主线程（FML 的 {@code PlayerEvent} 与 mod 生命周期同线程派发）：
  * <ol>
- * <li><b>玩家离线</b>：先让会话落盘（{@link PocketSessions#forget}，顺序是"落盘 → 摘除"），
+ * <li><b>玩家离线</b>：先尝试写回会话，成功后摘除，失败则保留待恢复状态。
  * 再摘通道条目与蒸馏时钟。<b>不</b>在离线时清 {@code PocketCellProbe} 的坐标表——那张表是
  * 元件↔容器 的全局观测，与单个玩家无关，且元件可能还在原地（重登即自愈）。</li>
  * <li><b>停服/换档</b>（由 {@code CommonProxy.serverStopping} 转发，{@code FMLServerStoppingEvent}
@@ -40,17 +41,25 @@ public final class PocketLifecycleHandler {
     /** 玩家离线：会话先落盘再摘除，通道条目与蒸馏时钟一并清；顺带做一次僵尸会话兜底扫描。 */
     @SubscribeEvent
     public void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (!(event.player instanceof EntityPlayerMP player)) return;
         final UUID uuid = playerId(event.player);
         if (uuid == null) {
             return;
         }
-        PocketSessions.forget(uuid);
+        PocketSessions.onLogout(uuid, player);
         PocketChannelManager.INSTANCE.forget(uuid);
         PocketDistillDriver.forget(uuid);
         PocketMagnetClaims.forget(uuid);
         // 兜底：口袋被塞进箱子（不再被 tick）的会话，driver 永远等不到它的那一拍 ⇒ 只能这样收。
         // 以"有人离线"为节拍（低频事件），代价是一次 O(在线会话数) 扫描，且每条都是先落盘再摘。
         PocketSessions.sweepOrphans();
+    }
+
+    @SubscribeEvent
+    public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.player instanceof EntityPlayerMP player && playerId(player) != null) {
+            PocketSessions.retryAfterLogin(player);
+        }
     }
 
     /**
@@ -60,7 +69,7 @@ public final class PocketLifecycleHandler {
      * 等不到（不再被 tick），只能由生命周期钩子收（{@link PocketSessions#sweepOrphans()}）。
      */
     public static void onServerStopping() {
-        PocketSessions.clearAll();
+        PocketSessions.flushBeforeStop();
         PocketChannelManager.INSTANCE.reset();
         PocketDistillDriver.reset();
         PocketCellProbe.INSTANCE.reset();
@@ -69,7 +78,10 @@ public final class PocketLifecycleHandler {
 
     @SubscribeEvent
     public void onServerTick(TickEvent.ServerTickEvent event) {
-        if (event.phase == TickEvent.Phase.END) PocketMagnetClaims.advanceTick();
+        if (event.phase == TickEvent.Phase.END) {
+            PocketSessions.flushTick();
+            PocketMagnetClaims.advanceTick();
+        }
     }
 
     private static UUID playerId(EntityPlayer player) {

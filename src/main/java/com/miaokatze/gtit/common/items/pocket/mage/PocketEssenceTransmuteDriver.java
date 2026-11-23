@@ -71,15 +71,18 @@ public final class PocketEssenceTransmuteDriver {
             // ★R96 S9b：主开关 + 源质转换模式位两道闸（关着 ⇒ 连 tickDue 都不问 ⇒ 零 NBT 写）
             return;
         }
+        final UUID uuid = uuidOf(player);
+        if (!PocketSessions.mayTickCarrier(uuid, stack)) return;
         final PocketElementStore elem = PocketElementStore.attach(root);
         if (!elem.tickDue(PocketConstants.ELEMENT_TICK_TRANSMUTE)) {
             // 节拍内一次递减就回；★装配（无会话分支里的一次 PocketInventory.readFrom）必须在判拍之后
             return;
         }
-        final UUID uuid = uuidOf(player);
         final PocketSession session = uuid == null ? null : PocketSessions.peek(uuid);
         final boolean viaSession = session != null && session.carrierStack() == stack;
-        final PocketInventory oneshot = viaSession ? null : PocketInventory.readFrom(root);
+        if (!viaSession && !PocketSessions.mayWriteIndependently(uuid, stack)) return;
+        final PocketInventory oneshot = viaSession ? null : PocketInventory.tryReadFrom(root);
+        if (!viaSession && oneshot == null) return;
         final PocketEssenceStore ess = viaSession ? session.essence() : oneshot.essence();
         final int moved = transmuteAndArm(elem, ess);
         if (moved <= 0) {
@@ -88,7 +91,7 @@ public final class PocketEssenceTransmuteDriver {
         if (viaSession) {
             session.markDirty();
         } else {
-            oneshot.writeTo(root);
+            oneshot.persistTo(stack);
         }
     }
 

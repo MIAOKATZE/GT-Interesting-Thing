@@ -6,6 +6,9 @@
   "target": "@env(DEFAULT)",
   "compatibilityLevel": "JAVA_8",
   "mixins": [
+    "MixinEntityPlayerPocketPersistence",
+    "MixinContainerPocketPersistence",
+    "MixinInventoryPlayerPocketPersistence",
     "MixinItemInWorldManager",
     "MixinBaseMetaTileEntityMuffle",
     "MixinEntityFishHook",

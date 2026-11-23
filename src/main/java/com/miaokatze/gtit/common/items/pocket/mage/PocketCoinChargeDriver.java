@@ -73,18 +73,21 @@ public final class PocketCoinChargeDriver {
             // = 一次位图读 + 一次模式位读就回（★零 NBT 写，也不装拍）
             return;
         }
+        final UUID uuid = player.getGameProfile() == null ? null
+            : player.getGameProfile()
+                .getId();
+        if (!PocketSessions.mayTickCarrier(uuid, stack)) return;
         final PocketElementStore elem = PocketElementStore.attach(root);
         if (!elem.tickDue(PocketConstants.ELEMENT_TICK_COIN)) {
             // 节拍内：一次递减就回。★这一行在"装配来源"之前是有意的 —— 装配在无会话分支里是
             // 一次 PocketInventory.readFrom（整表反序列化），放到判拍之前就成了每 tick 一次（R53c 明禁）。
             return;
         }
-        final UUID uuid = player.getGameProfile() == null ? null
-            : player.getGameProfile()
-                .getId();
         final PocketSession session = uuid == null ? null : PocketSessions.peek(uuid);
         final boolean viaSession = session != null && session.carrierStack() == stack;
-        final PocketInventory oneshot = viaSession ? null : PocketInventory.readFrom(root);
+        if (!viaSession && !PocketSessions.mayWriteIndependently(uuid, stack)) return;
+        final PocketInventory oneshot = viaSession ? null : PocketInventory.tryReadFrom(root);
+        if (!viaSession && oneshot == null) return;
         final CoinHolder[] holders = holdersFor(
             viaSession ? CoinHolder.ofSession(session) : CoinHolder.ofStorage(oneshot),
             player);
@@ -95,7 +98,7 @@ public final class PocketCoinChargeDriver {
         if (viaSession) {
             session.markDirty();
         } else {
-            oneshot.writeTo(root);
+            oneshot.persistTo(stack);
         }
     }
 

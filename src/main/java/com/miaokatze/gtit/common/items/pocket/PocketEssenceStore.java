@@ -166,17 +166,22 @@ public final class PocketEssenceStore {
         if (root == null) {
             return store;
         }
+        PocketInventory.requireTagType(root, PocketConstants.ESSENCE, TAG_COMPOUND);
         final NBTTagCompound ess = root.getCompoundTag(PocketConstants.ESSENCE);
-        final NBTTagList list = ess.getTagList(PocketConstants.ASPECTS, TAG_COMPOUND);
+        final NBTTagList list = PocketInventory.readList(ess, PocketConstants.ASPECTS, TAG_COMPOUND);
         for (int i = 0; i < list.tagCount(); i++) {
             final NBTTagCompound entry = list.getCompoundTagAt(i);
             final String tag = entry.hasKey(PocketConstants.ASPECT_KEY, TAG_STRING)
                 ? entry.getString(PocketConstants.ASPECT_KEY)
                 : null;
             if (tag == null || tag.isEmpty()) {
-                continue;
+                throw new IllegalStateException("Invalid pocket essence key; original NBT retained");
             }
+            if (store.amounts.containsKey(tag) || !entry.hasKey(PocketConstants.ASPECT_AMOUNT, 2))
+                throw new IllegalStateException("Duplicate or invalid pocket essence entry: " + tag);
             final int amount = entry.getShort(PocketConstants.ASPECT_AMOUNT);
+            if (amount < 0 || amount > store.capPerTag())
+                throw new IllegalStateException("Invalid pocket essence amount: " + tag);
             if (amount > 0) {
                 store.amounts.put(tag, Math.min(amount, store.capPerTag()));
             }
@@ -209,7 +214,9 @@ public final class PocketEssenceStore {
      */
     private void readCellOrder(NBTTagCompound root) {
         if (root.hasKey(PocketConstants.ESSENCE_CELL_ORDER)) {
-            final NBTTagList order = root.getTagList(PocketConstants.ESSENCE_CELL_ORDER, TAG_STRING);
+            final NBTTagList order = PocketInventory.readList(root, PocketConstants.ESSENCE_CELL_ORDER, TAG_STRING);
+            if (order.tagCount() > cellTags.length)
+                throw new IllegalStateException("Pocket essence order exceeds available cells; original NBT retained");
             for (int cell = 0; cell < cellTags.length && cell < order.tagCount(); cell++) {
                 final String tag = order.getStringTagAt(cell);
                 if (tag == null || tag.isEmpty()) {

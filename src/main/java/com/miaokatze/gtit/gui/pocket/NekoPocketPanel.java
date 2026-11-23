@@ -505,7 +505,11 @@ public final class NekoPocketPanel implements PocketSession {
         this.slots = new PocketSlots();
         if (!syncManager.isClient()) {
             // Flush the old model before parsing or replacing its token, including headless sessions.
-            PocketSessions.flushBeforeReplacement(playerId());
+            if (data.getPlayer() instanceof EntityPlayerMP serverPlayer) {
+                PocketSessions.flushBeforeOpening(serverPlayer);
+            } else {
+                PocketSessions.flushBeforeReplacement(playerId());
+            }
         }
         this.runtime = new PocketRuntimeSession(
             data::getPlayer,
