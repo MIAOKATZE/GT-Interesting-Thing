@@ -18,6 +18,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import net.minecraft.init.Items;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
@@ -56,6 +57,8 @@ public final class InfinityDiskPersistenceTest {
         if (copiedSave != null) verifyExistingSaveCopy(directory, Paths.get(copiedSave));
         verifyIncrementalCommit(directory);
         verifyBackgroundCommit(Files.createDirectory(directory.resolve("background")));
+        verifyNamedIdentity(Files.createDirectory(directory.resolve("identity")));
+        verifySealedRetry(Files.createDirectory(directory.resolve("sealed")));
         verifyLargeDiskDelta(Files.createDirectory(directory.resolve("small-delta")), 32);
         final String benchmarkSize = System.getenv("GTIT_INFINITY_BENCHMARK_ENTRIES");
         verifyLargeDiskDelta(
@@ -103,9 +106,10 @@ public final class InfinityDiskPersistenceTest {
                 .get(A);
             SimpleAssert.eq(
                 67L,
-                AEItemStack.loadItemStackFromNBT(
+                InfinityItemIdentity.read(
                     first.getTagList("item", 10)
-                        .getCompoundTagAt(0))
+                        .getCompoundTagAt(0),
+                    false)
                     .getStackSize(),
                 "the submitted generation has the earlier item count");
             SimpleAssert.eq(opaque(), first.getTagList(MISSING_CHANNEL, 10), "the older snapshot owns its NBT");
@@ -115,9 +119,10 @@ public final class InfinityDiskPersistenceTest {
                 .get(A);
             SimpleAssert.eq(
                 76L,
-                AEItemStack.loadItemStackFromNBT(
+                InfinityItemIdentity.read(
                     secondDisk.getTagList("item", 10)
-                        .getCompoundTagAt(0))
+                        .getCompoundTagAt(0),
+                    false)
                     .getStackSize(),
                 "explicit flush also commits newer changes to an in-flight UUID");
             SimpleAssert.eq(opaque(), secondDisk.getTagList(MISSING_CHANNEL, 10), "the unchanged opaque data survives");
@@ -152,16 +157,107 @@ public final class InfinityDiskPersistenceTest {
                 Files.move(held, manifest);
             }
             SimpleAssert.eq(second, revisions(manifest), "failed background write leaves the previous commit visible");
+            manager.requestSave();
+            worker.submit(() -> {})
+                .get(10, TimeUnit.SECONDS);
+            SimpleAssert.eq(80L, firstItemAmount(directory), "retry publishes the frozen amount before newer edits");
             transferToB();
             manager.requestSave();
         } finally {
             release.countDown();
+            manager.seal();
             StorageManager.closeWorld();
         }
         SimpleAssert.that(worker.isShutdown(), "closing the world shuts down its worker");
         verifyContents(StorageManager.open(old), 61, 27);
         System.out
             .println("InfinityDiskPersistenceTest: detached background batches, failed flush, retry and close passed");
+    }
+
+    private static long firstItemAmount(Path directory) throws IOException {
+        final NBTTagCompound disk = new InfinityDiskFiles(directory).load()
+            .get(A);
+        return InfinityItemIdentity.read(
+            disk.getTagList("item", 10)
+                .getCompoundTagAt(0),
+            false)
+            .getStackSize();
+    }
+
+    private static void verifyNamedIdentity(Path root) throws Exception {
+        final Path old = root.resolve(StorageManager.storageName() + ".dat");
+        final Path dir = root.resolve(StorageManager.storageName());
+        final NBTTagCompound named = new DataStorage(A, StorageChannel.ITEMS).snapshot(iron(12));
+        final NBTTagCompound payload = named.getCompoundTag("ae_payload");
+        final int goldId = Item.getIdFromItem(Items.gold_ingot);
+        payload.setShort("id", (short) goldId);
+        payload.setInteger("idExt", 65536 + goldId);
+        final NBTTagCompound outOfRangeLegacy = (NBTTagCompound) payload.copy();
+        outOfRangeLegacy.removeTag("idExt");
+        outOfRangeLegacy.setInteger("id", 65536 + goldId);
+        SimpleAssert.eq(null, InfinityItemIdentity.read(outOfRangeLegacy, true), "legacy ID cannot truncate to gold");
+        final NBTTagCompound absent = (NBTTagCompound) named.copy();
+        absent.setString("registry_name", "gtit-test:missing");
+        final NBTTagCompound malformed = (NBTTagCompound) named.copy();
+        malformed.removeTag("registry_name");
+        final NBTTagList items = new NBTTagList();
+        items.appendTag(named);
+        items.appendTag(absent);
+        items.appendTag(malformed);
+        final NBTTagCompound disk = new NBTTagCompound();
+        disk.setTag("item", items);
+        new InfinityDiskFiles(dir).save(Collections.singletonMap(A, disk));
+
+        final StorageManager manager = StorageManager.open(old);
+        final DataStorage live = manager.getStorage(A.toString(), StorageChannel.ITEMS);
+        SimpleAssert.eq(
+            12L,
+            live.findAvailable(iron(1))
+                .getStackSize(),
+            "stable name anchors the actual item");
+        SimpleAssert.that(live.hasUnresolvedEntries(), "invalid new records cannot fall back to numeric IDs");
+        SimpleAssert.that(manager.isDirty(), "normalizing the identity records its own save obligation");
+        manager.saveDisks();
+        itemInventory(A).extractItems(iron(12), Actionable.MODULATE, null);
+        SimpleAssert
+            .that(StorageManager.hasUnresolvedContents(itemCarrier(A)), "a raw-only disk must stay in the IO port");
+        manager.postChanges(live);
+        manager.saveDisks();
+        final NBTTagList retained = new InfinityDiskFiles(dir).load()
+            .get(A)
+            .getTagList("item", 10);
+        SimpleAssert.eq(2, retained.tagCount(), "raw-only disk is not removed");
+        SimpleAssert.eq(absent, retained.getCompoundTagAt(0), "unknown name survives unchanged");
+        SimpleAssert.eq(malformed, retained.getCompoundTagAt(1), "missing name survives unchanged");
+    }
+
+    private static void verifySealedRetry(Path root) throws Exception {
+        final Path old = root.resolve(StorageManager.storageName() + ".dat");
+        writeLegacyFixture(old);
+        final StorageManager manager = StorageManager.open(old);
+        final Path dir = root.resolve(StorageManager.storageName());
+        final Path manifest = dir.resolve("manifest.dat");
+        final Path held = dir.resolve("test-held-manifest.dat");
+        itemInventory(A).injectItems(iron(4), Actionable.MODULATE, null);
+        final IAEItemStack live = manager.getStorage(A.toString(), StorageChannel.ITEMS)
+            .getItems()
+            .findPrecise(iron(1));
+        Files.move(manifest, held);
+        Files.createDirectory(manifest);
+        try {
+            manager.saveDisks();
+            throw new AssertionError("the synchronous publication must fail");
+        } catch (IOException expected) {
+            itemInventory(A).injectItems(iron(2), Actionable.MODULATE, null);
+            manager.seal();
+            // A late mutation is deliberately made without an inventory operation. Late close must use only frozen NBT.
+            live.setStackSize(1000);
+        } finally {
+            Files.delete(manifest);
+            Files.move(held, manifest);
+            StorageManager.closeWorld();
+        }
+        SimpleAssert.eq(70L, firstItemAmount(dir), "late close commits the final sealed count, not the live stack");
     }
 
     private static void verifyLargeDiskDelta(Path root, int size) throws Exception {
@@ -176,7 +272,18 @@ public final class InfinityDiskPersistenceTest {
         final NBTTagCompound seed = new NBTTagCompound();
         seed.setTag("item", entries);
         new InfinityDiskFiles(directory).save(Collections.singletonMap(A, seed));
+        final Path manifest = directory.resolve("manifest.dat");
+        final NBTTagCompound legacyManifest = InfinityDiskFiles.read(manifest);
+        legacyManifest.setInteger("format", 1);
+        try (OutputStream output = Files.newOutputStream(manifest)) {
+            CompressedStreamTools.writeCompressed(legacyManifest, output);
+        }
         final StorageManager manager = StorageManager.open(old);
+        SimpleAssert.eq(
+            2,
+            InfinityDiskFiles.read(manifest)
+                .getInteger("format"),
+            "upgrades v1 to named entries");
         final InfinityItemStorageCellInventory cell = itemInventory(A);
         final IAEItemStack first = ironWithIdentity(0, 1);
         cell.injectItems(first, Actionable.SIMULATE, null);

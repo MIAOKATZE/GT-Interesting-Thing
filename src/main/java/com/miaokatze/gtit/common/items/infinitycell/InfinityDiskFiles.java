@@ -3,6 +3,8 @@
 
 package com.miaokatze.gtit.common.items.infinitycell;
 
+import java.io.BufferedInputStream;
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.DirectoryStream;
@@ -13,8 +15,10 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.zip.GZIPInputStream;
 
 import net.minecraft.nbt.CompressedStreamTools;
+import net.minecraft.nbt.NBTSizeTracker;
 import net.minecraft.nbt.NBTTagCompound;
 
 import org.apache.logging.log4j.LogManager;
@@ -26,7 +30,8 @@ import com.miaokatze.gtit.util.AtomicNbtFile;
 final class InfinityDiskFiles {
 
     private static final Logger LOG = LogManager.getLogger("gtit");
-    private static final int FORMAT = 1;
+    private static final int FORMAT = 2;
+    private static final long NBT_BUDGET = 256L * 1024 * 1024;
     private static final String FORMAT_KEY = "format";
     private static final String DISKS = "disks";
     private static final String CHANNELS = "channels";
@@ -35,6 +40,7 @@ final class InfinityDiskFiles {
     private final Path manifest;
     private final Set<Path> garbage = new HashSet<>();
     private Map<UUID, UUID> published = new LinkedHashMap<>();
+    private int format = FORMAT;
 
     InfinityDiskFiles(Path directory) {
         this.directory = directory;
@@ -44,7 +50,8 @@ final class InfinityDiskFiles {
     Map<UUID, NBTTagCompound> load() throws IOException {
         if (Files.notExists(manifest)) return null;
         final NBTTagCompound document = read(manifest);
-        if (document.getInteger(FORMAT_KEY) != FORMAT || !document.hasKey(DISKS, 10)) {
+        format = document.getInteger(FORMAT_KEY);
+        if (!document.hasKey(FORMAT_KEY, 3) || (format != 1 && format != FORMAT) || !document.hasKey(DISKS, 10)) {
             throw new IOException("Unknown or invalid infinity cell manifest: " + manifest);
         }
         final Map<UUID, UUID> revisions = new LinkedHashMap<>();
@@ -63,6 +70,19 @@ final class InfinityDiskFiles {
         }
         published = revisions;
         return data;
+    }
+
+    boolean isLegacyFormat() {
+        return format == 1;
+    }
+
+    void rejectMissingManifest() throws IOException {
+        if (Files.notExists(directory)) return;
+        try (DirectoryStream<Path> files = Files.newDirectoryStream(directory, "*.dat")) {
+            for (final Path file : files) {
+                throw new IOException("Missing infinity cell manifest with disk data present: " + file);
+            }
+        }
     }
 
     void removeAbandonedRevisions() {
@@ -103,7 +123,7 @@ final class InfinityDiskFiles {
             final NBTTagCompound record = new NBTTagCompound();
             record.setString(InfinityCellConstants.DISKUUID, disk.toString());
             record.setTag(CHANNELS, entry.getValue());
-            AtomicNbtFile.writeCompressedAndSync(record, file.toFile());
+            AtomicNbtFile.writeCompressedAndSync(record, file.toFile(), InfinityDiskFiles::read);
             garbage.add(file);
             next.put(disk, revision);
         }
@@ -116,8 +136,9 @@ final class InfinityDiskFiles {
         final NBTTagCompound document = new NBTTagCompound();
         document.setInteger(FORMAT_KEY, FORMAT);
         document.setTag(DISKS, entries);
-        AtomicNbtFile.writeCompressedAndSync(document, manifest.toFile());
+        AtomicNbtFile.writeCompressedAndSync(document, manifest.toFile(), InfinityDiskFiles::read);
         published = next;
+        format = FORMAT;
         removeGarbage();
     }
 
@@ -149,8 +170,18 @@ final class InfinityDiskFiles {
     }
 
     static NBTTagCompound read(Path file) throws IOException {
-        try (InputStream input = Files.newInputStream(file)) {
-            return CompressedStreamTools.readCompressed(input);
+        try (InputStream input = Files.newInputStream(file);
+            DataInputStream data = new DataInputStream(new BufferedInputStream(new GZIPInputStream(input, 8192)))) {
+            final NBTTagCompound result = CompressedStreamTools.func_152456_a(data, new NBTSizeTracker(NBT_BUDGET));
+            if (data.read() != -1) throw new IOException("Trailing data in infinity cell NBT: " + file);
+            return result;
+        } catch (RuntimeException e) {
+            throw new IOException("Invalid or oversized infinity cell NBT: " + file, e);
         }
+    }
+
+    @Override
+    public String toString() {
+        return directory.toString();
     }
 }

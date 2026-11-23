@@ -20,6 +20,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import com.miaokatze.gtit.common.items.infinitycell.InfinityCellStock;
+import com.miaokatze.gtit.common.items.infinitycell.StorageManager;
 
 import appeng.api.AEApi;
 import appeng.api.config.AccessRestriction;
@@ -163,11 +164,14 @@ public class MixinTileIOPort {
         final boolean moveOnEmptyWhileFilling, final OperationMode operationMode, final FullnessMode fullnessMode,
         final CallbackInfoReturnable<Boolean> ci) {
         final List<IMEInventory<?>> channels = this.gtit$activeChannels;
-        if (channels == null || inventory == null
-            || operationMode != OperationMode.EMPTY
-            || fullnessMode != FullnessMode.EMPTY) {
+        if (operationMode != OperationMode.EMPTY || fullnessMode != FullnessMode.EMPTY) {
             return;
         }
+        if (StorageManager.hasUnresolvedContents(this.currentCell)) {
+            ci.setReturnValue(false);
+            return;
+        }
+        if (channels == null || inventory == null) return;
         try {
             if (!sourceEmptyAfterTransfer) {
                 ci.setReturnValue(false);

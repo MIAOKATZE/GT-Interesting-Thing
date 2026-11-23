@@ -56,15 +56,21 @@ public class StorageManager extends WorldSavedData {
     private World world;
     private ExecutorService writer;
     private PendingSave pendingSave;
+    private PendingSave closingSave;
+    private boolean sealed;
+    private long nextGeneration;
 
     private static final class PendingSave {
 
-        final Map<UUID, DiskChanges> disks;
-        final Future<Void> result;
+        final long generation;
+        final Map<UUID, DiskChanges> changes;
+        final Map<UUID, InfinityDiskSnapshots.Update> frozen;
+        Future<Void> result;
 
-        PendingSave(Map<UUID, DiskChanges> disks, Future<Void> result) {
-            this.disks = disks;
-            this.result = result;
+        PendingSave(long generation, Map<UUID, DiskChanges> changes, Map<UUID, InfinityDiskSnapshots.Update> frozen) {
+            this.generation = generation;
+            this.changes = changes;
+            this.frozen = frozen;
         }
     }
 
@@ -83,33 +89,24 @@ public class StorageManager extends WorldSavedData {
                 .put(storage.snapshotKey(stack), stack);
         }
 
-        void retryEarlier(DiskChanges earlier) {
-            if (earlier.replace) replace();
-            if (replace) return;
-            earlier.channels.forEach((storage, entries) -> {
-                final Map<Object, IAEStack<?>> latest = channels
-                    .computeIfAbsent(storage, ignored -> new LinkedHashMap<>());
-                entries.forEach(latest::putIfAbsent);
-            });
-        }
-
         InfinityDiskSnapshots.Update capture() {
             final Map<String, Map<Object, NBTTagCompound>> update = new LinkedHashMap<>();
             channels.forEach((storage, entries) -> {
                 final Map<Object, NBTTagCompound> changes = new LinkedHashMap<>();
-                entries.forEach((key, stack) -> changes.put(key, DataStorage.snapshot(stack)));
+                entries.forEach((key, stack) -> changes.put(key, storage.snapshot(stack)));
                 update.put(storage.getTypeId(), changes);
             });
             return new InfinityDiskSnapshots.Update(false, update);
         }
 
-        void forgetCommittedDeletions(DiskChanges newer) {
+        void forgetCommittedDeletions(DiskChanges newer, InfinityDiskSnapshots.Update frozen) {
             if (newer != null && newer.replace) return;
             channels.forEach((storage, entries) -> {
                 final Map<Object, IAEStack<?>> latest = newer == null ? Collections.emptyMap()
                     : newer.channels.getOrDefault(storage, Collections.emptyMap());
                 entries.forEach((key, stack) -> {
-                    if (!InfinityCellTransfer.hasStock(stack) && !latest.containsKey(key)) {
+                    if (frozen.channels.get(storage.getTypeId())
+                        .get(key) == null && !latest.containsKey(key)) {
                         storage.forgetSnapshotKey(stack, key);
                     }
                 });
@@ -165,21 +162,28 @@ public class StorageManager extends WorldSavedData {
         final StorageManager manager = new StorageManager(DATA_NAME, files);
         final Map<UUID, NBTTagCompound> committed = files.load();
         if (committed != null) {
-            manager.loadDisks(committed, true);
+            manager.loadDisks(committed, files.isLegacyFormat(), true);
+            if (files.isLegacyFormat()) manager.upgradeFormat();
             files.removeAbandonedRevisions();
             retireLegacyFile(legacyFile);
         } else if (!Files.notExists(legacyFile)) {
             final NBTTagCompound root = InfinityDiskFiles.read(legacyFile);
             if (!root.hasKey("data", 10)) throw new IOException("Missing infinity cell payload in " + legacyFile);
             final Map<UUID, NBTTagCompound> legacy = InfinityLegacyData.read(root.getCompoundTag("data"));
-            manager.loadDisks(legacy, true);
-            // Copy the serialized stacks, including opaque channels, without re-encoding them during import.
-            files.save(legacy);
+            manager.loadDisks(legacy, true, true);
+            manager.upgradeFormat();
             files.removeAbandonedRevisions();
             retireLegacyFile(legacyFile);
+        } else {
+            files.rejectMissingManifest();
         }
         instance = manager;
         return manager;
+    }
+
+    private void upgradeFormat() throws IOException {
+        if (dirtyDisks.isEmpty()) diskFiles.save(Collections.emptyMap());
+        else saveDisks();
     }
 
     private static void retireLegacyFile(Path legacyFile) {
@@ -211,17 +215,33 @@ public class StorageManager extends WorldSavedData {
     /** Called after the final world save and before the server finishes shutting down. */
     public static void finishWorldSaveOnStop() {
         final StorageManager manager = instance;
-        if (manager != null && manager.world != null) manager.finishBeforeClose();
+        if (manager != null && manager.world != null) {
+            manager.seal();
+            manager.finishBeforeClose();
+        }
     }
 
     public static void closeWorld() {
         final StorageManager manager = instance;
         try {
             if (manager != null && manager.world != null) MinecraftForge.EVENT_BUS.unregister(manager);
-            if (manager != null && (manager.world != null || manager.writer != null)) manager.finishBeforeClose();
+            if (manager != null) manager.finishBeforeClose();
         } finally {
             if (manager != null && manager.writer != null) manager.writer.shutdown();
             instance = null;
+        }
+    }
+
+    void seal() {
+        if (sealed) return;
+        sealed = true;
+        try {
+            closingSave = freezeDirtyDisks();
+        } catch (RuntimeException e) {
+            LOG.error(
+                "Could not capture final infinity cell changes in {}; prior committed disks remain intact",
+                diskFiles,
+                e);
         }
     }
 
@@ -230,7 +250,11 @@ public class StorageManager extends WorldSavedData {
         try {
             while (true) {
                 try {
-                    saveDisks();
+                    // FML may already have restored the frozen registry by SERVER_STOPPED.
+                    drainFrozenSaves();
+                    if (!dirtyDisks.isEmpty()) {
+                        LOG.error("Closing {} with {} uncaptured infinity cell disks", diskFiles, dirtyDisks.size());
+                    }
                     return;
                 } catch (InterruptedIOException e) {
                     interrupted = true;
@@ -251,26 +275,33 @@ public class StorageManager extends WorldSavedData {
     }
 
     void requestSave() throws IOException {
+        if (sealed) return;
         if (writer == null) {
             saveDisks();
-        } else if (pendingSave == null || pendingSave.result.isDone()) {
-            completePendingSave();
-            queueDirtyDisks();
+            return;
         }
+        if (pendingSave != null && pendingSave.result != null) {
+            if (!pendingSave.result.isDone()) return;
+            finishPendingSave();
+        }
+        if (pendingSave == null) pendingSave = freezeDirtyDisks();
+        if (pendingSave != null) submitPendingSave();
     }
 
     void saveDisks() throws IOException {
         if (diskFiles == null) return;
-        if (writer != null) {
-            completePendingSave();
-            queueDirtyDisks();
-            completePendingSave();
-        } else if (!dirtyDisks.isEmpty()) {
-            snapshots.save(captureDirtyDisks());
-            final Map<UUID, DiskChanges> submitted = new LinkedHashMap<>(dirtyDisks);
-            dirtyDisks.clear();
-            finishCommit(submitted);
-        }
+        drainFrozenSaves();
+        if (sealed) return;
+        pendingSave = freezeDirtyDisks();
+        finishPendingSave();
+    }
+
+    private void drainFrozenSaves() throws IOException {
+        finishPendingSave();
+        if (closingSave == null) return;
+        pendingSave = closingSave;
+        closingSave = null;
+        finishPendingSave();
     }
 
     Map<UUID, InfinityDiskSnapshots.Update> captureDirtyDisks() {
@@ -281,32 +312,41 @@ public class StorageManager extends WorldSavedData {
                 changed.put(uuid, new InfinityDiskSnapshots.Update(true, Collections.emptyMap()));
                 return;
             }
-            if (disk.resolvedChannel) {
-                update.replace();
-                disk.resolvedChannel = false;
-            }
             changed.put(uuid, update.replace ? disk.captureAll() : update.capture());
         });
         return changed;
     }
 
-    private void queueDirtyDisks() {
-        if (dirtyDisks.isEmpty()) return;
+    private PendingSave freezeDirtyDisks() {
+        if (dirtyDisks.isEmpty()) return null;
         final Map<UUID, InfinityDiskSnapshots.Update> changed = captureDirtyDisks();
-        final Map<UUID, DiskChanges> submitted = new LinkedHashMap<>(dirtyDisks);
-        final Future<Void> result = writer.submit(() -> {
-            snapshots.save(changed);
-            return null;
-        });
-        pendingSave = new PendingSave(submitted, result);
+        final PendingSave batch = new PendingSave(++nextGeneration, new LinkedHashMap<>(dirtyDisks), changed);
         dirtyDisks.clear();
+        return batch;
     }
 
-    private void completePendingSave() throws IOException {
+    private void submitPendingSave() throws IOException {
+        final PendingSave save = pendingSave;
+        try {
+            save.result = writer.submit(() -> {
+                snapshots.save(save.frozen);
+                return null;
+            });
+        } catch (RuntimeException e) {
+            throw saveFailure(save, e);
+        }
+    }
+
+    private void finishPendingSave() throws IOException {
         final PendingSave save = pendingSave;
         if (save == null) return;
         try {
-            save.result.get();
+            if (writer == null) {
+                snapshots.save(save.frozen);
+            } else {
+                if (save.result == null) submitPendingSave();
+                save.result.get();
+            }
         } catch (InterruptedException e) {
             Thread.currentThread()
                 .interrupt();
@@ -315,20 +355,29 @@ public class StorageManager extends WorldSavedData {
             failure.initCause(e);
             throw failure;
         } catch (ExecutionException e) {
-            save.disks.forEach((uuid, earlier) -> {
-                final DiskChanges newer = dirtyDisks.putIfAbsent(uuid, earlier);
-                if (newer != null) newer.retryEarlier(earlier);
-            });
-            pendingSave = null;
-            throw new IOException("Infinity cell disk commit failed", e.getCause());
+            save.result = null;
+            throw saveFailure(save, e.getCause());
+        } catch (IOException | RuntimeException e) {
+            save.result = null;
+            throw saveFailure(save, e);
         }
         pendingSave = null;
-        finishCommit(save.disks);
+        if (!sealed) {
+            save.changes.forEach(
+                (uuid, changes) -> changes.forgetCommittedDeletions(dirtyDisks.get(uuid), save.frozen.get(uuid)));
+        }
+        setDirty(!dirtyDisks.isEmpty() || closingSave != null);
     }
 
-    private void finishCommit(Map<UUID, DiskChanges> submitted) {
-        submitted.forEach((uuid, changes) -> changes.forgetCommittedDeletions(dirtyDisks.get(uuid)));
-        setDirty(!dirtyDisks.isEmpty());
+    private IOException saveFailure(PendingSave save, Throwable cause) {
+        return new IOException(
+            "Infinity cell generation " + save.generation
+                + " failed for "
+                + diskFiles
+                + " ("
+                + save.frozen.size()
+                + " disks)",
+            cause);
     }
 
     static String keyOf(String uuid, String typeId) {
@@ -341,18 +390,23 @@ public class StorageManager extends WorldSavedData {
 
     public DataStorage getStorage(String uuid, IAEStackType<?> type) {
         UUID uid;
-        try {
-            uid = UUID.fromString(uuid);
-        } catch (IllegalArgumentException | NullPointerException ignored) {
+        if (uuid == null || uuid.isEmpty()) {
             do {
                 uid = UUID.randomUUID();
             } while (disks.containsKey(uid));
+        } else {
+            uid = UUID.fromString(uuid);
         }
         final UUID diskId = uid;
         final String typeId = type.getId();
         if (Platform.isServer()) {
-            return disks.computeIfAbsent(diskId, ignored -> new Disk())
-                .getOrCreate(diskId, type);
+            final Disk disk = disks.computeIfAbsent(diskId, ignored -> new Disk());
+            final DataStorage storage = disk.getOrCreate(diskId, type);
+            if (disk.resolvedChannel) {
+                postChanges(storage);
+                disk.resolvedChannel = false;
+            }
+            return storage;
         }
         final Disk disk = disks.get(diskId);
         final DataStorage existing = disk == null ? null : disk.channels.get(typeId);
@@ -405,7 +459,7 @@ public class StorageManager extends WorldSavedData {
     public void readFromNBT(NBTTagCompound data) {
         try {
             final Set<UUID> previous = new LinkedHashSet<>(disks.keySet());
-            loadDisks(InfinityLegacyData.read(data), false);
+            loadDisks(InfinityLegacyData.read(data), true, false);
             if (diskFiles != null) {
                 previous.addAll(disks.keySet());
                 previous.forEach(
@@ -418,12 +472,13 @@ public class StorageManager extends WorldSavedData {
         }
     }
 
-    private void loadDisks(Map<UUID, NBTTagCompound> data, boolean seedSnapshots) throws IOException {
+    private void loadDisks(Map<UUID, NBTTagCompound> data, boolean legacy, boolean seedSnapshots) throws IOException {
         final Map<UUID, Disk> loaded = new LinkedHashMap<>();
         for (final Map.Entry<UUID, NBTTagCompound> record : data.entrySet()) {
             final UUID uuid = record.getKey();
             final NBTTagCompound contents = record.getValue();
             final Disk disk = new Disk();
+            boolean rewrite = legacy;
             final Map<String, Map<Object, NBTTagCompound>> baseline = new LinkedHashMap<>();
             for (final String typeId : contents.func_150296_c()) {
                 if (typeId.isEmpty()) throw new IOException("Empty infinity cell channel in " + uuid);
@@ -432,19 +487,24 @@ public class StorageManager extends WorldSavedData {
                 if (type == null) {
                     disk.unresolved.put(typeId, list);
                     if (seedSnapshots) baseline.put(typeId, Disk.copyOpaque(list));
-                } else if (seedSnapshots) {
-                    final Map<Object, NBTTagCompound> entries = new LinkedHashMap<>();
-                    disk.channels.put(typeId, DataStorage.readFromNBT(uuid, list, type, entries));
-                    if (!entries.isEmpty()) baseline.put(typeId, entries);
                 } else {
-                    disk.channels.put(typeId, DataStorage.readFromNBT(uuid, list, type));
+                    final Map<Object, NBTTagCompound> entries = new LinkedHashMap<>();
+                    final DataStorage storage = new DataStorage(uuid, type);
+                    rewrite |= storage.load(list, legacy, entries);
+                    disk.channels.put(typeId, storage);
+                    if (!entries.isEmpty()) baseline.put(typeId, entries);
                 }
             }
             loaded.put(uuid, disk);
-            if (seedSnapshots) snapshots.seed(uuid, baseline);
+            if (seedSnapshots) {
+                snapshots.seed(uuid, baseline);
+                if (rewrite) dirtyDisks.computeIfAbsent(uuid, ignored -> new DiskChanges())
+                    .replace();
+            }
         }
         disks.clear();
         disks.putAll(loaded);
+        setDirty(!dirtyDisks.isEmpty());
     }
 
     /** Keep temporarily unavailable channel payloads intact. */
@@ -502,6 +562,26 @@ public class StorageManager extends WorldSavedData {
             .sum();
     }
 
+    public static boolean hasUnresolvedContents(ItemStack item) {
+        final StorageManager manager = instance;
+        if (manager == null || item == null || !(item.getItem() instanceof IInfinityCellItem) || !item.hasTagCompound())
+            return false;
+        final String id = item.getTagCompound()
+            .getString(InfinityCellConstants.DISKUUID);
+        if (id.isEmpty()) return false;
+        try {
+            final Disk disk = manager.disks.get(UUID.fromString(id));
+            return disk != null && (disk.unresolved.values()
+                .stream()
+                .anyMatch(list -> list.tagCount() > 0)
+                || disk.channels.values()
+                    .stream()
+                    .anyMatch(DataStorage::hasUnresolvedEntries));
+        } catch (IllegalArgumentException e) {
+            return true;
+        }
+    }
+
     private static final class Disk {
 
         final Map<String, DataStorage> channels = new ConcurrentHashMap<>();
@@ -511,7 +591,8 @@ public class StorageManager extends WorldSavedData {
         DataStorage getOrCreate(UUID uuid, IAEStackType<?> type) {
             return channels.computeIfAbsent(type.getId(), id -> {
                 final NBTTagList raw = unresolved.get(id);
-                final DataStorage storage = DataStorage.readFromNBT(uuid, raw, type);
+                final DataStorage storage = new DataStorage(uuid, type);
+                storage.load(raw, false, new LinkedHashMap<>());
                 if (raw != null) {
                     unresolved.remove(id);
                     resolvedChannel = true;

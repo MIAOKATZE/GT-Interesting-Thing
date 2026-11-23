@@ -12,6 +12,8 @@ import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 
+import org.apache.logging.log4j.LogManager;
+
 import appeng.api.AEApi;
 import appeng.api.storage.StorageChannel;
 import appeng.api.storage.data.IAEFluidStack;
@@ -20,7 +22,6 @@ import appeng.api.storage.data.IAEStack;
 import appeng.api.storage.data.IAEStackType;
 import appeng.api.storage.data.IItemList;
 import appeng.util.item.AEFluidStack;
-import appeng.util.item.AEItemStack;
 import appeng.util.item.AEItemStackType;
 
 /**
@@ -37,6 +38,7 @@ public class DataStorage {
     private IItemList typed;
     // AE precise identity (equals/hashCode) is independent of quantity.
     private Map<IAEStack<?>, Object> snapshotKeys;
+    private final Map<Object, NBTTagCompound> unresolved = new LinkedHashMap<>();
 
     public DataStorage(UUID uuid, StorageChannel channel) {
         this(uuid, InfinityStackTypes.of(channel));
@@ -123,6 +125,10 @@ public class DataStorage {
         return true;
     }
 
+    boolean hasUnresolvedEntries() {
+        return !unresolved.isEmpty();
+    }
+
     <T extends IAEStack<T>> T findAvailable(T request) {
         final IItemList<T> contents = (IItemList<T>) initializedContents();
         if (contents == null) return null;
@@ -149,48 +155,64 @@ public class DataStorage {
     }
 
     public static DataStorage readFromNBT(UUID uuid, NBTTagList data, IAEStackType<?> stackType) {
-        return readFromNBT(uuid, data, stackType, null);
-    }
-
-    static DataStorage readFromNBT(UUID uuid, NBTTagList data, IAEStackType<?> stackType,
-        Map<Object, NBTTagCompound> committed) {
         final DataStorage storage = new DataStorage(uuid, stackType);
-        storage.readFromNBT(data, committed);
+        storage.readFromNBT(data);
         return storage;
     }
 
     public void readFromNBT(NBTTagList data) {
-        readFromNBT(data, null);
+        load(data, true, new LinkedHashMap<>());
     }
 
-    private void readFromNBT(NBTTagList data, Map<Object, NBTTagCompound> committed) {
-        if (data == null || data.tagCount() == 0) return;
+    /** Returns whether the disk representation needs a commit independently of any player operation. */
+    boolean load(NBTTagList data, boolean legacy, Map<Object, NBTTagCompound> committed) {
+        if (data == null || data.tagCount() == 0) return false;
         final IItemList list = getListFor();
+        boolean rewrite = legacy;
         for (int x = 0; x < data.tagCount(); x++) {
             final NBTTagCompound raw = data.getCompoundTagAt(x);
-            // Keep the baseline separate from tags retained by an AE stack's decoder.
-            final NBTTagCompound baseline = committed == null ? null : (NBTTagCompound) raw.copy();
-            final IAEStack stack = readStack(raw);
-            if (stack == null) continue;
-            list.add(stack);
-            if (committed != null) {
-                final IAEStack<?> stored = list.findPrecise(stack);
-                if (stored == null) continue;
-                final boolean duplicate = snapshotKeys != null && snapshotKeys.containsKey(stored);
-                final Object key = snapshotKey(stored);
-                if (InfinityCellTransfer.hasStock(stored)) {
-                    committed.put(key, duplicate ? snapshot(stored) : baseline);
-                } else {
-                    committed.remove(key);
-                }
+            final IAEStack stack = decode(raw, legacy);
+            final IAEStack<?> existing = stack == null ? null : list.findPrecise(stack);
+            if (stack == null || !canMerge(existing, stack)) {
+                final Object key = new Object();
+                final NBTTagCompound original = (NBTTagCompound) raw.copy();
+                unresolved
+                    .put(key, legacy && isItemChannel() ? InfinityItemIdentity.preserveLegacy(original) : original);
+                committed.put(key, original);
+                continue;
             }
+            list.add(stack);
+            final IAEStack<?> stored = list.findPrecise(stack);
+            if (stored == null) throw new IllegalStateException("AE list did not retain an infinity cell entry");
+            final Object key = existing == null ? snapshotKey(stored) : new Object();
+            committed.put(key, (NBTTagCompound) raw.copy());
+            if (!rewrite) rewrite = existing != null || !raw.equals(snapshot(stored));
+        }
+        if (hasUnresolvedEntries()) {
+            LogManager.getLogger("gtit")
+                .warn("Retained {} unresolved infinity cell entries in {}/{}", unresolved.size(), uuid, getTypeId());
+        }
+        return rewrite;
+    }
+
+    private IAEStack<?> decode(NBTTagCompound raw, boolean legacy) {
+        try {
+            if (isItemChannel()) return InfinityItemIdentity.read(raw, legacy);
+            final NBTTagCompound copy = (NBTTagCompound) raw.copy();
+            if (isFluidChannel()) return AEFluidStack.loadFluidStackFromNBT(copy);
+            return stackType.loadStackFromNBT(copy);
+        } catch (RuntimeException | LinkageError failure) {
+            return null;
         }
     }
 
-    private IAEStack<?> readStack(NBTTagCompound tag) {
-        if (isItemChannel()) return AEItemStack.loadItemStackFromNBT(tag);
-        if (isFluidChannel()) return AEFluidStack.loadFluidStackFromNBT(tag);
-        return (IAEStack<?>) stackType.loadStackFromNBT(tag);
+    private static boolean canMerge(IAEStack<?> existing, IAEStack<?> stack) {
+        if (!hasState(stack) || stack.getStackSize() < 0
+            || stack.getCountRequestable() < 0
+            || stack.getCountRequestableCrafts() < 0) return false;
+        return existing == null || (existing.getStackSize() <= Long.MAX_VALUE - stack.getStackSize()
+            && existing.getCountRequestable() <= Long.MAX_VALUE - stack.getCountRequestable()
+            && existing.getCountRequestableCrafts() <= Long.MAX_VALUE - stack.getCountRequestableCrafts());
     }
 
     public NBTBase writeToNBT() {
@@ -208,19 +230,25 @@ public class DataStorage {
 
     Map<Object, NBTTagCompound> snapshotAll() {
         snapshotKeys = null;
-        final Map<Object, NBTTagCompound> result = new LinkedHashMap<>();
+        final Map<Object, NBTTagCompound> result = new LinkedHashMap<>(unresolved);
         final IItemList<?> contents = initializedContents();
         if (contents != null) {
             for (final IAEStack<?> stack : contents) {
-                if (InfinityCellTransfer.hasStock(stack)) result.put(snapshotKey(stack), snapshot(stack));
+                final NBTTagCompound tag = snapshot(stack);
+                if (tag != null) result.put(snapshotKey(stack), tag);
             }
         }
         return result;
     }
 
-    static NBTTagCompound snapshot(IAEStack<?> stack) {
-        if (!InfinityCellTransfer.hasStock(stack)) return null;
-        return (NBTTagCompound) encode(stack).copy();
+    NBTTagCompound snapshot(IAEStack<?> stack) {
+        if (!hasState(stack)) return null;
+        final NBTTagCompound nativeTag = (NBTTagCompound) encode(stack).copy();
+        return isItemChannel() ? InfinityItemIdentity.write((IAEItemStack) stack, nativeTag) : nativeTag;
+    }
+
+    private static boolean hasState(IAEStack<?> stack) {
+        return stack != null && (stack.isMeaningful() || stack.getCountRequestableCrafts() > 0);
     }
 
     private static NBTTagCompound encode(IAEStack<?> stack) {
@@ -231,12 +259,14 @@ public class DataStorage {
 
     NBTTagList writeContents() {
         final NBTTagList out = new NBTTagList();
+        unresolved.values()
+            .forEach(tag -> out.appendTag(tag.copy()));
         final IItemList<?> contents = initializedContents();
         if (contents == null) {
             return out;
         }
         for (final IAEStack<?> ais : contents) {
-            if (InfinityCellTransfer.hasStock(ais)) {
+            if (hasState(ais)) {
                 out.appendTag(encode(ais));
             }
         }
