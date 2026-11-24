@@ -14,6 +14,7 @@ import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.IFluidContainerItem;
 
 import com.cleanroommc.modularui.utils.fluid.FluidStackTank;
+import com.cleanroommc.modularui.utils.item.IItemHandler;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
@@ -243,9 +244,24 @@ public final class PocketSlots extends PocketIntakeOps {
      */
     public ModularSlot storage(PocketInventory inv, int index) {
         createdRealSlots++;
-        return new ModularSlot(inv.storage(), index).slotGroup(GROUP_STORAGE)
+        return persistentSlot(inv, inv.storage(), index).slotGroup(GROUP_STORAGE)
             .ignoreMaxStackSize(true)
             .canDragInto(false);
+    }
+
+    /**
+     * Native clicks may mutate a live stack before passing it back to ModularSlot.putStack.
+     * Its equality guard then skips the handler setter. Restore the vanilla slot dirty notification
+     * for every pocket-owned item group, without changing the existing save scheduling.
+     */
+    private static ModularSlot persistentSlot(PocketInventory inv, IItemHandler handler, int index) {
+        return new ModularSlot(handler, index) {
+
+            @Override
+            public void onSlotChanged() {
+                inv.markDirty();
+            }
+        };
     }
 
     /**
@@ -265,7 +281,7 @@ public final class PocketSlots extends PocketIntakeOps {
      */
     public ModularSlot fluidInteraction(PocketInventory inv, int index) {
         createdRealSlots++;
-        final ModularSlot slot = new ModularSlot(inv.fluidInteraction(), index).slotGroup(GROUP_FLUID);
+        final ModularSlot slot = persistentSlot(inv, inv.fluidInteraction(), index).slotGroup(GROUP_FLUID);
         fluidSlotsByIndex.put(index, slot);
         // ★★<b>R93-②（A 项）：本列的<b>出格（下行格）不再接受玩家放入容器</b>——灌与排都只能从进格发起，
         // 处理完的容器由 {@link #placeProcessed} 转移到出格（那一条既有链路一个字未改）。
@@ -303,7 +319,7 @@ public final class PocketSlots extends PocketIntakeOps {
      */
     public ModularSlot distillInput(PocketInventory inv, int index) {
         createdRealSlots++;
-        final ModularSlot slot = new ModularSlot(inv.distillInput(), index).slotGroup(GROUP_DISTILL);
+        final ModularSlot slot = persistentSlot(inv, inv.distillInput(), index).slotGroup(GROUP_DISTILL);
         slot.filter(PocketSlots::acceptsDistillSlot);
         slot.changeListener((newItem, onlyAmountChanged, client, init) -> {
             if (client || init) {
@@ -471,7 +487,7 @@ public final class PocketSlots extends PocketIntakeOps {
     /** 底部带绑定格（1 格，瞬时入口）。 */
     public ModularSlot bind(PocketInventory inv) {
         createdRealSlots++;
-        return new ModularSlot(inv.bindSlot(), 0).slotGroup(GROUP_BIND);
+        return persistentSlot(inv, inv.bindSlot(), 0).slotGroup(GROUP_BIND);
     }
 
     /**
@@ -492,7 +508,7 @@ public final class PocketSlots extends PocketIntakeOps {
      */
     public ModularSlot upgradeCell(PocketInventory inv, int index) {
         createdRealSlots++;
-        final ModularSlot slot = new ModularSlot(inv.upgradeGroup(), index).slotGroup(GROUP_UPGRADE);
+        final ModularSlot slot = persistentSlot(inv, inv.upgradeGroup(), index).slotGroup(GROUP_UPGRADE);
         slot.filter(stack -> PocketInventory.acceptsUpgradeCell(index, stack));
         slot.accessibility(true, false);
         slot.canDragInto(false);

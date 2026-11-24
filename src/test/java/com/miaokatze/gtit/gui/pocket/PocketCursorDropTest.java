@@ -112,9 +112,14 @@ public final class PocketCursorDropTest {
         }
 
         void wireStorageAndPlayerSlots(PocketInventory inventory, InventoryPlayer player) {
-            addSlotToContainer(
+            wirePocketAndPlayerSlots(
                 new PocketSlots().storage(inventory, 0)
-                    .slotGroup(new SlotGroup(PocketSlots.GROUP_STORAGE, 1)));
+                    .slotGroup(new SlotGroup(PocketSlots.GROUP_STORAGE, 1)),
+                player);
+        }
+
+        void wirePocketAndPlayerSlots(ModularSlot pocket, InventoryPlayer player) {
+            addSlotToContainer(pocket);
             ModularSlot destination = new ModularSlot(new PlayerMainInvWrapper(player), 1)
                 .slotGroup(new SlotGroup("test_player", 1));
             addSlotToContainer(destination);
@@ -172,9 +177,13 @@ public final class PocketCursorDropTest {
         }
 
         void seedStorage(int count) {
+            seedStorage(count, true);
+        }
+
+        void seedStorage(int count, boolean upgraded) {
             player.inventory.setItemStack(null);
             player.inventory.mainInventory[0] = carrier;
-            PocketUpgrades.installStackCount(carrier, 1);
+            if (upgraded) PocketUpgrades.installStackCount(carrier, 1);
             inventory.storage()
                 .setStackInSlot(0, new ItemStack(Items.iron_ingot, count));
             panel.persistFinal();
@@ -244,6 +253,56 @@ public final class PocketCursorDropTest {
             "empty-cursor Shift saves the exact remainder on close");
     }
 
+    private static void nativeQuantityChangesPersist() throws Exception {
+        for (boolean upgraded : new boolean[] { false, true }) {
+            for (int count : upgraded ? new int[] { 3, 4, 64, 128, 1024 } : new int[] { 3, 4, 64 }) {
+                for (int button : new int[] { 0, 1 }) {
+                    Fixture f = new Fixture();
+                    f.seedStorage(count, upgraded);
+                    f.container.detectAndSendChanges();
+                    check(!f.inventory.isDirty(), "idle baseline stays clean");
+                    int natural = Math.min(count, Items.iron_ingot.getItemStackLimit());
+                    int taken = button == 0 ? natural : (natural + 1) / 2;
+                    f.container.slotClick(0, button, 0, f.player);
+                    check(f.inventory.isDirty(), "native quantity change marks the persisted model dirty");
+                    check(f.player.inventory.getItemStack().stackSize == taken, "native pickup amount");
+                    f.container.slotClick(1, 0, 0, f.player);
+                    f.container.onModularContainerClosed();
+                    f.panel.persistFinal();
+                    PocketInventory reopened = PocketInventory.readFrom(f.carrier.getTagCompound());
+                    ItemStack stored = reopened.storageStack(0);
+                    int remaining = stored == null ? 0 : stored.stackSize;
+                    check(remaining == count - taken, "close and reload keep the exact remainder");
+                    check(
+                        remaining + f.player.inventory.mainInventory[1].stackSize == count,
+                        "pickup and close conserve the original total");
+                    check(!f.inventory.isDirty(), "successful close clears dirty state");
+                }
+            }
+        }
+
+        Fixture output = new Fixture();
+        output.player.inventory.setItemStack(null);
+        output.player.inventory.mainInventory[0] = output.carrier;
+        output.inventory.fluidInteraction()
+            .setStackInSlot(1, new ItemStack(Items.bucket, 4));
+        output.panel.persistFinal();
+        output.container.wirePocketAndPlayerSlots(
+            new PocketSlots().fluidInteraction(output.inventory, 1)
+                .slotGroup(new SlotGroup(PocketSlots.GROUP_FLUID, 1)),
+            output.player.inventory);
+        check(!output.inventory.isDirty(), "container output baseline persisted");
+        output.container.slotClick(0, 1, 0, output.player);
+        output.container.slotClick(1, 0, 0, output.player);
+        output.container.onModularContainerClosed();
+        ItemStack saved = PocketInventory.readFrom(output.carrier.getTagCompound())
+            .fluidInteraction()
+            .getStackInSlot(1);
+        check(
+            saved.stackSize == 2 && output.player.inventory.mainInventory[1].stackSize == 2,
+            "partial output-container pickup also persists without duplication");
+    }
+
     public static void main(String[] args) throws Exception {
         if (!MinecraftTestBootstrap.enter(PocketCursorDropTest.class, args)) return;
         for (int button : new int[] { 0, 1 }) {
@@ -298,6 +357,8 @@ public final class PocketCursorDropTest {
                 .tankTruthAt(0) == 1000,
             "client prediction never persists authoritative inventory");
         oversizedShiftClick();
-        System.out.println("PocketCursorDropTest: PASS (cursor drops and oversized storage Shift-click)");
+        nativeQuantityChangesPersist();
+        System.out.println(
+            "PocketCursorDropTest: PASS (cursor drops, oversized Shift-click, 16 native storage pickups and container-output persistence)");
     }
 }
