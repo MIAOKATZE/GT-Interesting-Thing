@@ -13,7 +13,7 @@ import com.gtnewhorizon.gtnhmixins.LateMixin;
 import cpw.mods.fml.common.Loader;
 import cpw.mods.fml.common.ModContainer;
 
-/** GTNH 2.9.0 backup completion hook. Unverified backup versions keep synchronous saves. */
+/** Owns the reviewed ServerUtilities backup barrier and the resulting background-save capability. */
 @LateMixin
 public final class GtitBackupLateMixinLoader implements ILateMixinLoader {
 
@@ -30,6 +30,9 @@ public final class GtitBackupLateMixinLoader implements ILateMixinLoader {
         final ModContainer backupMod = Loader.instance()
             .getIndexedModList()
             .get(MOD_ID);
+        // 2.4.22 was reviewed for ordering: saves are suspended, queued writes drain, then copying starts.
+        // Matching drainQueuedWrites() alone does not prove that barrier; other versions stay synchronous
+        // until their completion/copy ordering is reviewed, even when their method descriptors still match.
         backupHookSelected = loadedMods.contains(MOD_ID) && backupMod != null
             && "2.4.22".equals(backupMod.getVersion());
         return backupHookSelected ? Collections.singletonList("backup.MixinBackupTaskWaitForInfinityCells")
@@ -37,6 +40,8 @@ public final class GtitBackupLateMixinLoader implements ILateMixinLoader {
     }
 
     public static boolean canSaveInBackground() {
+        // Without ServerUtilities there is no external backup copy to coordinate. When it is installed,
+        // only the reviewed hook permits async writes; callers consume this capability, not version strings.
         return !Loader.isModLoaded(MOD_ID) || backupHookSelected;
     }
 }

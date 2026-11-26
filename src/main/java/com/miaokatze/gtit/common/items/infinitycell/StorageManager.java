@@ -140,6 +140,7 @@ public class StorageManager extends WorldSavedData {
         if (legacy == null) throw new IOException("Missing save path for infinity cells");
         final StorageManager manager = open(legacy.toPath());
         manager.world = world;
+        // Backup integration owns the ordering review; storage only chooses its writer from that capability.
         if (GtitBackupLateMixinLoader.canSaveInBackground()) {
             manager.startBackgroundWrites(Executors.newSingleThreadExecutor(task -> {
                 final Thread thread = new Thread(task, "GTIT Infinity Cell IO");

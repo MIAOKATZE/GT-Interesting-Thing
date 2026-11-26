@@ -3,7 +3,10 @@
 
 package com.miaokatze.gtit.testutil;
 
-/** Actual FML/AE2 coremod prerequisites for suites exercising native AE stacks, not substitute APIs. */
+/**
+ * Actual FML/AE2 coremod prerequisites for suites exercising native AE stacks, not substitute APIs.
+ * This test-only fixture reconstructs absent discovery state; it is not a production version adapter.
+ */
 public final class NativeAeTestBootstrap {
 
     private NativeAeTestBootstrap() {}
@@ -95,6 +98,8 @@ public final class NativeAeTestBootstrap {
             .digest(java.nio.file.Files.readAllBytes(jar.toPath()));
         StringBuilder hash = new StringBuilder();
         for (byte value : digest) hash.append(String.format("%02x", value & 255));
+        // Exact reviewed fixture bytes authorize this artificial loader setup, not general AE compatibility.
+        // A new version label or matching API signatures must not widen this allow-list without review.
         boolean legacy = jar.length() == 5021052L
             && "0bb7d05ae555a7b16e7e9b64f6eb4234217fc82dedc7bbba4874a9d6766042a2".equals(hash.toString());
         boolean modern = jar.length() == 5065864L
