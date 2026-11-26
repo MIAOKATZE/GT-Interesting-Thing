@@ -16,9 +16,11 @@
 | 前置 / Requirement | 版本 / Version |
 | --- | --- |
 | GTNH | 2.9.0 |
-| [MIAOKATZE Core](https://github.com/MIAOKATZE/MIAOKATZE-Core) | [见对应版本的 Release / See the corresponding release](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases) |
+| [MIAOKATZE Core](https://github.com/MIAOKATZE/MIAOKATZE-Core) | 0.2.31+；[下载随附普通包 / Download the bundled ordinary JAR](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases) |
 
-请在客户端和服务端手动安装随本体发布的 Core 普通 JAR。
+请在客户端和服务端手动安装或更新随本体发布的 Core 0.2.31 或更新版本普通 JAR。
+
+Install or update the bundled ordinary Core 0.2.31+ JAR on both client and server.
 
 本版物品、戒指、插件和售货机的改写提示默认显示常规档；悬停按 **[Alt+V]** 切换常规／简略。物品与流体名称带图标及方括号；对空气操作保留普通目标文字。售货机仍可按住左 Shift 查看结构。礼盒及标为 [OLD] 的元件保留原提示。售货机依赖 VendingMachine 0.4.103 或更高兼容版本。
 
