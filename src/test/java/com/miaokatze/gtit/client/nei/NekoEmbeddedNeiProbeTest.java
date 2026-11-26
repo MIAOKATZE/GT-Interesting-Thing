@@ -36,7 +36,7 @@ public final class NekoEmbeddedNeiProbeTest {
 
     public static void main(String[] args) throws Exception {
         geometry();
-        nativeAbi(args.length == 0 ? "2.8.171" : args[0]);
+        nativeAbi(args.length == 0 ? "2.8.176" : args[0]);
         nativeWidgetRegistry();
         nativeGrid();
         noSpawnBytecode();

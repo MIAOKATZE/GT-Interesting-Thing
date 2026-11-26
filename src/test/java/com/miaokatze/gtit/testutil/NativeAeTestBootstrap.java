@@ -78,8 +78,7 @@ public final class NativeAeTestBootstrap {
         if (controllerField.get(loader) != null) {
             cpw.mods.fml.common.ModContainer existing = loader.getIndexedModList()
                 .get("appliedenergistics2");
-            if (existing instanceof cpw.mods.fml.common.FMLModContainer
-                && "rv3-beta-1095-GTNH".equals(existing.getVersion())
+            if (existing instanceof cpw.mods.fml.common.FMLModContainer && supportedVersion(existing.getVersion())
                 && existing.getMod() == appeng.core.AppEng.instance()
                 && loader.getReversedModObjectList()
                     .get(existing.getMod()) == existing)
@@ -96,8 +95,11 @@ public final class NativeAeTestBootstrap {
             .digest(java.nio.file.Files.readAllBytes(jar.toPath()));
         StringBuilder hash = new StringBuilder();
         for (byte value : digest) hash.append(String.format("%02x", value & 255));
-        if (jar.length() != 5021052L
-            || !"0bb7d05ae555a7b16e7e9b64f6eb4234217fc82dedc7bbba4874a9d6766042a2".equals(hash.toString())) {
+        boolean legacy = jar.length() == 5021052L
+            && "0bb7d05ae555a7b16e7e9b64f6eb4234217fc82dedc7bbba4874a9d6766042a2".equals(hash.toString());
+        boolean modern = jar.length() == 5065864L
+            && "2d21c3b4d2d7b6ac997c646bd6856061db3de1f9635baf525d9c5baa7a465196".equals(hash.toString());
+        if (!legacy && !modern) {
             throw new IllegalStateException("Unexpected AE artifact for native loader fixture: " + jar);
         }
         cpw.mods.fml.common.discovery.ASMDataTable table = new cpw.mods.fml.common.discovery.ASMDataTable();
@@ -108,7 +110,7 @@ public final class NativeAeTestBootstrap {
         java.util.List<cpw.mods.fml.common.ModContainer> discovered = candidate.explore(table);
         cpw.mods.fml.common.FMLModContainer ae = null;
         for (cpw.mods.fml.common.ModContainer mod : discovered) {
-            if ("appliedenergistics2".equals(mod.getModId()) && "rv3-beta-1095-GTNH".equals(mod.getVersion())
+            if ("appliedenergistics2".equals(mod.getModId()) && supportedVersion(mod.getVersion())
                 && mod instanceof cpw.mods.fml.common.FMLModContainer) {
                 if (ae != null) throw new IllegalStateException("Duplicate native AE mod metadata");
                 ae = (cpw.mods.fml.common.FMLModContainer) mod;
@@ -173,7 +175,11 @@ public final class NativeAeTestBootstrap {
             throw new IllegalStateException("Native AE integration rewrite changed unrelated class structure");
         }
         System.out.println(
-            "Native AE1095 integration contract: two optional interfaces and one method stripped by actual ASMIntegration");
+            "Native AE1095/1104 integration contract: two optional interfaces and one method stripped by actual ASMIntegration");
+    }
+
+    private static boolean supportedVersion(String version) {
+        return "rv3-beta-1095-GTNH".equals(version) || "rv3-beta-1104-GTNH".equals(version);
     }
 
     private static java.io.File loadedArtifact(Class<?> type) throws Exception {
