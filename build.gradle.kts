@@ -49,6 +49,60 @@ tasks.test {
     failOnNoDiscoveredTests = false
 }
 
+// ASM9 is confined to the bytecode reader lane; native Forge/AE suites still require the real ASM5.
+val compatibilityReaderRuntime = configurations.create("compatibilityReaderRuntime") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
+dependencies {
+    testCompileOnly("org.ow2.asm:asm-tree:9.9")
+    add(compatibilityReaderRuntime.name, "org.ow2.asm:asm-tree:9.9")
+}
+
+// Old artifacts are read as bytes only. They never extend the modern compile/runtime configurations.
+mapOf(
+    "290" to listOf("5.09.54.265", "rv3-beta-1095-GTNH", "0.11.54", "2.8.171-GTNH"),
+    "291" to listOf("5.09.54.275", "rv3-beta-1104-GTNH", "0.11.58", "2.8.175-GTNH"),
+    "292" to listOf("5.09.54.277", "rv3-beta-1104-GTNH", "0.11.58", "2.8.176-GTNH")
+).forEach { (pack, versions) ->
+    val artifacts = configurations.create("gtnh${pack}ContractArtifacts") {
+        isCanBeConsumed = false
+        isCanBeResolved = true
+        isTransitive = false
+    }
+    listOf("GT5-Unofficial", "Applied-Energistics-2-Unofficial", "GTNHLib", "NotEnoughItems")
+        .zip(versions).forEach { (name, version) ->
+            dependencies.add(artifacts.name, "com.github.GTNewHorizons:$name:$version:dev")
+        }
+    listOf(
+        "ModularUI:1.3.4", "StructureLib:1.4.47", "VisualProspecting:1.5.42",
+        "ModularUI2:${if (pack == "290") "2.3.94" else if (pack == "291") "2.3.96" else "2.3.97"}-1.7.10",
+        "BetterQuesting:${if (pack == "290") "3.8.92" else "3.8.94"}-GTNH",
+        "Baubles-Expanded:2.2.${if (pack == "290") "27" else if (pack == "291") "28" else "29"}-GTNH"
+    ).forEach { coordinates -> dependencies.add(artifacts.name, "com.github.GTNewHorizons:$coordinates:dev") }
+    tasks.register<JavaExec>("runGtnh${pack}CompatibilityContractTest") {
+        group = "verification"
+        description = "Reads isolated GTNH $pack API/Mixin descriptors and injection calls; no game launch."
+        mainClass = "com.miaokatze.gtit.testutil.PackCompatibilityContractTest"
+        classpath = sourceSets.test.get().runtimeClasspath
+        inputs.files(artifacts)
+        args(listOf(pack) + artifacts.files.sortedBy { it.name }.map { it.absolutePath })
+    }
+    tasks.register<JavaExec>("runGtnh${pack}LinkageContracts") {
+        group = "verification"
+        description = "Links the same modern production bytecode to isolated GTNH $pack APIs without class initialization."
+        mainClass = "com.miaokatze.gtit.testutil.PlatformLinkageContracts"
+        classpath = compatibilityReaderRuntime + sourceSets.test.get().runtimeClasspath + sourceSets.main.get().compileClasspath
+        val productionClasses = sourceSets.main.get().output.classesDirs + sourceSets.getByName("mixin").output.classesDirs
+        inputs.files(artifacts, productionClasses)
+        dependsOn("compileMixinJava")
+        args(pack, productionClasses.asPath, artifacts.asPath)
+    }
+    tasks.named("check") {
+        dependsOn("runGtnh${pack}CompatibilityContractTest", "runGtnh${pack}LinkageContracts")
+    }
+}
+
 // 周目零依赖测试套件手动入口：用例注册在 ReincarnationStoreTest.main（内部驱动
 // testutil.TestRunner，任一失败以非零退出码结束），不占用 Gradle :test 发现机制。
 // 运行：gradlew runStoreTest
@@ -175,8 +229,8 @@ tasks.named("check") { dependsOn("runTradeMatchingTest") }
 
 // NEI production query entry points need these client classes only in test runtimes.
 val neiTestRuntimeClasspath = configurations.detachedConfiguration(
-    dependencies.create("com.github.GTNewHorizons:NotEnoughItems:2.8.171-GTNH:dev"),
-    dependencies.create("com.github.GTNewHorizons:CodeChickenCore:1.4.22:dev"),
+    dependencies.create("com.github.GTNewHorizons:NotEnoughItems:2.8.176-GTNH:dev"),
+    dependencies.create("com.github.GTNewHorizons:CodeChickenCore:1.4.24:dev"),
     dependencies.create("org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209"),
     dependencies.create("org.lwjgl.lwjgl:lwjgl_util:2.9.4-nightly-20150209")
 ).apply { isTransitive = false }
