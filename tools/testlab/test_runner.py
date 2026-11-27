@@ -50,13 +50,23 @@ for line in sys.stdin:
 '''
 
 BOOTSTRAP = r'''
-import sys,subprocess
+import sys,subprocess,json,pathlib,contextlib
 from unittest.mock import patch
 sys.path.insert(0,sys.argv[1]);import runner
 real_popen=subprocess.Popen
 fake=sys.argv[2];sys.argv=[str(runner.__file__),'run',*sys.argv[3:]]
-def launch(command,**kwargs): return real_popen([sys.executable,'-u',fake],**kwargs)
-with patch.object(runner.subprocess,'Popen',side_effect=launch): raise SystemExit(runner.main())
+root=pathlib.Path(fake).parent
+def launch(command,**kwargs):
+ (root/'fake-jvm-command.json').write_text(json.dumps(command))
+ return real_popen([sys.executable,'-u',fake],**kwargs)
+with contextlib.ExitStack() as mocks:
+ for name,value in {'find_registered':{'id':'GTIT','server_java':sys.executable},
+                    'server_world':root/'world','recovery_pending':False,
+                    'inventory':[],'bundle_artifacts':[],
+                    'require_java26':pathlib.Path(sys.executable),'require_memory':5*1024**3}.items():
+  mocks.enter_context(patch.object(runner.shared_host,name,return_value=value))
+ mocks.enter_context(patch.object(runner.subprocess,'Popen',side_effect=launch))
+ raise SystemExit(runner.main())
 '''
 
 
@@ -64,6 +74,13 @@ class RunnerTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
+        self.mocks = contextlib.ExitStack()
+        self.addCleanup(self.mocks.close)
+        for name, value in {'find_registered': {'id': 'GTIT', 'server_java': sys.executable},
+                            'server_world': self.root / 'world', 'recovery_pending': False,
+                            'inventory': [], 'bundle_artifacts': [],
+                            'require_java26': Path(sys.executable), 'require_memory': 5 * 1024**3}.items():
+            self.mocks.enter_context(patch.object(runner.shared_host, name, return_value=value))
         self.fake = self.root / 'fake.py'
         self.fake.write_text(FAKE_SERVER)
         with socket.socket() as sock:
@@ -186,6 +203,8 @@ class RunnerTests(unittest.TestCase):
 
     def test_stdin_stop_and_reports(self):
         child = self.spawn()
+        command = json.loads((self.root / 'fake-jvm-command.json').read_text())
+        self.assertEqual([arg for arg in command if arg.startswith('-Xmx')], ['-Xmx4G'])
         self.assertTrue(runner.request(self.root, 'say runner-test', 3)['ok'])
         runner.request(self.root, 'stop', 3)
         self.assertEqual(child.wait(timeout=5), 0)
@@ -194,6 +213,38 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(report['status'], 'passed')
         self.assertEqual([c['command'] for c in report['commands']], ['say runner-test', 'stop'])
         self.assertIn('Stopping server', (Path(report['run']) / 'console.log').read_text())
+
+    def test_memory_failure_never_launches_child_and_releases_local_owner(self):
+        with patch.object(runner.shared_host, 'require_memory', side_effect=RuntimeError('Insufficient memory')), \
+                patch.object(runner.subprocess, 'Popen') as launch, \
+                patch.object(sys, 'argv', ['runner.py', 'run', '--instance', str(self.root)]), \
+                contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.main(), runner.EXIT_START)
+        launch.assert_not_called()
+        self.assertFalse((self.root / '.testlab/owner.json').exists())
+
+    def test_java_failure_never_launches_child(self):
+        with patch.object(runner.shared_host, 'require_java26', side_effect=ValueError('Require Java 26')), \
+                patch.object(runner.subprocess, 'Popen') as launch, \
+                patch.object(sys, 'argv', ['runner.py', 'run', '--instance', str(self.root)]), \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(runner.main(), runner.EXIT_CONFIG)
+        launch.assert_not_called()
+
+    def test_shared_lease_still_blocks_compatibility_runner(self):
+        lease = self.root / '.testlab-host/lease.json'
+        lease.parent.mkdir()
+        lease.write_text('{}')
+        with self.assertRaises(FileExistsError):
+            runner.validate(self.root)
+
+    def test_nonstandard_heap_is_rejected_before_launch(self):
+        with patch.object(runner.subprocess, 'Popen') as launch, \
+                patch.object(sys, 'argv', ['runner.py', 'run', '--instance', str(self.root), '--xmx', '6G']), \
+                contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as result:
+            runner.main()
+        self.assertEqual(result.exception.code, 2)
+        launch.assert_not_called()
 
     def test_atomic_lock_competition(self):
         first = self.spawn()

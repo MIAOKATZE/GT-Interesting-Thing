@@ -323,7 +323,9 @@ def supervise(args):
         report['commands'].append({'command': command, 'sent': stamp()})
 
     try:
-        command = [args.java, '-Xms' + args.xms, '-Xmx' + args.xmx,
+        java = shared_host.require_java26(args.java)
+        shared_host.require_memory()
+        command = [str(java), '-Xms' + args.xms, f'-Xmx{shared_host.HEAP_GIB}G',
                    '-Dfml.readTimeout=180', '-Duser.language=en', '-Dfile.encoding=UTF-8',
                    '@java9args.txt', '-jar', 'lwjgl3ify-forgePatches.jar', 'nogui']
         process = subprocess.Popen(command, cwd=root, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -427,7 +429,7 @@ def main():
     p.add_argument('--bundle', type=Path, default=BUNDLE)
     p.add_argument('--java')
     p.add_argument('--xms', default='1G')
-    p.add_argument('--xmx', default='6G')
+    p.add_argument('--xmx', choices=[f'{shared_host.HEAP_GIB}G'], default=f'{shared_host.HEAP_GIB}G')
     p.add_argument('--startup-timeout', type=float, default=900)
     p.add_argument('--stop-timeout', type=float, default=120)
     p.add_argument('--max-runtime', type=float, default=3600)
@@ -445,10 +447,7 @@ def main():
         expected_java = Path(registered['server_java']).resolve()
         if args.java and Path(args.java).resolve() != expected_java:
             raise ValueError('Java must match registered Java 26 runtime')
-        args.java = str(expected_java)
-        release = expected_java.parent.parent / 'release'
-        if not release.is_file() or not re.search(r'JAVA_VERSION="26(?:[.\"+])', release.read_text()):
-            raise ValueError('Actual server runtime must be Java 26')
+        args.java = str(shared_host.require_java26(expected_java))
         base = args.instance / '.testlab'
         lock = base / 'owner.json'
         if args.action == 'run':
