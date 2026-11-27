@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
-sys.path.insert(0,str(ROOT.parent / '贴图复合渲染/src'))
+sys.path.insert(0,str(ROOT.parent / 'GT-贴图复合渲染/src'))
 from texture_compositor import render_model
 from texture_compositor.renderer import _part_matrices
 import cat_scene

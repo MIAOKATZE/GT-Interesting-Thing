@@ -20,7 +20,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(HERE / 'source'))
 # User-requested standalone renderer, kept outside the mod project.
-sys.path.insert(0, str(ROOT.parent / '贴图复合渲染/src'))
+sys.path.insert(0, str(ROOT.parent / 'GT-贴图复合渲染/src'))
 from cat_scene import MODEL, STORY, render_frames, verify_story
 
 SOURCE = ROOT / 'src/main/resources/assets/gtit/textures/items/miao_coin.png'

@@ -6,7 +6,7 @@
 
 - `cat-model.json` 由 `extract_cat_model.py` 读取本项目 Gradle 生成的 Minecraft 1.7.10 `ModelOcelot.java` 构造器提取：8 个部件、11 个 ModelBox，包含原始 pivot、box origin/size、纹理 offset。JSON 记录 ModelOcelot、ModelBox、TexturedQuad 三份实际源文件的 SHA-256。
 - 猫使用原版 `red.png` / `black.png`，从 `build/rfg/mcp_patched_minecraft-sources.jar` 读取，并核对条目 SHA-256；没有手绘替代猫或把 Minecraft 源图另存进 mod。首次 clone 先执行本项目常规 Gradle 构建以生成该 jar。修改模型来源时再运行 `python tools/artgen_catalog/neko_tv/source/extract_cat_model.py`。
-- 通用 CPU 透视、原 ModelBox UV、最近邻取样、深度缓冲和图层复合来自独立工具包 `../贴图复合渲染/src/texture_compositor`。`cat_scene.py` 只保留本场景的相机、原版站/坐姿和动作编排。
+- 通用 CPU 透视、原 ModelBox UV、最近邻取样、深度缓冲和图层复合来自独立工具包 `../GT-贴图复合渲染/src/texture_compositor`。`cat_scene.py` 只保留本场景的相机、原版站/坐姿和动作编排。
 - `miao_coin.png` 继续使用项目原图的四帧，烘焙前核对 SHA-256。`materials.py` 在 16px 原生分辨率绘制木纹、金边，并保留控制器原电子面板/红绿指示像素；旧 NEKOVM 资源不覆盖。
 - 在仓库根目录运行 `python -B tools/artgen_catalog/neko_tv/bake.py`。依赖 Pillow、NumPy、Python Playwright、Node.js 与已安装 Microsoft Edge；浏览器仅在烘焙时合成静态 SVG 背景、金币和预渲猫帧，不是游戏实时 renderer。Node.js 用于直接采样共享 `coin_flow.js`，核验错落轨迹和循环，不另行维护一份新轨迹算法。
 
